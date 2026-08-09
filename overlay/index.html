@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Leap Reactive Banner</title>
+    <link rel="stylesheet" href="/banner.css" />
+  </head>
+  <body>
+    <!-- 1080 x 150 browser source. Page background stays transparent. -->
+    <div id="stage">
+      <div id="banner" class="banner-3d">
+        <!-- FRONT: the row of gift tiles -->
+        <section class="face front">
+          <div class="brand">
+            <img class="cobrand" src="/brand/tiktok-x-leap.png" alt="TikTok LIVE x Leap" />
+          </div>
+          <div class="tiles" id="tiles"></div>
+        </section>
+
+        <!-- BACK: featured-gift celebration (revealed by the 3D flip) -->
+        <section class="face back" id="celebration">
+          <div class="cele-left">
+            <div class="avatar" id="celeAvatar"><span>🎁</span></div>
+            <div class="cele-text">
+              <div class="cele-user" id="celeUser">@username</div>
+              <div class="cele-sub">HAS JUST SENT</div>
+            </div>
+          </div>
+          <div class="cele-right">
+            <div class="cele-gift" id="celeGift">🌌</div>
+            <div class="cele-meta">
+              <div class="cele-giftname" id="celeName">GALAXY</div>
+              <div class="cele-points" id="celePoints">+1,000 POINTS</div>
+            </div>
+          </div>
+          <div class="burst" aria-hidden="true"></div>
+          <div class="confetti" id="confetti" aria-hidden="true"></div>
+        </section>
+      </div>
+    </div>
+
+    <div id="hint" hidden>demo mode · keys 1–6 react a tile · F = featured flip</div>
+
+    <script src="/banner.js"></script>
+  </body>
+</html>

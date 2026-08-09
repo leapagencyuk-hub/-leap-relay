@@ -1,0 +1,396 @@
+/* Leap Reactive Banners — overlay styles.
+   Built for a 1080x150 transparent browser source.
+   Animations use ONLY transform / opacity / filter so the overlay stays cheap
+   while a game + encoder run alongside it. */
+
+:root {
+  /* Theme defaults (Leap Blue) — overridden at runtime from the chosen template */
+  --accent: #3d8bff;
+  --accent-2: #044bad;
+  --accent-soft: #9fc4ff;
+  --tile-bg-1: rgba(16, 26, 50, 0.85);
+  --tile-bg-2: rgba(8, 13, 25, 0.85);
+  --tile-border: rgba(255, 255, 255, 0.09);
+  --bar-bg-1: rgba(10, 13, 22, 0.35);
+  --bar-bg-2: rgba(6, 8, 15, 0.5);
+  --celeb-from: rgba(20, 90, 220, 0.6);
+  --celeb-bg: #060a14;
+  /* Reaction defaults (Blue) — overridden from the chosen reaction */
+  --react: #3d8bff;
+  --react-soft: #9fc4ff;
+  --react-outer: rgba(61, 139, 255, 0.55);
+  --text: #ffffff;
+  --text-dim: rgba(255, 255, 255, 0.62);
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+html,
+body {
+  width: 1080px;
+  height: 150px;
+  background: transparent; /* critical for OBS / LIVE Studio */
+  overflow: hidden;
+  font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+#stage {
+  width: 1080px;
+  height: 150px;
+  perspective: 1600px; /* gives the flip real depth */
+}
+
+/* The flipping element. Both faces are stacked in 3D. */
+.banner-3d {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 620ms cubic-bezier(0.7, 0, 0.2, 1);
+  will-change: transform;
+}
+.banner-3d.flip {
+  transform: rotateX(180deg);
+}
+
+.face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: 22px;
+  overflow: hidden;
+}
+
+/* ---------- FRONT: tile row ---------- */
+.front {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 0 20px;
+  background: linear-gradient(180deg, var(--bar-bg-1), var(--bar-bg-2));
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  padding-right: 16px;
+  margin-right: 4px;
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  flex: 0 0 auto;
+}
+.cobrand {
+  height: 44px;
+  width: auto;
+  display: block;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.55));
+}
+
+.tiles {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex: 1 1 auto;
+  height: 100%;
+}
+
+.tile {
+  position: relative;
+  flex: 1 1 0;
+  height: 108px;
+  border-radius: 16px;
+  background: linear-gradient(160deg, var(--tile-bg-1), var(--tile-bg-2));
+  border: 1px solid var(--tile-border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 10px;
+  overflow: hidden;
+  transform: translateZ(0); /* own compositing layer */
+  transition: transform 220ms ease, box-shadow 220ms ease;
+}
+
+.tile-icon {
+  flex: 0 0 auto;
+  width: 70px;
+  height: 70px;
+  display: grid;
+  place-items: center;
+  font-size: 42px;
+  line-height: 1;
+  /* no background box — the gift art sits directly on the tile */
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.45));
+}
+.tile-icon img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.tile-points {
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: var(--text);
+  text-align: center;
+  line-height: 1;
+}
+
+/* subtle marker that a slot is a featured gift */
+.tile.is-featured {
+  border-color: var(--accent);
+}
+.tile.is-featured .tile-points {
+  color: var(--accent-soft);
+}
+
+/* glow layer — faded via opacity, never animating box-shadow directly */
+.tile-glow {
+  position: absolute;
+  inset: -2px;
+  border-radius: 16px;
+  pointer-events: none;
+  opacity: 0;
+  box-shadow: 0 0 0 2px var(--react) inset, 0 0 22px 4px var(--react-outer);
+  transition: opacity 180ms ease;
+}
+
+/* travelling shine sweep */
+.shine {
+  position: absolute;
+  top: 0;
+  left: -60%;
+  width: 45%;
+  height: 100%;
+  pointer-events: none;
+  opacity: 0;
+  transform: skewX(-18deg);
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.85),
+    transparent
+  );
+}
+
+.sparkles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.sparkles i {
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--react-soft);
+  opacity: 0;
+  box-shadow: 0 0 8px 2px var(--react-outer);
+}
+
+/* ---------- NORMAL REACTION (~1.2s) ---------- */
+.tile.react {
+  animation: tilePulse 1150ms cubic-bezier(0.34, 1.3, 0.5, 1) both;
+}
+.tile.react .tile-glow {
+  animation: glowFade 1150ms ease both;
+}
+.tile.react .shine {
+  animation: shineSweep 900ms ease-in-out 90ms both;
+}
+.tile.react .sparkles i {
+  animation: sparkle 900ms ease-out both;
+}
+
+@keyframes tilePulse {
+  0% { transform: scale(1); }
+  18% { transform: scale(1.09); }
+  40% { transform: scale(1.03); }
+  60% { transform: scale(1.06); }
+  100% { transform: scale(1); }
+}
+@keyframes glowFade {
+  0% { opacity: 0; }
+  15% { opacity: 1; }
+  70% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@keyframes shineSweep {
+  0% { left: -60%; opacity: 0; }
+  10% { opacity: 1; }
+  100% { left: 120%; opacity: 0; }
+}
+@keyframes sparkle {
+  0% { opacity: 0; transform: translate(0, 0) scale(0.4); }
+  30% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(var(--dx, 0), var(--dy, -14px)) scale(1);
+  }
+}
+
+/* ---------- BACK: celebration side ---------- */
+.back {
+  transform: rotateX(180deg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 40px;
+  background: radial-gradient(120% 160% at 78% 50%, var(--celeb-from), var(--celeb-bg) 64%),
+    var(--celeb-bg);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.cele-left {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  min-width: 0;
+  z-index: 2;
+}
+.cele-text {
+  min-width: 0;
+}
+.avatar {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 40px;
+  background: radial-gradient(circle, #1a2138, #0b0f1c);
+  box-shadow: 0 0 0 3px var(--accent), 0 0 22px 6px var(--celeb-from);
+  overflow: hidden;
+}
+.avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.cele-user {
+  font-size: 34px;
+  font-weight: 900;
+  line-height: 1.05;
+  max-width: 420px; /* long usernames truncate instead of crowding the gift */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  background: linear-gradient(90deg, var(--accent-soft), var(--accent));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.cele-sub {
+  font-size: 22px;
+  font-style: italic;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 6px;
+}
+
+.cele-right {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex: 0 0 auto; /* gift + points never shrink */
+  z-index: 2;
+}
+.cele-gift {
+  font-size: 88px;
+  line-height: 1;
+  filter: drop-shadow(0 0 18px var(--accent));
+}
+.cele-gift img {
+  width: 104px;
+  height: 104px;
+  object-fit: contain;
+}
+.cele-giftname {
+  font-size: 26px;
+  font-weight: 900;
+  letter-spacing: 1px;
+  color: #fff;
+  text-transform: uppercase;
+}
+.cele-points {
+  margin-top: 8px;
+  font-size: 20px;
+  font-weight: 800;
+  color: #fff;
+  padding: 7px 16px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent-2), var(--accent));
+  box-shadow: 0 0 18px var(--celeb-from);
+  display: inline-block;
+}
+
+/* radial light burst behind the gift */
+.burst {
+  position: absolute;
+  top: 50%;
+  right: 130px;
+  width: 320px;
+  height: 320px;
+  transform: translateY(-50%) scale(0.6);
+  opacity: 0;
+  pointer-events: none;
+  background: radial-gradient(circle, var(--celeb-from), transparent 62%);
+}
+.banner-3d.flip .burst {
+  animation: burstIn 2600ms ease-out both;
+}
+@keyframes burstIn {
+  0% { opacity: 0; transform: translateY(-50%) scale(0.6) rotate(0deg); }
+  22% { opacity: 1; }
+  100% { opacity: 0.85; transform: translateY(-50%) scale(1) rotate(35deg); }
+}
+
+/* confetti pieces (populated by JS) */
+.confetti i {
+  position: absolute;
+  width: 8px;
+  height: 12px;
+  border-radius: 2px;
+  opacity: 0;
+  top: 50%;
+  left: 50%;
+}
+.banner-3d.flip .confetti i {
+  animation: confettiFly 2400ms ease-out both;
+}
+@keyframes confettiFly {
+  0% { opacity: 0; transform: translate(0, 0) rotate(0deg) scale(0.6); }
+  15% { opacity: 1; }
+  100% {
+    opacity: 0;
+    transform: translate(var(--cx), var(--cy)) rotate(var(--cr)) scale(1);
+  }
+}
+
+/* full-banner glow variant (featuredReaction: "glow") */
+.banner-3d.glow .front {
+  animation: bannerGlow 1600ms ease both;
+}
+@keyframes bannerGlow {
+  0% { box-shadow: 0 0 0 transparent; }
+  25% {
+    box-shadow: 0 0 34px 6px var(--celeb-from), 0 0 0 2px var(--accent) inset;
+  }
+  100% { box-shadow: 0 0 0 transparent; }
+}
+
+#hint {
+  position: fixed;
+  bottom: 4px;
+  left: 8px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.5);
+  font-family: monospace;
+}
