@@ -1,0 +1,86 @@
+{
+  "dataDir": "./data",
+  "timezone": "UTC",
+  "tiers": {
+    "core": 100000,
+    "growing": 20000,
+    "emerging": 2000
+  },
+  "decline": {
+    "minHistoryDays": 10,
+    "eligibility": {
+      "minPrev7LiveHours": 2,
+      "minPrev28Diamonds": 2000,
+      "minActiveDays28": 4
+    },
+    "byTier": {
+      "core": {
+        "diamondsDrop": 0.25,
+        "diamondsFloor": 25000,
+        "hoursDrop": 0.25,
+        "hoursFloor": 4,
+        "darkDays": 2,
+        "liveDaysDrop": 2
+      },
+      "growing": {
+        "diamondsDrop": 0.35,
+        "diamondsFloor": 4000,
+        "hoursDrop": 0.3,
+        "hoursFloor": 3,
+        "darkDays": 3,
+        "liveDaysDrop": 2
+      },
+      "emerging": {
+        "diamondsDrop": 0.5,
+        "diamondsFloor": 500,
+        "hoursDrop": 0.4,
+        "hoursFloor": 2,
+        "darkDays": 5,
+        "liveDaysDrop": 3
+      },
+      "dormant": null
+    },
+    "fanClub": {
+      "activeFansDrop": 0.2,
+      "activeFansFloor": 5,
+      "diamondsDrop": 0.3,
+      "concentrationRisk": 0.85
+    },
+    "efficiencyDrop": 0.3,
+    "cooldownDays": 5,
+    "recoveryThreshold": 0.9,
+    "volatilityMultiple": 1.4
+  },
+  "ramp": {
+    "targetDiamonds": 200000,
+    "windowDays": 90,
+    "curve": [
+      {
+        "day": 0,
+        "pct": 0
+      },
+      {
+        "day": 30,
+        "pct": 0.15
+      },
+      {
+        "day": 60,
+        "pct": 0.45
+      },
+      {
+        "day": 90,
+        "pct": 1
+      }
+    ],
+    "atRiskRatio": 0.6,
+    "sustainableHoursPerDay": 4,
+    "maxHoursPerDay": 6,
+    "sustainableDaysPerWeek": 6,
+    "spotlightCount": 20
+  },
+  "digest": {
+    "maxAlertsPerCoach": 12,
+    "maxRampRowsPerCoach": 10,
+    "includeRecoveries": true
+  }
+}

@@ -1,0 +1,5 @@
+# Snapshots and derived state are generated from the daily uploads.
+data/
+data-sim/
+routes.json
+config.sim.json
