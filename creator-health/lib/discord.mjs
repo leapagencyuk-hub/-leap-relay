@@ -254,7 +254,9 @@ function trafficField(m) {
   // "1 this week, 1 last week" is a field taking up space to say nothing. Only
   // show this when there is enough movement for it to carry information.
   if (Math.max(now, before) < 20) return null;
-  const trend = before >= 10 ? ` (${pct((now - before) / before)})` : '';
+  const change = before >= 10 ? (now - before) / before : null;
+  // "+0%" is a field announcing that nothing happened.
+  const trend = change != null && Math.abs(change) >= 0.1 ? ` (${pct(change)})` : '';
   return {
     name: 'New followers',
     value: `**${n(now)}**${trend}\nthis week · proxy for short form`,
@@ -283,8 +285,11 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
       title: `${SEVERITY_LABEL[caseRecord.severity] ?? 'Notice'} — ${book.title}`,
       description: (() => {
         const trend = monthlyTrend(m, 6);
-        const signals = alert.signals.map((s) => `• **${s.label}** — ${s.detail}`).join('\n');
-        return `${trend ? `\`${trend.spark}\`  ${trend.label}\n\n` : ''}${signals}`.slice(0, 3800);
+        // Labels only. The detail behind each one is repeated almost word for
+        // word under "Most likely why", and saying it twice makes the card
+        // twice as long without telling a coach anything new.
+        const signals = alert.signals.map((s) => `**${s.label}**`).join('  ·  ');
+        return `${trend ? `\`${trend.spark}\`  ${trend.label}\n` : ''}${signals}`.slice(0, 3800);
       })(),
       color: COLOR[caseRecord.severity] ?? COLOR.neutral,
       fields: [

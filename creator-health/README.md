@@ -380,15 +380,21 @@ Every card carries an author line: the creator's handle, their team, and a
 looks — it is where a coach goes to see the one thing the export cannot show
 them, namely what the creator has actually been posting.
 
-Avatars are resolved by Discord, not by us. The first attempt fetched TikTok's
-oEmbed endpoint from our side, cached the result, and produced no picture at
-all in production. Handing Discord a URL that resolves the handle on request
-takes our network out of the path entirely: no lookup, no cache, no rate limit,
-and a failure is a card without a picture rather than a stalled run.
+**Avatars are off by default**, after two attempts at them.
 
-It uses a third-party resolver (`unavatar.io` by default). Point
-`avatars.urlTemplate` elsewhere, set `avatars.enabled` to false to drop pictures
-entirely, or add `avatars.manual` entries which win over the resolver.
+Fetching TikTok's oEmbed endpoint from our side, cached and capped, produced no
+picture at all. Handing Discord a third-party resolver URL produced something
+worse: a broken-image icon on every card, which reads as a tool nobody
+maintains.
+
+The export carries no avatar, and there is no route to one that works reliably
+without TikTok API access. So `avatars.enabled` starts false and the cards are
+clean. Two ways to get pictures if you want them:
+
+- `avatars.manual` — `{"username": "https://..."}`, always used, never fails,
+  worth doing for the handful of creators who come up most
+- `avatars.enabled: true` with an `avatars.urlTemplate` you have checked
+  renders in Discord
 
 ### Reading a card at a glance
 

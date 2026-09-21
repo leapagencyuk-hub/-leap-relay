@@ -180,9 +180,9 @@ test('a month we barely watched is not drawn as a bad month', () => {
 
 test('profile and avatar urls are built from the handle', () => {
   assert.equal(profileUrl('@someone'), 'https://www.tiktok.com/@someone');
-  assert.equal(avatarUrl('someone', {}), 'https://unavatar.io/tiktok/someone');
-  assert.equal(avatarUrl('someone', { enabled: false }), null, 'pictures can be turned off');
+  assert.equal(avatarUrl('someone', {}), null, 'off unless switched on');
+  assert.equal(avatarUrl('someone', { enabled: true }), 'https://unavatar.io/tiktok/someone');
   assert.equal(avatarUrl('someone', { manual: { someone: 'https://cdn/x.png' } }), 'https://cdn/x.png',
-    'a hand-set url wins over the resolver');
+    'a hand-set url works even with the resolver off');
   assert.equal(avatarUrl('', {}), null);
 });

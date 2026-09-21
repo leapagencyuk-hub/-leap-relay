@@ -28,9 +28,13 @@ export const profileUrl = (username) =>
 export const avatarUrl = (username, config = {}) => {
   const h = handle(username);
   if (!h) return null;
+  // A hand-set picture always wins and always works, so it is checked first
+  // and is unaffected by whether the resolver is switched on.
   const manual = config.manual?.[h.toLowerCase()];
   if (manual) return manual;
-  if (config.enabled === false) return null;
+  // Off by default: a resolver that cannot find the handle renders as a broken
+  // image in Discord, which reads worse than no picture at all.
+  if (!config.enabled) return null;
   const template = config.urlTemplate ?? 'https://unavatar.io/tiktok/{handle}';
   return template.replace('{handle}', encodeURIComponent(h));
 };
