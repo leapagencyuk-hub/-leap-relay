@@ -793,6 +793,58 @@ bare 401, which is what Discord requires before it will accept the endpoint.
 
 ---
 
+## The daily habit
+
+One action a day: **open the page, drop the file.** That is the whole
+operation — no terminal, no second step to remember.
+
+```
+┌──────────────────────────────────────────────┐
+│  LEAP creator monitoring                     │
+│                                              │
+│      Drop the .xlsx here                     │
+│      or click to choose · one file a day     │
+│                                              │
+│  Current state                               │
+│    Last export          2026-09-20           │
+│    Missing uploads      none                 │
+│    Open cases           8                    │
+│    Decline detection    off · ~9 more uploads│
+└──────────────────────────────────────────────┘
+```
+
+Uploading ingests the file, scores every creator, opens and closes cases, and
+posts to the team channels in one go. The page then shows exactly what
+happened: creators read, cases opened, messages sent, anything that failed.
+
+Deliberately not two steps. A separate "now run it" button means somebody has
+to remember it every morning, and the day they forget is the day a creator's
+slide goes unnoticed.
+
+Safe to get wrong:
+
+- **Uploading the same file twice** does nothing — snapshots are keyed by the
+  data period, so nothing double counts.
+- **Uploading several days at once** works; each is processed in date order.
+- **Missing a day** leaves a gap the tool reports rather than hides. The next
+  upload spreads the missed days and says so.
+- **A failed Discord post** does not lose the file. The data is stored first;
+  re-running posts what is outstanding.
+
+### Where it runs
+
+The page is served by the same service that does the work, so anywhere it is
+deployed, that URL is the upload point. On Render it is the
+`leap-creator-health` service defined in `render.yaml`.
+
+Set `UPLOAD_TOKEN` and the page asks for it once, then remembers it on that
+device. Without the token set, the upload endpoint is open to anyone who finds
+the URL.
+
+If nobody uploads for a day, nothing runs — follow-up verdicts and escalations
+wait for the next upload rather than firing late. That is usually what you
+want; if not, a scheduled `POST /run` covers the gap.
+
 ## Running it
 
 The daily habit is two commands:
@@ -833,7 +885,9 @@ UPLOAD_TOKEN=... npm start        # :8900
 
 | Route | Purpose |
 |---|---|
-| `POST /upload` | The day's `.xlsx` — raw body or a multipart form field |
+| `GET /` | The upload page — this is where the daily file goes |
+| `POST /upload` | The day's `.xlsx`; ingests **and runs** (`?run=0` to only store) |
+| `GET /status.json` | Last export, missing days, open cases, readiness |
 | `POST /run` | The daily run: reconcile cases and post to Discord (`?dry=1` to preview) |
 | `POST /discord/interactions` | Discord's interactions endpoint — button clicks and slash commands |
 | `GET /cases` | The open caseload (`?coach=`, `?all=1`) |

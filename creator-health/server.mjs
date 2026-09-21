@@ -2,7 +2,8 @@
 // The daily upload surface. Zero dependencies, so it runs anywhere Node runs —
 // beside relay.mjs on the same Render service, or on its own.
 //
-//   POST /upload            the day's .xlsx (raw body, or a multipart form field)
+//   GET  /                  the upload page — drop the day's export here
+//   POST /upload            the day's .xlsx; ingests and runs in one go
 //   GET  /report.json       full machine-readable result
 //   GET  /report            the network summary as text
 //   GET  /coach/:email      one coach's message
@@ -23,7 +24,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   loadConfig, ingestFile, analyse, buildDigests, renderNetworkSummary, toJson,
-  runDaily, CaseStore, effectiveness,
+  runDaily, CaseStore, effectiveness, dataHealth,
 } from './lib/pipeline.mjs';
 import { loadRoutes, sendDigests } from './lib/notify.mjs';
 import { Store } from './lib/store.mjs';
@@ -113,14 +114,42 @@ async function handleUpload(req, res, url) {
   fs.writeFileSync(tmp, fileBuf);
   try {
     const result = ingestFile(tmp, config, { force: url.searchParams.get('force') === '1' });
-    if (!result.applied) return json(res, 200, { applied: false, asOf: result.asOf, reason: result.reason });
-    return json(res, 200, {
+    if (!result.applied) {
+      return json(res, 200, { applied: false, asOf: result.asOf, reason: result.reason });
+    }
+
+    const payload = {
       applied: true,
       asOf: result.asOf,
       periodStart: result.snapshot.periodStart,
       activeCreators: result.snapshot.active.length,
       quitCreators: result.snapshot.quit.length,
-    });
+    };
+
+    // Upload is the whole job. Leaving the run as a second step means someone
+    // has to remember it every day, and the day they forget is the day a
+    // creator's slide goes unnoticed.
+    if (url.searchParams.get('run') !== '0') {
+      try {
+        const run = await runDaily(config, configPath, { dryRun: url.searchParams.get('dry') === '1' });
+        payload.run = {
+          asOf: run.result.asOf,
+          opened: run.changes.opened.length,
+          followUps: run.changes.dueFollowUps.length,
+          escalated: run.changes.escalated.length,
+          closed: run.changes.autoResolved.length,
+          cases: run.cases,
+          delivered: run.delivery.sent.filter((x) => x.ok && !x.skipped).length,
+          skipped: run.delivery.sent.filter((x) => x.ok && x.skipped).length,
+          failures: run.delivery.sent.filter((x) => !x.ok).map((f) => `${f.label}: ${f.error}`),
+          discordSkipped: run.delivery.skipped ?? null,
+        };
+      } catch (err) {
+        // The file is safely stored either way; say which half failed.
+        payload.run = { error: err.message };
+      }
+    }
+    return json(res, 200, payload);
   } catch (err) {
     return json(res, 400, { error: err.message });
   } finally {
@@ -234,6 +263,19 @@ const server = http.createServer(async (req, res) => {
     }
     if (route === '/effectiveness') {
       return json(res, 200, effectiveness(new CaseStore(config.dataDir)));
+    }
+    if (route === '/' || route === '/index.html') {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(fs.readFileSync(path.join(here, 'public', 'upload.html')));
+    }
+    if (route === '/status.json') {
+      const health = dataHealth(config, new Store(config.dataDir).readSeries().lastAsOf);
+      const store = new CaseStore(config.dataDir);
+      return json(res, 200, {
+        ...health,
+        openCases: store.all().filter(isOpen).length,
+        protected: Boolean(TOKEN),
+      });
     }
     if (route === '/health') {
       const store = new Store(config.dataDir);

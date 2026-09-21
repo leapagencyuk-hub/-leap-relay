@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LEAP creator monitoring</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #171a21; --line: #262b36; --text: #e6e8ee;
+    --muted: #9aa1b1; --accent: #4f8cff; --ok: #30a46c; --warn: #f76b15; --bad: #e5484d;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f6f7f9; --panel:#fff; --line:#e3e6ec; --text:#14161b; --muted:#5d6675; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 64px; background: var(--bg); color: var(--text);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 680px; margin: 0 auto; }
+  h1 { font-size: 21px; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  #drop {
+    border: 2px dashed var(--line); border-radius: 12px; padding: 40px 20px; text-align: center;
+    cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  #drop:hover, #drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 8%, transparent); }
+  #drop.busy { opacity: .6; pointer-events: none; }
+  #drop strong { display: block; font-size: 16px; margin-bottom: 6px; }
+  #drop span { color: var(--muted); font-size: 13px; }
+  input[type=file] { display: none; }
+  input[type=password] {
+    width: 100%; padding: 9px 11px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--bg); color: var(--text); font: inherit; font-size: 14px;
+  }
+  label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
+  .row { display: flex; justify-content: space-between; gap: 12px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .row:last-child { border-bottom: 0; }
+  .row span:first-child { color: var(--muted); }
+  .row span:last-child { font-variant-numeric: tabular-nums; text-align: right; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); margin: 0 0 10px; font-weight: 600; }
+  .ok { color: var(--ok); } .warn { color: var(--warn); } .bad { color: var(--bad); }
+  #result { display: none; }
+  #result.show { display: block; }
+  .muted { color: var(--muted); font-size: 13px; }
+  .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 10px; display: none; }
+  .bar.on { display: block; }
+  .bar i { display: block; height: 100%; width: 40%; background: var(--accent); animation: slide 1s infinite linear; }
+  @keyframes slide { from { transform: translateX(-100%);} to { transform: translateX(350%);} }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>LEAP creator monitoring</h1>
+  <p class="sub">Drop today's Creator data export. It is stored, scored, and the team channels are posted in one go.</p>
+
+  <div class="panel">
+    <div id="drop" tabindex="0" role="button" aria-label="Choose or drop the export file">
+      <strong>Drop the .xlsx here</strong>
+      <span>or click to choose &middot; one file a day</span>
+      <input type="file" id="file" accept=".xlsx">
+    </div>
+    <div class="bar" id="bar"><i></i></div>
+  </div>
+
+  <div class="panel" id="auth" hidden>
+    <label for="token">Upload token</label>
+    <input type="password" id="token" placeholder="paste once, remembered on this device" autocomplete="current-password">
+  </div>
+
+  <div class="panel" id="result"></div>
+
+  <div class="panel">
+    <h2>Current state</h2>
+    <div id="status" class="muted">loading…</div>
+  </div>
+</div>
+
+<script>
+const $ = (id) => document.getElementById(id);
+const drop = $('drop'), fileInput = $('file'), bar = $('bar'), result = $('result');
+
+// The token is a shared secret for this tool only, kept per-device so nobody
+// has to paste it every morning.
+const TOKEN_KEY = 'leap-ch-token';
+let token = '';
+try { token = localStorage.getItem(TOKEN_KEY) || ''; } catch { /* private window */ }
+$('token').value = token;
+$('token').addEventListener('change', (e) => {
+  token = e.target.value.trim();
+  try { localStorage.setItem(TOKEN_KEY, token); } catch { /* not fatal */ }
+});
+
+const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+const n = (x) => (x == null ? '—' : Number(x).toLocaleString('en-GB'));
+const row = (k, v, cls = '') => `<div class="row"><span>${esc(k)}</span><span class="${cls}">${v}</span></div>`;
+
+async function refresh() {
+  try {
+    const r = await fetch('status.json');
+    const s = await r.json();
+    $('auth').hidden = !s.protected;
+    $('status').innerHTML =
+      row('Last export', s.lastAsOf ?? 'none yet')
+      + row('Days held', n(s.snapshots))
+      + row('Missing uploads', s.missingDays ? n(s.missingDays) : 'none', s.missingDays ? 'warn' : 'ok')
+      + row('Open cases', n(s.openCases))
+      + row('Decline detection',
+        s.declineReady ? 'on' : `off · ~${n(s.uploadsNeeded)} more daily uploads`,
+        s.declineReady ? 'ok' : 'warn');
+  } catch {
+    $('status').textContent = 'Could not reach the service.';
+  }
+}
+
+function report(data) {
+  result.classList.add('show');
+  if (data.error) {
+    result.innerHTML = `<h2>Upload failed</h2>${row('Problem', `<span class="bad">${esc(data.error)}</span>`)}`;
+    return;
+  }
+  if (data.applied === false) {
+    result.innerHTML = `<h2>Already had this day</h2>${row('Data period ends', esc(data.asOf))}`
+      + `<p class="muted" style="margin:10px 0 0">${esc(data.reason)} — nothing was double counted.</p>`;
+    return;
+  }
+  let html = `<h2>Uploaded</h2>`
+    + row('Data period ends', esc(data.asOf))
+    + row('Active creators', n(data.activeCreators))
+    + row('Left the network', n(data.quitCreators));
+
+  const r = data.run;
+  if (r && !r.error) {
+    html += `<h2 style="margin-top:18px">Posted to Discord</h2>`
+      + row('Messages sent', n(r.delivered), r.delivered ? 'ok' : '')
+      + row('New cases opened', n(r.opened))
+      + (r.followUps ? row('Follow-ups due', n(r.followUps)) : '')
+      + (r.escalated ? row('Escalated', n(r.escalated), 'warn') : '')
+      + row('Open caseload', n((r.cases?.open ?? 0) + (r.cases?.acknowledged ?? 0) + (r.cases?.actioned ?? 0)));
+    if (r.skipped) html += row('Skipped', `${n(r.skipped)} (overview already posted today)`, 'muted');
+    if (r.discordSkipped) html += row('Discord', `<span class="warn">${esc(r.discordSkipped)}</span>`);
+    for (const f of r.failures ?? []) html += row('Failed', `<span class="bad">${esc(f)}</span>`);
+  } else if (r?.error) {
+    html += `<h2 style="margin-top:18px">Stored, but the run failed</h2>`
+      + row('Problem', `<span class="bad">${esc(r.error)}</span>`)
+      + `<p class="muted" style="margin:10px 0 0">The file is saved. Fix the cause and run again — nothing is lost.</p>`;
+  }
+  result.innerHTML = html;
+}
+
+async function upload(file) {
+  if (!file) return;
+  if (!/\.xlsx$/i.test(file.name)) {
+    report({ error: `${file.name} is not an .xlsx export` });
+    return;
+  }
+  drop.classList.add('busy');
+  bar.classList.add('on');
+  result.classList.remove('show');
+  try {
+    const body = new FormData();
+    body.append('file', file);
+    const res = await fetch('upload' + (token ? `?token=${encodeURIComponent(token)}` : ''), { method: 'POST', body });
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    report(res.ok ? data : { error: data.error || `HTTP ${res.status}` });
+  } catch (err) {
+    report({ error: err.message });
+  } finally {
+    drop.classList.remove('busy');
+    bar.classList.remove('on');
+    fileInput.value = '';
+    refresh();
+  }
+}
+
+drop.addEventListener('click', () => fileInput.click());
+drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });
+fileInput.addEventListener('change', (e) => upload(e.target.files[0]));
+for (const ev of ['dragenter', 'dragover']) {
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
+}
+for (const ev of ['dragleave', 'drop']) {
+  drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.remove('over'); });
+}
+drop.addEventListener('drop', (e) => upload(e.dataTransfer.files[0]));
+refresh();
+</script>
+</body>
+</html>
