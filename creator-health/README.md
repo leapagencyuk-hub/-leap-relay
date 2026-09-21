@@ -552,6 +552,43 @@ day-level comparisons, so they work from the first upload.
 Start on webhooks to prove the alerts are useful. Move to a bot when you want
 the feedback loop — the cards are identical either way, so nothing is wasted.
 
+### The overview channel
+
+One channel gets a single post a day: what went out, the caseload, which teams
+are not moving their creators, and whether the data itself is healthy.
+
+```
+LEAP creator overview — 2026-09-20
+  📬 Sent today        4 card(s) · Team Alpha 2 · Team Indigo 1 · Team Charlie 1
+  📂 Caseload          4 open · 4 new · 0 closed
+  💎 At risk           ~0 diamonds over 28 days · 819 creators tracked
+  🎯 First 90 days     14 on track · 310 behind · 6 on the boost list
+  🩺 Data              Last export 2026-09-20 · ⚠️ 17 days never uploaded
+                       Decline detection: off — needs ~9 more daily uploads
+```
+
+**Once a day is enforced**, not assumed: `run` may fire more than once (a
+retried upload, a manual re-run) and reposting the same overview is how a
+channel stops being read. The guard is by as-of date; `--force-overview`
+overrides it.
+
+With no separate managers' channel, escalations ride in the overview rather
+than being dropped.
+
+### Deploying: routes.json holds secrets
+
+A webhook URL is a credential — anyone holding one can post to that channel —
+so `routes.json` is gitignored. Which also means it is not in the repo and
+never reaches a deploy.
+
+```bash
+node cli.mjs discord-env --write
+```
+
+That prints the environment variables to set on the host, and writes
+`routes.deploy.json` containing `env:VAR_NAME` references and no secrets, safe
+to commit. Rotating a webhook is then a dashboard change, not a code change.
+
 ### Webhook setup
 
 1. In Discord: **Channel → Edit Channel → Integrations → Webhooks → New Webhook**, copy the URL.
@@ -783,6 +820,7 @@ node cli.mjs status                      # what is stored, and any missing days
 node cli.mjs rebuild                     # re-derive after a rule change
 node cli.mjs discord-scaffold --write     # build routes.json from the live teams
 node cli.mjs discord-check                # confirm every team has a channel
+node cli.mjs discord-env --write          # env-var form for deploying
 node cli.mjs discord-register             # publish the slash commands
 npm test
 ```

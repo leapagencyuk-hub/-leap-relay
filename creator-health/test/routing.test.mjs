@@ -113,3 +113,61 @@ test('preflight accepts a server configured only by team', () => {
   const empty = routesFrom({ mode: 'bot', botToken: 'x', groups: { 'Team Alpha': { channelId: 'PASTE_CHANNEL_ID' } } });
   assert.equal(preflight(empty).ok, false, 'placeholders alone are not a configuration');
 });
+
+// --- the once-a-day overview ------------------------------------------------
+
+import { dispatch } from '../lib/dispatch.mjs';
+import { CaseStore } from '../lib/cases.mjs';
+
+const emptyRun = (store, discord, asOf, extra = {}) => dispatch({
+  asOf, store, discordConfig: discord,
+  changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+  alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+  ...extra,
+});
+
+test('the overview posts once a day, however often the run is repeated', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-ov-'));
+  const store = new CaseStore(dir);
+  const discord = routesFrom({
+    mode: 'webhook',
+    summaryWebhook: 'https://discord.com/api/webhooks/1/token',
+    groups: { 'Team Alpha': { webhook: 'https://discord.com/api/webhooks/2/token' } },
+  });
+
+  // dryRun renders without sending, but the guard is what is under test, so
+  // drive it through the same path twice and check the second is skipped.
+  const first = await emptyRun(store, discord, '2026-09-20', { dryRun: true });
+  assert.equal(first.previews.filter((p) => p.label === 'overview').length, 1);
+
+  store.data.lastOverviewOn = '2026-09-20';
+  const second = await emptyRun(store, discord, '2026-09-20', { dryRun: true });
+  assert.equal(second.sent.find((x) => x.label === 'overview')?.skipped, 'already posted today');
+  assert.equal(second.previews.filter((p) => p.label === 'overview').length, 0);
+
+  // A new day posts again.
+  const nextDay = await emptyRun(store, discord, '2026-09-21', { dryRun: true });
+  assert.equal(nextDay.previews.filter((p) => p.label === 'overview').length, 1);
+
+  // And it can be forced when someone really does want it re-sent.
+  const forced = await emptyRun(store, discord, '2026-09-20', { dryRun: true, forceSummary: true });
+  assert.equal(forced.previews.filter((p) => p.label === 'overview').length, 1);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('webhook mode is accepted without a bot token, and refused without URLs', () => {
+  const withHooks = routesFrom({ mode: 'webhook', groups: { 'Team Alpha': { webhook: 'https://discord.com/api/webhooks/1/t' } } });
+  assert.equal(preflight(withHooks).ok, true);
+  const without = routesFrom({ mode: 'webhook', groups: { 'Team Alpha': { webhook: 'PASTE_WEBHOOK_URL' } } });
+  assert.equal(preflight(without).ok, false);
+  assert.match(preflight(without).reason, /no webhook URLs/);
+});
+
+test('a webhook wins over a channel id, matching how delivery actually works', () => {
+  const cfg = routesFrom({
+    groups: { 'Team Alpha': { webhook: 'https://discord.com/api/webhooks/1/t', channelId: '123456789012345678' } },
+  });
+  const route = routeFor({ coach: 'josh@leap', group: 'Team Alpha' }, cfg);
+  assert.ok(route.webhook, 'both are kept so a later switch to a bot needs only a token');
+  assert.equal(route.channelId, '123456789012345678');
+});

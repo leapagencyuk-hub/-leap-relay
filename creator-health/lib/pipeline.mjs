@@ -127,7 +127,40 @@ export function buildDigests(result, config) {
  * Kept separate from `analyse` because analysis is read-only and safe to run at
  * any time, while this advances state that coaches can see.
  */
-export async function runDaily(config, configPath, { asOf = null, dryRun = false } = {}) {
+/**
+ * Is the data itself healthy enough to trust? Surfaced in the daily overview so
+ * a gap in uploads is visible to whoever can fix it, rather than quietly
+ * degrading the comparisons.
+ */
+export function dataHealth(config, asOf) {
+  const store = new Store(config.dataDir);
+  const dates = store.listSnapshotDates();
+  const series = store.readSeries();
+  let missingDays = 0;
+  for (let d = dates[0]; dates.length > 1 && d < dates.at(-1);) {
+    d = new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    if (!dates.includes(d) && d < dates.at(-1)) missingDays++;
+  }
+
+  const need = config.decline?.eligibility?.minExactDaysPerWindow ?? 5;
+  const sample = Object.values(series.creators).filter((c) => !c.quitOn).slice(0, 200);
+  const ready = sample.filter((c) => {
+    const m = computeMetrics(c, asOf);
+    return m.exact.curr7 >= need && m.exact.prev7 >= need;
+  }).length;
+  const exactDays = new Set();
+  for (const c of sample) for (const o of c.obs) if (o.span === 1 && !o.partial) exactDays.add(o.date);
+
+  return {
+    lastAsOf: series.lastAsOf,
+    snapshots: dates.length,
+    missingDays,
+    declineReady: sample.length > 0 && ready > sample.length * 0.5,
+    uploadsNeeded: Math.max(1, (need * 2) - exactDays.size),
+  };
+}
+
+export async function runDaily(config, configPath, { asOf = null, dryRun = false, forceSummary = false } = {}) {
   const result = analyse(config, { asOf, persist: !dryRun });
   const store = new CaseStore(config.dataDir);
   const changes = reconcile({
@@ -154,6 +187,8 @@ export async function runDaily(config, configPath, { asOf = null, dryRun = false
       store,
       discordConfig,
       dryRun,
+      forceSummary,
+      health: dataHealth(config, result.asOf),
     });
   }
 

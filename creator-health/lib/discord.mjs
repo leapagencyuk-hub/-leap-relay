@@ -320,33 +320,121 @@ export function escalationEmbed(cases, asOf) {
   };
 }
 
-/** Daily roll-up for whoever runs the network. */
-export function summaryEmbed({ asOf, stats, caseStats, alerts, ramp, spotlight }) {
+/**
+ * The once-a-day overview.
+ *
+ * Deliberately dense, because it is the only post in this channel and it has
+ * to answer four questions without anyone opening a terminal: what went out
+ * today, what is the caseload doing, which teams are not moving their
+ * creators, and is the data itself healthy.
+ */
+export function overviewEmbed({
+  asOf, stats, caseStats, alerts, ramp, spotlight, changes = {}, sent = [], teams = [], health = null,
+}) {
   const risk = alerts.reduce((s, a) => s + a.valueAtRisk, 0);
   const byStatus = {};
   for (const r of ramp) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+
+  // What actually went out, per team, so the channel is a record of delivery.
+  const posted = sent.filter((x) => x.ok && !x.skipped && x.label !== 'overview');
+  const failed = sent.filter((x) => !x.ok);
+  const byTeam = {};
+  for (const c of [...(changes.opened ?? []), ...(changes.dueFollowUps ?? [])]) {
+    byTeam[c.group ?? 'no team'] = (byTeam[c.group ?? 'no team'] ?? 0) + 1;
+  }
+  const deliveryLines = Object.entries(byTeam).sort((a, b) => b[1] - a[1])
+    .map(([team, count]) => `${team} — ${count}`);
+
+  // Teams whose flagged creators mostly never recover: the visible difference
+  // between a team that acts on these cards and one that does not.
+  const notMoving = teams
+    .filter((t) => t.closed >= 3 && (t.staleRate ?? 0) > 0.5)
+    .sort((a, b) => b.wentStale - a.wentStale)
+    .slice(0, 5);
+
+  const fields = [
+    {
+      name: '📬 Sent today',
+      value: posted.length
+        ? `**${posted.length}** card(s)\n${deliveryLines.slice(0, 10).join('\n') || '—'}`
+          + (failed.length ? `\n⚠️ ${failed.length} failed to send` : '')
+        : failed.length ? `⚠️ nothing delivered — ${failed.length} failure(s)` : 'Nothing new today.',
+      inline: true,
+    },
+    {
+      name: '📂 Caseload',
+      value: [
+        `${caseStats.open + caseStats.acknowledged + caseStats.actioned} open`,
+        `${changes.opened?.length ?? 0} new · ${(changes.autoResolved?.length ?? 0)} closed`,
+        `${caseStats.snoozed} snoozed`,
+        changes.deferred?.length ? `⏸ ${changes.deferred.length} held — coaches at their limit` : null,
+      ].filter(Boolean).join('\n'),
+      inline: true,
+    },
+    {
+      name: '💎 At risk',
+      value: `~${n(risk)} diamonds\nover the next 28 days\n${stats.tracked} creators tracked`,
+      inline: true,
+    },
+    {
+      name: '🎯 First 90 days (200k)',
+      value: [
+        `${byStatus.ON_TRACK ?? 0} on track · ${(byStatus.AT_RISK ?? 0) + (byStatus.OFF_TRACK ?? 0)} behind`,
+        `${byStatus.ACHIEVED ?? 0} hit the target`,
+        `${spotlight.length} on the boost list`,
+      ].join('\n'),
+      inline: true,
+    },
+  ];
+
+  if (changes.escalated?.length) {
+    fields.push({
+      name: `⚠️ Open and still declining (${changes.escalated.length})`,
+      value: changes.escalated.slice(0, 8)
+        .map((c) => `**@${c.username}** (${c.group ?? '—'}) — since ${c.openedOn}, ~${n(c.valueAtRisk)} at risk`)
+        .join('\n').slice(0, 1024),
+    });
+  }
+
+  if (notMoving.length) {
+    fields.push({
+      name: '🐢 Teams whose flagged creators are not recovering',
+      value: notMoving
+        .map((t) => `**${t.team}** — ${t.wentStale}/${t.closed} ran out still down (${Math.round((t.recoveryRate ?? 0) * 100)}% fixed)`)
+        .join('\n').slice(0, 1024),
+    });
+  }
+
+  if (alerts.length) {
+    fields.push({
+      name: '📉 Biggest losses this week',
+      value: alerts.slice(0, 5)
+        .map((a) => `**@${a.creator.username}** (${a.creator.group ?? '—'}) — ${pct(a.metrics.change7.diamonds)}, ~${n(a.valueAtRisk)} at risk`)
+        .join('\n').slice(0, 1024),
+    });
+  }
+
+  if (health) {
+    fields.push({
+      name: '🩺 Data',
+      value: [
+        `Last export: ${health.lastAsOf ?? '—'} (${health.snapshots} held)`,
+        health.missingDays ? `⚠️ ${health.missingDays} day(s) never uploaded` : 'No missing days',
+        health.declineReady
+          ? 'Decline detection: on'
+          : `Decline detection: off — needs ~${health.uploadsNeeded} more daily upload(s)`,
+      ].join('\n'),
+      inline: false,
+    });
+  }
+
   return {
     embeds: [{
-      title: `LEAP network health — ${asOf}`,
-      color: COLOR.neutral,
-      fields: [
-        {
-          name: 'Caseload',
-          value: [
-            `${caseStats.open} open · ${caseStats.acknowledged} picked up · ${caseStats.actioned} actioned`,
-            `${caseStats.openedToday} opened today · ${caseStats.resolvedToday} closed today`,
-            caseStats.unacknowledged ? `⚠️ ${caseStats.unacknowledged} untouched` : '✅ nothing untouched',
-          ].join('\n'),
-          inline: false,
-        },
-        { name: 'Creators', value: `${stats.tracked} active\n${stats.quit} quit`, inline: true },
-        { name: 'At risk', value: `~${n(risk)} diamonds\nover 28 days`, inline: true },
-        {
-          name: 'First 90 days',
-          value: `${byStatus.ON_TRACK ?? 0} on track\n${(byStatus.AT_RISK ?? 0) + (byStatus.OFF_TRACK ?? 0)} behind\n${spotlight.length} on the boost list`,
-          inline: true,
-        },
-      ],
+      title: `LEAP creator overview — ${asOf}`,
+      description: stats.quit ? `${stats.quit} creator(s) have left the network.` : undefined,
+      color: changes.escalated?.length ? COLOR.escalation : COLOR.neutral,
+      fields,
+      footer: { text: 'Posted once a day. Team cards go to each team\'s channel.' },
       timestamp: new Date().toISOString(),
     }],
   };

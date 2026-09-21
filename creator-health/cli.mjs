@@ -7,7 +7,7 @@
 //   node cli.mjs creator <username>             one creator's full history
 //   node cli.mjs rebuild                        re-derive the series
 //   node cli.mjs status                         what is stored
-//   node cli.mjs run [--dry]                    daily run: cases + Discord
+//   node cli.mjs run [--dry] [--force-overview] daily run: cases + Discord
 //   node cli.mjs cases [--coach E] [--all]      the open caseload
 //   node cli.mjs case <id>                      one case and its history
 //   node cli.mjs effectiveness                  which interventions work
@@ -17,6 +17,7 @@
 //   node cli.mjs discord-register               register the slash commands
 //   node cli.mjs discord-scaffold [--write]     build routes.json from the live data
 //   node cli.mjs discord-check                  which teams have nowhere to post
+//   node cli.mjs discord-env                    env-var form, for deploying
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -177,7 +178,7 @@ const STATE_ICON = {
 async function cmdRun() {
   const dry = flag('dry');
   const { result, changes, delivery, cases } = await runDaily(config, configPath, {
-    asOf: option('as-of'), dryRun: dry,
+    asOf: option('as-of'), dryRun: dry, forceSummary: flag('force-overview'),
   });
 
   console.log(`daily run — ${result.asOf}${dry ? '  (dry run, nothing sent or saved)' : ''}`);
@@ -378,6 +379,57 @@ function cmdDiscordScaffold() {
   console.log('Fill in the channel IDs, then run: node cli.mjs discord-check');
 }
 
+/**
+ * Turn a filled-in routes.json into environment variables plus a routes file
+ * that holds no secrets.
+ *
+ * routes.json is gitignored — correctly, it holds webhook URLs, and anyone with
+ * one can post to that channel. But that means it is not in the repo and does
+ * not reach a deploy. This prints the two halves: the variables to set on the
+ * host, and a routes file safe to commit that refers to them.
+ */
+function cmdDiscordEnv() {
+  const file = path.join(path.dirname(configPath), 'routes.json');
+  if (!fs.existsSync(file)) die('no routes.json — run: cli.mjs discord-scaffold --write');
+  const raw = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const d = raw.discord ?? {};
+  const env = [];
+  const safe = JSON.parse(JSON.stringify(raw));
+
+  const varName = (label) => `DISCORD_WEBHOOK_${label.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')}`;
+  const lift = (obj, key, name) => {
+    const v = obj?.[key];
+    if (typeof v !== 'string' || v.startsWith('env:') || v.startsWith('PASTE_')) return;
+    env.push([name, v]);
+    obj[key] = `env:${name}`;
+  };
+
+  lift(safe.discord, 'summaryWebhook', 'DISCORD_WEBHOOK_OVERVIEW');
+  lift(safe.discord, 'escalationWebhook', 'DISCORD_WEBHOOK_ESCALATION');
+  lift(safe.discord, 'botToken', 'DISCORD_BOT_TOKEN');
+  for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
+    lift(entry, 'webhook', varName(label));
+  }
+  for (const [email, entry] of Object.entries(safe.discord?.coaches ?? {})) {
+    lift(entry, 'webhook', varName(email.split('@')[0]));
+  }
+  void d;
+
+  if (!env.length) {
+    console.log('Nothing to lift — routes.json already refers to environment variables only.');
+    return;
+  }
+  console.log('# Set these on the host (Render: Environment → Add Environment Variable).');
+  console.log('# Treat them like passwords: a webhook URL is enough to post to that channel.\n');
+  for (const [k, v] of env) console.log(`${k}=${v}`);
+  console.log(`\n# --- routes.deploy.json (safe to commit: no secrets) ---`);
+  console.log(JSON.stringify(safe, null, 2));
+  if (flag('write')) {
+    fs.writeFileSync(path.join(path.dirname(configPath), 'routes.deploy.json'), `${JSON.stringify(safe, null, 2)}\n`);
+    console.log('\n# wrote routes.deploy.json');
+  }
+}
+
 /** Does every team actually have somewhere for its cards to land? */
 function cmdDiscordCheck() {
   const { discord } = loadRoutes(path.dirname(configPath));
@@ -398,8 +450,8 @@ function cmdDiscordCheck() {
     live.push(g);
     const sample = creators.find((c) => !c.quitOn && (c.group ?? '') === (g.label === '(no group)' ? null : g.label));
     const route = routeFor({ coach: sample?.manager, group: g.label }, discord);
-    const dest = route.channelId ? `channel ${route.channelId}`
-      : route.webhook ? 'webhook'
+    const dest = route.webhook ? `webhook …${route.webhook.slice(-6)}`
+      : route.channelId ? `channel ${route.channelId}`
         : route.userId ? 'DM' : '⚠️  NOWHERE';
     const via = route.matchedGroup ? '' : route.matchedCoach ? ' (via coach)' : route.viaDefault ? ' (default)' : '';
     console.log(`  ${g.label.padEnd(20)} ${String(g.creators).padStart(8)}  ${dest}${via}`);
@@ -483,12 +535,13 @@ const commands = {
   run: cmdRun, cases: cmdCases, case: cmdCase,
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,
+  'discord-env': cmdDiscordEnv,
   teams: cmdTeams, snooze: cmdSnooze, close: cmdClose,
 };
 
 if (!command || !commands[command]) {
   console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
-    .split('\n').slice(2, 19).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+    .split('\n').slice(2, 20).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
   process.exit(command ? 1 : 0);
 }
 try {

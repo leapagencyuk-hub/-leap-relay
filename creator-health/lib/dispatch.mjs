@@ -3,8 +3,8 @@
 // The rule throughout: a coach hears about their own creators, and the managers'
 // channel hears only about what the coaches have not dealt with. Anything else
 // trains people to ignore the channel.
-import { Discord, declineEmbed, opportunityEmbed, followUpEmbed, escalationEmbed, summaryEmbed } from './discord.mjs';
-import { STATUS } from './cases.mjs';
+import { Discord, declineEmbed, opportunityEmbed, followUpEmbed, escalationEmbed, overviewEmbed } from './discord.mjs';
+import { STATUS, teamOutcomes } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
 /**
@@ -124,7 +124,8 @@ export function preflight(discordConfig) {
 }
 
 export async function dispatch({
-  asOf, changes, alerts, spotlight, ramp, stats, store, discordConfig, dryRun = false,
+  asOf, changes, alerts, spotlight, ramp, stats, store, discordConfig,
+  dryRun = false, forceSummary = false, health = null,
 }) {
   const check = preflight(discordConfig);
   if (!dryRun && !check.ok) return { sent: [], previews: [], skipped: check.reason };
@@ -193,12 +194,21 @@ export async function dispatch({
   }
 
   // --- daily roll-up --------------------------------------------------------
+  // The overview is a once-a-day post, not a per-run one. `run` may be invoked
+  // more than once in a day — a retried upload, a manual re-run — and posting
+  // the same summary each time is how a channel stops being read.
   const summaryRoute = discordConfig.summaryWebhook
     ? { webhook: discordConfig.summaryWebhook }
     : discordConfig.summaryChannelId ? { channelId: discordConfig.summaryChannelId } : null;
-  if (summaryRoute) {
-    await send('summary', '(summary)', summaryRoute,
-      summaryEmbed({ asOf, stats, caseStats: caseStats(store, asOf), alerts, ramp, spotlight }));
+  const alreadyPosted = store.data.lastOverviewOn === asOf;
+  if (summaryRoute && (!alreadyPosted || forceSummary)) {
+    await send('overview', '(overview)', summaryRoute, overviewEmbed({
+      asOf, stats, caseStats: caseStats(store, asOf), alerts, ramp, spotlight,
+      changes, sent, teams: teamOutcomes(store, { now: asOf }), health,
+    }));
+    if (!dryRun) store.data.lastOverviewOn = asOf;
+  } else if (summaryRoute && alreadyPosted) {
+    sent.push({ label: 'overview', coach: '(overview)', ok: true, skipped: 'already posted today' });
   }
 
   if (!dryRun) store.save();
