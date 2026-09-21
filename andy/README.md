@@ -89,7 +89,7 @@ expects to be answered from them.
 
 | Format | Read as |
 |---|---|
-| PDF | Text layer, page by page. **A scan with no text layer cannot be read** — it needs OCR first, and Andy says so by name rather than skipping it quietly. |
+| PDF | Text layer, page by page. A scan or image-only export has none — see **Scans** below. |
 | DOCX | Full text |
 | Google Docs / Slides | Exported as text |
 | Google Sheets / CSV / TSV | Row by row with the header on each, so a table stays searchable |
@@ -114,6 +114,28 @@ coach's Discord card is built from:
 
 That last line is why the example above does not say "have a schedule
 conversation". It already happened.
+
+### Scans
+
+A photographed or image-only PDF has nothing to extract. So does a deck
+exported from Canva or Keynote that carries a text layer of nothing but page
+numbers — which extracts "successfully" to forty characters and looks like a
+working document until you notice it never appears in an answer. Both are
+judged the same way: characters per page, not whether anything came out at all.
+
+When `knowledge.readScans` is on, Andy reads those with the model's vision
+instead. That handles slide decks, screenshots of TikTok's own dashboards and
+diagrams far better than line-based OCR, which is exactly the material OCR is
+worst at — and it needs no binary installed on the host.
+
+**This is the only part of ingest that costs money per page**, so it is off
+until switched on. Roughly a few pence a page. It only ever runs on a PDF that
+yielded nothing, it is capped at `maxPages` per document, and every page it
+reads is named in the sync report and marked in `cli.mjs docs`.
+
+With it off, an unreadable scan is reported by name rather than indexed as its
+page numbers — a document that counts as read and contributes nothing hides a
+real gap in the library.
 
 ---
 
@@ -321,9 +343,10 @@ change a ranking, and the file is a quarter of the size.
 
 ## Known limits
 
-- **A scanned PDF is invisible.** No text layer, nothing to read. Andy lists
-  them by name on the admin page and in `/andy-status` rather than skipping them
-  quietly, but running them through OCR is a manual job.
+- **Reading scans costs money and nothing else in ingest does.** It is off by
+  default for that reason. Left off, a scanned deck is reported as unreadable
+  rather than read; switched on, a folder full of them will produce a bill
+  proportional to their page count.
 - **Andy does not know what it has not been given.** A gap in the Drive folder
   is a gap in the brain, and it will answer from the creator data and say the
   library does not cover it — which is the honest answer, but it looks like a
@@ -351,8 +374,9 @@ change a ranking, and the file is a quarter of the size.
 1. **Real questions from real coaches, then read what retrieval returned.**
    `cli.mjs search` against the questions people actually ask is the fastest way
    to find out whether the chunking suits these documents.
-2. **OCR the scans.** Every scanned deck is a document the network paid for and
-   cannot use.
+2. **Decide on the scans.** `cli.mjs docs` lists what has no text layer. If
+   there are many, turning on `knowledge.readScans` for one sync converts them
+   all; the page counts in the report say what that cost.
 3. **Let Andy open a case.** It already reads the caseload; writing to it — "log
    this as tried" from a Discord button — closes the loop that creator-health's
    effectiveness report depends on.

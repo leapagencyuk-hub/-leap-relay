@@ -48,6 +48,11 @@ async function main() {
         });
       process.stderr.write('\r\u001b[K');
       console.log(JSON.stringify(report, null, 2));
+      if (report.readVisually?.length) {
+        const pages = report.readVisually.reduce((sum, d) => sum + d.pages, 0);
+        console.log(`\n${report.readVisually.length} scan(s) read with the model's vision, ${pages} page(s) — this is the part that costs money:`);
+        for (const d of report.readVisually) console.log(`  ${d.name} (${d.pages} pages)`);
+      }
       if (report.skipped) {
         console.log(`\n${report.skipped} file(s) skipped — Andy has no way to read them (images, video, and anything else with no text).`);
       }
@@ -110,8 +115,11 @@ async function main() {
       console.log('chunks  kind        folder / name');
       for (const d of documents) {
         const where = [d.folder, d.name].filter(Boolean).join(' / ');
-        console.log(`${String(d.chunks ?? 0).padStart(6)}  ${String(d.kind ?? '').padEnd(10)}  ${where}${d.error ? `   ✗ ${d.error}` : ''}`);
+        const kind = d.visuallyRead ? 'pdf (read)' : (d.kind ?? '');
+        console.log(`${String(d.chunks ?? 0).padStart(6)}  ${kind.padEnd(10)}  ${where}${d.error ? `   ✗ ${d.error}` : ''}`);
       }
+      const scans = documents.filter((d) => d.visuallyRead);
+      if (scans.length) console.log(`\n${scans.length} of these had no text layer and were read visually.`);
       console.log(`\n${documents.length} document(s), ${n(documents.reduce((s, d) => s + (d.chunks ?? 0), 0))} passages`);
       return;
     }

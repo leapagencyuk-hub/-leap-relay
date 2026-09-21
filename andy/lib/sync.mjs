@@ -18,6 +18,7 @@ import { Drive, driveSource } from './drive.mjs';
 import { LocalSource } from './local.mjs';
 import { isSupported, kindOf } from './formats.mjs';
 import { extractFile } from './extract.mjs';
+import { readScannedPdf } from './ocr.mjs';
 import { chunkDocument } from './chunk.mjs';
 import { Embedder } from './embed.mjs';
 import { quantise, pack } from './vectors.mjs';
@@ -54,9 +55,10 @@ export function sourceFor(config, { folder = null } = {}) {
   throw new Error('nothing to read — configure a Drive folder or pass a local one');
 }
 
-export async function sync(config, { source = null, onProgress = () => {}, force = false, folder = null } = {}) {
+export async function sync(config, { source = null, onProgress = () => {}, force = false, folder = null, client = null } = {}) {
   const corpus = new Corpus(config.dataDir);
   source ??= sourceFor(config, { folder });
+  const readScan = scanReader(config, { client, onProgress });
 
   onProgress({ phase: 'listing', message: `reading ${source.label}` });
   const files = await source.list();
@@ -65,7 +67,7 @@ export async function sync(config, { source = null, onProgress = () => {}, force
 
   const known = corpus.readDocuments();
   const next = {};
-  const report = { found: files.length, skipped: skipped.length, added: 0, updated: 0, unchanged: 0, removed: 0, failed: [] };
+  const report = { found: files.length, skipped: skipped.length, added: 0, updated: 0, unchanged: 0, removed: 0, failed: [], readVisually: [] };
   const maxBytes = (config.knowledge?.maxFileMB ?? 60) * 1024 * 1024;
 
   for (const [i, file] of usable.entries()) {
@@ -90,9 +92,10 @@ export async function sync(config, { source = null, onProgress = () => {}, force
 
     try {
       const { buffer, mimeType } = await source.download(file);
-      const { text, pages } = await extractFile({ buffer, mimeType, name: file.name });
+      const { text, pages, visuallyRead, pagesRead } = await extractFile({ buffer, mimeType, name: file.name, readScan });
       corpus.writeText(file.id, text);
-      next[file.id] = { ...describe(file), stamp, pages, chars: text.length, error: null, chunks: 0 };
+      next[file.id] = { ...describe(file), stamp, pages, chars: text.length, error: null, chunks: 0, visuallyRead: Boolean(visuallyRead) };
+      if (visuallyRead) report.readVisually.push({ name: file.name, pages: pagesRead });
       if (previous) report.updated++; else report.added++;
     } catch (err) {
       report.failed.push({ name: file.name, error: err.message });
@@ -182,6 +185,38 @@ export async function reindex(config, { corpus = null, onProgress = () => {} } =
   });
 
   return { chunks: chunks.length, embedded, dim, retrieval: embedder.enabled ? 'hybrid' : 'keyword-only' };
+}
+
+/**
+ * The visual reader, or null when it is off or unusable.
+ *
+ * Off by default is deliberate: this is the only part of ingest that costs
+ * money per page, and a folder of scans could quietly run up a bill on a sync
+ * nobody watched. It is turned on knowingly, and every page it reads is
+ * reported back.
+ */
+function scanReader(config, { client, onProgress }) {
+  const settings = config.knowledge?.readScans;
+  if (!settings?.enabled) return null;
+  if (!client && !process.env.ANTHROPIC_API_KEY) return null;
+
+  return async ({ buffer, name }) => {
+    const sdk = client ?? new (await import('@anthropic-ai/sdk')).default();
+    try {
+      return await readScannedPdf(buffer, {
+        client: sdk,
+        model: settings.model ?? 'claude-opus-5',
+        maxPages: settings.maxPages ?? 120,
+        pagesPerRequest: settings.pagesPerRequest ?? 40,
+        name,
+        onProgress: ({ done, total }) => onProgress({ phase: 'reading a scan', message: name, done, total }),
+      });
+    } catch (err) {
+      // A scan that cannot be read must not fail the file: the document is
+      // recorded with the reason, exactly as an unreadable one always was.
+      throw new Error(`no text layer, and reading it visually failed: ${err.message}`);
+    }
+  };
 }
 
 /** What gets indexed for a chunk: its provenance, then its text. */

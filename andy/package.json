@@ -9,10 +9,13 @@
     "ask": "node cli.mjs ask",
     "test": "node --test test/*.test.mjs"
   },
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
-    "pdfjs-dist": "^4.10.38",
-    "mammoth": "^1.9.0"
+    "mammoth": "^1.9.0",
+    "pdf-lib": "^1.17.1",
+    "pdfjs-dist": "^4.10.38"
   }
 }

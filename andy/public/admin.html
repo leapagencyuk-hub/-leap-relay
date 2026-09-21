@@ -175,6 +175,9 @@ async function runSync(path, label) {
     const bits = [];
     if (report.added != null) bits.push(report.added + ' added', report.updated + ' updated', report.unchanged + ' unchanged', report.removed + ' removed');
     bits.push(num(report.chunks) + ' passages', report.retrieval);
+    if (report.readVisually?.length) {
+      bits.push(report.readVisually.length + ' scan(s) read visually');
+    }
     $('syncNote').textContent = 'Done — ' + bits.join(' · ')
       + (report.failed?.length ? ' · ' + report.failed.length + ' could not be read' : '');
   } catch (err) {

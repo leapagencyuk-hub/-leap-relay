@@ -78,6 +78,10 @@ export async function doctor(config) {
           checks.push(ok('Drive contents',
             `${usable.length} readable file(s), ${mb.toFixed(0)} MB · ${Object.entries(byKind).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${v} ${k}`).join(', ')}`,
             { files: usable.length, skipped: unusable.length, megabytes: Math.round(mb), byKind }));
+          const scans = config.knowledge?.readScans;
+          checks.push(scans?.enabled
+            ? ok('Reading scans', `on · ${scans.model} · up to ${scans.maxPages} pages a document. This is the only part of ingest that costs money per page.`)
+            : skip('Reading scans', 'off — a PDF with no text layer will be reported as unreadable rather than read. Turn on knowledge.readScans if the library has scanned decks.'));
           if (unusable.length) {
             checks.push(skip('Drive — not readable',
               `${unusable.length} file(s) Andy will skip (images, video, and anything else with no text): ${unusable.slice(0, 5).map((f) => f.name).join(', ')}${unusable.length > 5 ? '…' : ''}`));

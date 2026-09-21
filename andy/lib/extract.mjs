@@ -8,6 +8,7 @@ import path from 'node:path';
 import { createRequire } from 'node:module';
 import mammoth from 'mammoth';
 import { PAGE_BREAK, tidy } from './text.mjs';
+import { needsVisualRead } from './ocr.mjs';
 
 // pdfjs warns on every page of every PDF unless it is told where its own
 // bundled font metrics live. The warning is harmless and the noise is not:
@@ -21,6 +22,15 @@ let pdfjsPromise = null;
 function pdfjs() {
   pdfjsPromise ??= import('pdfjs-dist/legacy/build/pdf.mjs');
   return pdfjsPromise;
+}
+
+/** How many pages the PDF has, without extracting any of it. */
+export async function pdfPageCount(buffer) {
+  const { getDocument } = await pdfjs();
+  const doc = await getDocument({ data: new Uint8Array(buffer), standardFontDataUrl: STANDARD_FONTS, disableFontFace: true, isEvalSupported: false }).promise;
+  const pages = doc.numPages;
+  await doc.destroy();
+  return pages;
 }
 
 export async function extractPdf(buffer) {
@@ -117,13 +127,34 @@ export function extractDelimited(text, delimiter = ',') {
  * admin page can show — a file that failed silently is a gap in the brain
  * nobody knows about.
  */
-export async function extractFile({ buffer, mimeType, name }) {
+export async function extractFile({ buffer, mimeType, name, readScan = null }) {
   const ext = (name.match(/\.([a-z0-9]+)$/i)?.[1] ?? '').toLowerCase();
   const asText = () => buffer.toString('utf8');
 
   let text;
+  let visuallyRead = false;
+  let pagesRead = 0;
   if (mimeType === 'application/pdf' || ext === 'pdf') {
     text = await extractPdf(buffer);
+    // A deck exported from Canva or Keynote often carries a text layer holding
+    // nothing but page numbers, so "did anything extract" is the wrong test —
+    // how much per page is the right one.
+    const pages = text.split(PAGE_BREAK).length;
+    if (needsVisualRead(text, pages)) {
+      if (!readScan) {
+        // Indexing "1 2 3" as a document is worse than refusing it: it counts
+        // as read, contributes nothing, and hides a real gap in the library.
+        throw new Error('no usable text layer — this is a scan or an image-only export. Turn on knowledge.readScans to have Andy read it.');
+      }
+      const read = await readScan({ buffer, name, pages });
+      if (read?.text) {
+        text = read.text;
+        visuallyRead = true;
+        // The pages the reader actually billed for, not the page markers it
+        // produced — a transcript that merges two pages still cost two.
+        pagesRead = read.pages ?? pages;
+      }
+    }
   } else if (ext === 'docx' || mimeType?.includes('wordprocessingml')) {
     text = await extractDocx(buffer);
   } else if (ext === 'html' || ext === 'htm' || mimeType === 'text/html') {
@@ -143,14 +174,8 @@ export async function extractFile({ buffer, mimeType, name }) {
   }
 
   const pages = text.split(PAGE_BREAK).length;
-  if (!text.trim()) {
-    throw new Error(
-      ext === 'pdf'
-        ? 'no text layer — this looks like a scan, so it needs OCR before Andy can read it'
-        : 'no readable text',
-    );
-  }
-  return { text, pages };
+  if (!text.trim()) throw new Error('no readable text');
+  return { text, pages, visuallyRead, pagesRead };
 }
 
 export { PAGE_BREAK, tidy };
