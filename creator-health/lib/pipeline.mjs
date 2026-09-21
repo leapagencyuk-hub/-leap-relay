@@ -151,12 +151,18 @@ export function dataHealth(config, asOf) {
   const exactDays = new Set();
   for (const c of sample) for (const o of c.obs) if (o.span === 1 && !o.partial) exactDays.add(o.date);
 
+  // Which month the month-on-month comparison is running against, so the
+  // overview can say what it is measuring rather than just that it works.
+  const withMonth = sample.map((c) => computeMetrics(c, asOf))
+    .find((m) => m.monthOnMonth?.diamonds?.change != null);
+
   return {
     lastAsOf: series.lastAsOf,
     snapshots: dates.length,
     missingDays,
     declineReady: sample.length > 0 && ready > sample.length * 0.5,
     uploadsNeeded: Math.max(1, (need * 2) - exactDays.size),
+    monthSource: withMonth?.monthOnMonth?.previousMonth ?? null,
   };
 }
 

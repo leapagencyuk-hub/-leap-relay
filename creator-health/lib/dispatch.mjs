@@ -4,7 +4,7 @@
 // channel hears only about what the coaches have not dealt with. Anything else
 // trains people to ignore the channel.
 import { Discord, declineEmbed, opportunityEmbed, followUpEmbed, escalationEmbed, overviewEmbed } from './discord.mjs';
-import { STATUS, teamOutcomes } from './cases.mjs';
+import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
 /**
@@ -205,6 +205,7 @@ export async function dispatch({
     await send('overview', '(overview)', summaryRoute, overviewEmbed({
       asOf, stats, caseStats: caseStats(store, asOf), alerts, ramp, spotlight,
       changes, sent, teams: teamOutcomes(store, { now: asOf }), health,
+      openCases: store.all().filter(isOpen),
     }));
     if (!dryRun) store.data.lastOverviewOn = asOf;
   } else if (summaryRoute && alreadyPosted) {

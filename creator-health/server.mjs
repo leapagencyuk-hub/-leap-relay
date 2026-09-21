@@ -286,7 +286,11 @@ async function handleRun(req, res, url) {
   if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
   const dryRun = url.searchParams.get('dry') === '1';
   const { result, changes, delivery, cases } = await runDaily(config, configPath, {
-    asOf: url.searchParams.get('as-of'), dryRun,
+    asOf: url.searchParams.get('as-of'),
+    dryRun,
+    // The once-a-day guard is right for automatic runs and wrong when someone
+    // has deliberately asked for the overview again.
+    forceSummary: url.searchParams.get('force-overview') === '1',
   });
   return json(res, 200, {
     asOf: result.asOf,

@@ -81,12 +81,14 @@
     <h2>Actions</h2>
     <div class="actions">
       <button id="runBtn" type="button">Run now</button>
+      <button id="overviewBtn" type="button" class="ghost">Post overview</button>
       <button id="testBtn" type="button" class="ghost">Test Discord</button>
     </div>
     <p class="muted" style="margin:10px 0 0">
       <strong>Run now</strong> scores today's data and posts to Discord without needing a new file —
-      useful when a file was already stored. <strong>Test Discord</strong> sends one line to the
-      overview channel to prove the connection.
+      useful when a file was already stored. <strong>Post overview</strong> re-sends the management
+      summary even if it has already gone out today. <strong>Test Discord</strong> sends one line to
+      the overview channel to prove the connection.
     </p>
   </div>
 
@@ -127,8 +129,9 @@ async function refresh() {
       + row('Days held', n(s.snapshots))
       + row('Missing uploads', s.missingDays ? n(s.missingDays) : 'none', s.missingDays ? 'warn' : 'ok')
       + row('Open cases', n(s.openCases))
-      + row('Decline detection',
-        s.declineReady ? 'on' : `off · ~${n(s.uploadsNeeded)} more daily uploads`,
+      + row('Month on month', s.monthSource ? `on · vs ${esc(s.monthSource)}` : 'on', 'ok')
+      + row('Week on week',
+        s.declineReady ? 'on' : `~${n(s.uploadsNeeded)} more daily uploads`,
         s.declineReady ? 'ok' : 'warn');
   } catch {
     $('status').textContent = 'Could not reach the service.';
@@ -197,7 +200,7 @@ async function upload(file) {
 
 // Running and testing from the page, so neither needs a terminal.
 async function post(path, label, render) {
-  const btns = [$('runBtn'), $('testBtn')];
+  const btns = [$('runBtn'), $('overviewBtn'), $('testBtn')];
   btns.forEach((b) => { b.disabled = true; });
   bar.classList.add('on');
   result.classList.remove('show');
@@ -233,6 +236,12 @@ $('runBtn').addEventListener('click', () => post('run', 'Run', (r) => {
   }
   return html;
 }));
+
+$('overviewBtn').addEventListener('click', () => post('run?force-overview=1', 'Overview', (r) => `<h2>Overview posted</h2>`
+  + row('Data up to', esc(r.asOf))
+  + row('Messages sent', n(r.delivered), r.delivered ? 'ok' : 'warn')
+  + row('Open caseload', n((r.cases?.open ?? 0) + (r.cases?.acknowledged ?? 0) + (r.cases?.actioned ?? 0)))
+  + (r.failures ?? []).map((f) => row('Failed', `<span class="bad">${esc(f)}</span>`)).join('')));
 
 $('testBtn').addEventListener('click', () => post('selftest?post=1', 'Discord test', (r) => {
   const c = r.config, t = r.testPost;

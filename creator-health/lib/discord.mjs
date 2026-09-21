@@ -383,7 +383,8 @@ export function escalationEmbed(cases, asOf) {
  * creators, and is the data itself healthy.
  */
 export function overviewEmbed({
-  asOf, stats, caseStats, alerts, ramp, spotlight, changes = {}, sent = [], teams = [], health = null,
+  asOf, stats, caseStats, alerts, ramp, spotlight, changes = {}, sent = [], teams = [],
+  health = null, openCases = [],
 }) {
   const risk = alerts.reduce((s, a) => s + a.valueAtRisk, 0);
   const byStatus = {};
@@ -441,6 +442,39 @@ export function overviewEmbed({
     },
   ];
 
+  // Who needs a call today. Management's first question is never "how many
+  // cases" — it is "which creators, and whose".
+  const urgent = (changes.opened ?? [])
+    .filter((c) => c.severity === 'urgent')
+    .sort((a, b) => b.valueAtRisk - a.valueAtRisk);
+  if (urgent.length) {
+    fields.push({
+      name: `Urgent — needs a call today (${urgent.length})`,
+      value: urgent.slice(0, 10)
+        .map((c) => `**@${c.username}** · ${c.group ?? 'no team'} · ~${n(c.valueAtRisk)} at risk`)
+        .join('\n').slice(0, 1024),
+    });
+  }
+
+  // The caseload broken down by team, which is the view that says where the
+  // problem is concentrated rather than how big it is overall.
+  const byTeamLoad = {};
+  for (const c of openCases ?? []) {
+    const key = c.group ?? 'no team';
+    const t = (byTeamLoad[key] ??= { open: 0, urgent: 0, risk: 0, coaches: new Set() });
+    t.open++;
+    if (c.severity === 'urgent') t.urgent++;
+    t.risk += c.valueAtRisk ?? 0;
+    if (c.coach) t.coaches.add(c.coach);
+  }
+  const teamRows = Object.entries(byTeamLoad)
+    .sort((a, b) => b[1].risk - a[1].risk)
+    .slice(0, 12)
+    .map(([team, t]) => `**${team}** — ${t.open} open${t.urgent ? `, ${t.urgent} urgent` : ''} · ~${n(t.risk)} at risk`);
+  if (teamRows.length) {
+    fields.push({ name: 'Where the caseload sits', value: teamRows.join('\n').slice(0, 1024) });
+  }
+
   if (changes.escalated?.length) {
     fields.push({
       name: `Open and still declining (${changes.escalated.length})`,
@@ -461,10 +495,16 @@ export function overviewEmbed({
 
   if (alerts.length) {
     fields.push({
-      name: 'Biggest losses this week',
-      value: alerts.slice(0, 5)
-        .map((a) => `**@${a.creator.username}** (${a.creator.group ?? '—'}) — ${pct(a.metrics.change7.diamonds)}, ~${n(a.valueAtRisk)} at risk`)
-        .join('\n').slice(0, 1024),
+      name: 'Biggest losses',
+      // Each line is quoted on the basis its own alert was raised on. Showing a
+      // weekly percentage for a month-raised case produced numbers like "+326%"
+      // beside "urgent", which reads as the tool being broken.
+      value: alerts.slice(0, 5).map((a) => {
+        const monthly = a.weekly === false;
+        const change = monthly ? a.metrics.monthOnMonth?.diamonds?.change : a.metrics.change7.diamonds;
+        const basis = monthly ? 'on last month' : 'this week';
+        return `**@${a.creator.username}** (${a.creator.group ?? '—'}) — ${pct(change)} ${basis}, ~${n(a.valueAtRisk)} at risk`;
+      }).join('\n').slice(0, 1024),
     });
   }
 
@@ -474,9 +514,13 @@ export function overviewEmbed({
       value: [
         `Last export: ${health.lastAsOf ?? '—'} (${health.snapshots} held)`,
         health.missingDays ? `${health.missingDays} day(s) never uploaded` : 'No missing days',
+        // Two detectors, and only one of them needs daily history. Saying
+        // "detection: off" while the month comparison is raising urgent cases
+        // reads as a contradiction.
+        `Month on month: on${health.monthSource ? ` (vs ${health.monthSource})` : ''}`,
         health.declineReady
-          ? 'Decline detection: on'
-          : `Decline detection: off — needs ~${health.uploadsNeeded} more daily upload(s)`,
+          ? 'Week on week: on'
+          : `Week on week: needs ~${health.uploadsNeeded} more daily upload(s)`,
       ].join('\n'),
       inline: false,
     });
