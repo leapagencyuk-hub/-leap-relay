@@ -106,7 +106,11 @@ export function caseStats(store, asOf) {
 export function preflight(discordConfig) {
   if (!discordConfig?.enabled) return { ok: false, reason: 'Discord is disabled in routes.json' };
   const hasWebhook = Boolean(discordConfig.defaultWebhook)
-    || Object.values(discordConfig.coaches ?? {}).some((c) => c.webhook);
+    || Object.values(discordConfig.coaches ?? {}).some((c) => c.webhook)
+    || Object.values(discordConfig.groups ?? {}).some((g) => g.webhook);
+  if (discordConfig.mode === 'webhook' && !hasWebhook) {
+    return { ok: false, reason: 'mode is "webhook" but no webhook URLs are set' };
+  }
   if (discordConfig.mode === 'bot' && !discordConfig.botToken) {
     return hasWebhook
       ? { ok: true, warning: 'no bot token — only coaches with a webhook will be messaged' }
@@ -181,14 +185,19 @@ export async function dispatch({
   }
 
   // --- nobody picked these up ----------------------------------------------
-  if (changes.escalated.length && discordConfig.escalationChannelId) {
-    await send('escalation', '(managers)', { channelId: discordConfig.escalationChannelId },
-      escalationEmbed(changes.escalated, asOf));
+  const escalationRoute = discordConfig.escalationWebhook
+    ? { webhook: discordConfig.escalationWebhook }
+    : discordConfig.escalationChannelId ? { channelId: discordConfig.escalationChannelId } : null;
+  if (changes.escalated.length && escalationRoute) {
+    await send('escalation', '(managers)', escalationRoute, escalationEmbed(changes.escalated, asOf));
   }
 
   // --- daily roll-up --------------------------------------------------------
-  if (discordConfig.summaryChannelId) {
-    await send('summary', '(summary)', { channelId: discordConfig.summaryChannelId },
+  const summaryRoute = discordConfig.summaryWebhook
+    ? { webhook: discordConfig.summaryWebhook }
+    : discordConfig.summaryChannelId ? { channelId: discordConfig.summaryChannelId } : null;
+  if (summaryRoute) {
+    await send('summary', '(summary)', summaryRoute,
       summaryEmbed({ asOf, stats, caseStats: caseStats(store, asOf), alerts, ramp, spotlight }));
   }
 

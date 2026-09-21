@@ -61,10 +61,17 @@ export class CaseStore {
   openFor(creatorKey, kind) {
     return this.all().find((c) => c.creatorKey === creatorKey && c.kind === kind && isOpen(c)) ?? null;
   }
-  /** A snoozed case still suppresses new ones until its snooze expires. */
+  /**
+   * A creator we have deliberately stopped raising, for now.
+   *
+   * Two ways that happens: somebody snoozed them, or a case was closed for
+   * going stale and is on a cooling-off period. Without the second, a stale
+   * close would reopen the same case the very next morning.
+   */
   suppressedFor(creatorKey, kind, asOf) {
     return this.all().find((c) => c.creatorKey === creatorKey && c.kind === kind
-      && c.status === STATUS.SNOOZED && c.snoozedUntil > asOf) ?? null;
+      && ((c.status === STATUS.SNOOZED && c.snoozedUntil > asOf)
+        || (c.reopenAfter && c.reopenAfter > asOf))) ?? null;
   }
 
   log(c, event, { by = 'system', note = null, at = null } = {}) {
@@ -291,15 +298,47 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
       c.clearDays = 0;
     }
 
-    // Nobody has picked it up. Chase, then escalate.
-    if (c.status === STATUS.OPEN && !c.escalatedOn) {
-      const age = daysBetween(c.openedOn, asOf);
+    const age = daysBetween(c.openedOn, asOf);
+    const stillDeclining = alertByKey.has(c.creatorKey);
+
+    // Escalation.
+    //
+    // With buttons, "nobody has picked this up" is the signal. Without them
+    // every case looks unacknowledged forever, so escalating on that would
+    // send the entire caseload to the managers' channel every few days. In
+    // non-interactive mode the data has to say it instead: still open, still
+    // declining, after long enough that something should have changed.
+    if (!c.escalatedOn) {
       const limit = c.severity === 'urgent' ? cfg.escalateUrgentAfterDays : cfg.escalateAfterDays;
-      if (age >= limit) {
+      const unacknowledged = c.status === STATUS.OPEN;
+      const shouldEscalate = cfg.interactive
+        ? unacknowledged && age >= limit
+        : stillDeclining && age >= (cfg.escalateNoChangeAfterDays ?? limit * 2);
+      if (shouldEscalate) {
         c.escalatedOn = asOf;
-        store.log(c, 'escalated', { note: `${age} days unacknowledged` });
+        store.log(c, 'escalated', {
+          note: cfg.interactive ? `${age} days unacknowledged` : `${age} days open and still declining`,
+        });
         escalated.push(c);
       }
+    }
+
+    // Closing a case that has gone stale.
+    //
+    // Nothing closes a case in non-interactive mode except recovery, so
+    // without this the per-coach limit fills with cases nobody can clear and
+    // new findings stop coming through entirely. Closing frees the slot; the
+    // cooling-off period stops it reopening the next morning.
+    if (cfg.maxOpenDays && age >= cfg.maxOpenDays && c.status !== STATUS.ACTIONED) {
+      const metrics = metricsByKey.get(c.creatorKey);
+      const book = PLAYBOOK[c.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
+      const verdict = metrics ? book.test(metrics, c) : 'no_change';
+      c.status = STATUS.RESOLVED;
+      c.outcome = { on: asOf, verdict, stale: true, unmeasured: !metrics };
+      c.reopenAfter = addDays(asOf, cfg.reopenCooldownDays ?? 7);
+      store.log(c, 'closed-stale', { note: `${age} days open — ${verdict}` });
+      autoResolved.push(c);
+      continue;
     }
 
     // The coach acted and the follow-up window has elapsed: grade it.
@@ -406,6 +445,59 @@ export function resolve(store, caseId, who, note) {
  * months of cases before it means anything, which is the point of recording
  * from day one.
  */
+/**
+ * How each team's caseload actually resolves.
+ *
+ * This is the answer to "can we tell if a coach is doing nothing?" without
+ * anyone clicking anything. A team whose flagged creators recover is working;
+ * a team whose cases all run to the stale limit still declining is not. It
+ * cannot see *what* a coach did — only whether the creators got better, which
+ * is the thing that matters.
+ */
+export function teamOutcomes(store, { now = new Date().toISOString().slice(0, 10) } = {}) {
+  const rows = {};
+  for (const c of store.all()) {
+    if (c.kind !== 'decline') continue;
+    const key = c.group ?? '(no team)';
+    const r = (rows[key] ??= {
+      team: key, coaches: new Set(), opened: 0, recovered: 0, improved: 0,
+      wentStale: 0, lost: 0, open: 0, daysToRecover: [], oldestOpenDays: 0,
+    });
+    if (c.coach) r.coaches.add(c.coach);
+    r.opened++;
+
+    if (isOpen(c)) {
+      r.open++;
+      r.oldestOpenDays = Math.max(r.oldestOpenDays, daysBetween(c.openedOn, now));
+      continue;
+    }
+    if (c.status === STATUS.LOST) { r.lost++; continue; }
+    if (c.outcome?.verdict === 'recovered') {
+      r.recovered++;
+      if (c.outcome.on) r.daysToRecover.push(daysBetween(c.openedOn, c.outcome.on));
+    } else if (c.outcome?.verdict === 'improved') {
+      r.improved++;
+    }
+    // A case that ran to the limit without getting better is the signal that
+    // nothing was done, or that what was done did not work.
+    if (c.outcome?.stale && !['recovered', 'improved'].includes(c.outcome.verdict)) r.wentStale++;
+  }
+
+  return Object.values(rows).map((r) => {
+    const closed = r.opened - r.open;
+    const sorted = r.daysToRecover.slice().sort((a, b) => a - b);
+    return {
+      ...r,
+      coaches: [...r.coaches],
+      closed,
+      recoveryRate: closed ? Number((r.recovered / closed).toFixed(2)) : null,
+      staleRate: closed ? Number((r.wentStale / closed).toFixed(2)) : null,
+      medianDaysToRecover: sorted.length ? sorted[Math.floor(sorted.length / 2)] : null,
+      daysToRecover: undefined,
+    };
+  }).sort((a, b) => b.opened - a.opened);
+}
+
 export function effectiveness(store) {
   const byPlaybook = {};
   const byCoach = {};

@@ -628,6 +628,54 @@ unfilled placeholder always means real unfinished work.
 
 Set `routeBy: "coach"` instead if you ever move to one channel per coach.
 
+### Running without buttons
+
+Webhook mode has no buttons, and three parts of the case machinery assume
+clicks. Left alone they degrade within a fortnight, so `cases.interactive:
+false` changes them:
+
+| | With buttons | Without |
+|---|---|---|
+| Escalation | Nobody clicked "On it" in 3 days | Still open **and still declining** after 7 |
+| Closing a case | Coach clicks, or the creator recovers | Recovery, or the case hits `maxOpenDays` |
+| Snoozing a holiday | "Known reason" button | `cli.mjs snooze <id> <days> <reason>` |
+
+Both matter. Escalating on "unacknowledged" would send the **entire caseload**
+to the managers' channel every few days, since nothing can ever acknowledge.
+And with nothing able to close a case, the per-coach limit jams and new
+findings stop coming through at all — a month of simulated runs with nobody
+clicking anything holds steady at ~70 open cases instead of climbing, because
+stale cases close and free their slots.
+
+A case closed for age is graded honestly: it is only recorded as recovered if
+the success test agrees. It then has a cooling-off period so it does not
+reopen the next morning, and comes back afterwards if the creator is still
+down.
+
+### What you lose, and what replaces it
+
+The honest cost: **there is no control group.** The effectiveness report splits
+outcomes by whether a coach logged an action, and without clicks every case is
+"left alone" — so nothing separates coaching from natural recovery. The report
+says so rather than showing a lift column that would be a lie.
+
+What still works is the thing that matters: **did the creator get better?**
+
+```
+node cli.mjs teams
+
+  team               opened  open  fixed  stale  left   fixed%  median days
+  Team Alpha             23     9     12      2     0     86%           12
+  TEAM GOLF               8     2      4      1     0     67%           20
+
+  fixed  = the creator came back to their normal
+  stale  = the case ran to the limit still down — nothing worked, or nothing was tried
+```
+
+A team whose flagged creators recover is working. A team whose cases all run to
+the stale limit is not. It cannot see *what* a coach did, only whether it
+worked — which is the part worth measuring anyway.
+
 ### Which to choose
 
 **Bot.** Webhooks are marginally quicker to set up and throw away the entire
@@ -725,7 +773,10 @@ print the Discord payloads themselves.
 node cli.mjs cases                       # the open caseload
 node cli.mjs cases --coach josh@x.com    # one coach's queue
 node cli.mjs case D-260915-6627          # one case and its full history
-node cli.mjs effectiveness               # which interventions work
+node cli.mjs teams                       # how each team's flagged creators turned out
+node cli.mjs effectiveness               # which interventions work (needs logged actions)
+node cli.mjs snooze D-260915-6627 14 "on holiday"
+node cli.mjs close D-260915-6627 "sorted on a call"
 node cli.mjs creator unc.inc0            # one creator's numbers
 node cli.mjs report                      # the older plain-text digest
 node cli.mjs status                      # what is stored, and any missing days
@@ -827,6 +878,10 @@ Everything lives in `config.json` — no code changes needed.
 | `cases.openCasesForEarlySigns` | Whether single-signal warnings become cases (off by default) |
 | `monitoring.ignoreGroups` | Teams to skip entirely — no cases, no cards, data still accrues |
 | `discord.interactionsReady` | `false` posts cards without buttons, until the endpoint is live |
+| `cases.interactive` | `false` when nobody can click: changes escalation and closing |
+| `cases.escalateNoChangeAfterDays` | Days open and still declining before the managers hear |
+| `cases.maxOpenDays` | When a case is closed for going stale, freeing the coach's slot |
+| `cases.reopenCooldownDays` | Quiet period after a stale close, before it can reopen |
 | `decline.eligibility.minExactDaysPerWindow` | Real daily readings needed in each week before week-on-week fires |
 
 **Tune against real data.** The thresholds here are derived from the two sample

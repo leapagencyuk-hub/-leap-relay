@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import crypto from 'node:crypto';
-import { CaseStore, reconcile, acknowledge, recordAction, snooze, effectiveness, STATUS, isOpen } from '../lib/cases.mjs';
+import { CaseStore, reconcile, acknowledge, recordAction, snooze, effectiveness, teamOutcomes, STATUS, isOpen } from '../lib/cases.mjs';
 import { verifySignature, handleInteraction, INTERACTION, RESPONSE } from '../lib/interactions.mjs';
 import { parseCustomId, customId, declineEmbed } from '../lib/discord.mjs';
 import { playbookFor, PLAYBOOK, captureBaseline } from '../lib/playbook.mjs';
@@ -111,9 +111,9 @@ test('a coach is never given more cases than they can work', () => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('a case nobody picks up is escalated, and only once', () => {
+test('with buttons, a case nobody picks up is escalated, and only once', () => {
   const dir = tmpDir();
-  const config = baseConfig(dir);
+  const config = { ...baseConfig(dir), cases: { ...baseConfig(dir).cases, interactive: true } };
   const store = new CaseStore(dir);
   const alert = fakeAlert('alpha', 'coach@leap');
   runReconcile(store, config, { asOf: '2026-09-10', alerts: [alert] });
@@ -121,6 +121,96 @@ test('a case nobody picks up is escalated, and only once', () => {
   assert.equal(runReconcile(store, config, { asOf: '2026-09-13', alerts: [alert] }).escalated.length, 1);
   assert.equal(runReconcile(store, config, { asOf: '2026-09-14', alerts: [alert] }).escalated.length, 0,
     'escalation does not repeat every day');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('without buttons, escalation waits for the data rather than for a click', () => {
+  // Every case looks unacknowledged forever when there is nothing to click, so
+  // escalating on that would send the whole caseload to the managers' channel.
+  const dir = tmpDir();
+  const config = {
+    ...baseConfig(dir),
+    cases: { ...baseConfig(dir).cases, interactive: false, escalateNoChangeAfterDays: 7 },
+  };
+  const store = new CaseStore(dir);
+  const alert = fakeAlert('alpha', 'coach@leap');
+  runReconcile(store, config, { asOf: '2026-09-10', alerts: [alert] });
+
+  assert.equal(runReconcile(store, config, { asOf: '2026-09-14', alerts: [alert] }).escalated.length, 0,
+    'four days in, too early');
+  assert.equal(runReconcile(store, config, { asOf: '2026-09-17', alerts: [alert] }).escalated.length, 1,
+    'still open and still declining after a week');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a creator who recovers is never escalated, however long the case was open', () => {
+  const dir = tmpDir();
+  const config = {
+    ...baseConfig(dir),
+    cases: { ...baseConfig(dir).cases, interactive: false, escalateNoChangeAfterDays: 7, autoResolveClearDays: 99 },
+  };
+  const store = new CaseStore(dir);
+  const alert = fakeAlert('alpha', 'coach@leap');
+  runReconcile(store, config, { asOf: '2026-09-10', alerts: [alert] });
+  // No longer alerting from here on.
+  const creators = [{ ...alert.creator, quitOn: null }];
+  const out = runReconcile(store, config, { asOf: '2026-09-25', alerts: [], creators });
+  assert.equal(out.escalated.length, 0, 'nothing to chase — the creator is fine');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a case that runs to the limit is closed so the coach gets new ones', () => {
+  // Nothing closes a case without buttons except recovery, so without this the
+  // per-coach limit jams and new findings stop coming through at all.
+  const dir = tmpDir();
+  const config = {
+    ...baseConfig(dir),
+    cases: {
+      ...baseConfig(dir).cases, interactive: false, maxOpenDays: 21,
+      reopenCooldownDays: 7, escalateNoChangeAfterDays: 99,
+    },
+  };
+  const store = new CaseStore(dir);
+  const alert = fakeAlert('alpha', 'coach@leap');
+  const [c] = runReconcile(store, config, { asOf: '2026-09-01', alerts: [alert] }).opened;
+
+  assert.equal(runReconcile(store, config, { asOf: '2026-09-20', alerts: [alert] }).autoResolved.length, 0);
+  const closed = runReconcile(store, config, { asOf: '2026-09-22', alerts: [alert] });
+  assert.equal(closed.autoResolved.length, 1);
+  const after = store.get(c.id);
+  assert.equal(after.status, STATUS.RESOLVED);
+  assert.ok(after.outcome.stale);
+  assert.notEqual(after.outcome.verdict, 'recovered', 'closed for age, not because it got better');
+
+  // And it must not reopen the very next morning.
+  assert.equal(runReconcile(store, config, { asOf: '2026-09-23', alerts: [alert] }).opened.length, 0);
+  assert.equal(runReconcile(store, config, { asOf: '2026-10-01', alerts: [alert] }).opened.length, 1,
+    'but it comes back once the cooling-off period passes');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('team outcomes separate creators who recovered from cases that just ran out', () => {
+  const dir = tmpDir();
+  const store = new CaseStore(dir);
+  const mk = (id, team, status, outcome, openedOn = '2026-09-01') => ({
+    id, kind: 'decline', group: team, coach: 'josh@leap', username: id,
+    creatorKey: `id:${id}`, openedOn, status, outcome, history: [], signals: [],
+  });
+  store.data.cases = {
+    a: mk('a', 'Team Alpha', 'resolved', { on: '2026-09-08', verdict: 'recovered' }),
+    b: mk('b', 'Team Alpha', 'resolved', { on: '2026-09-22', verdict: 'no_change', stale: true }),
+    c: mk('c', 'Team Alpha', 'open', null),
+    d: mk('d', 'Team Bravo', 'lost', { on: '2026-09-05', verdict: 'quit' }),
+  };
+  const rows = teamOutcomes(store, { now: '2026-09-25' });
+  const alpha = rows.find((r) => r.team === 'Team Alpha');
+  assert.equal(alpha.opened, 3);
+  assert.equal(alpha.recovered, 1);
+  assert.equal(alpha.wentStale, 1);
+  assert.equal(alpha.open, 1);
+  assert.equal(alpha.medianDaysToRecover, 7);
+  assert.equal(alpha.oldestOpenDays, 24);
+  assert.equal(rows.find((r) => r.team === 'Team Bravo').lost, 1);
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

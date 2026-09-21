@@ -90,6 +90,8 @@ export function loadDiscordConfig(raw) {
     defaultWebhook: webhookOrNull(fromEnv(raw.defaultWebhook)),
     escalationChannelId: channelOrNull(fromEnv(raw.escalationChannelId)),
     summaryChannelId: channelOrNull(fromEnv(raw.summaryChannelId)),
+    escalationWebhook: webhookOrNull(fromEnv(raw.escalationWebhook)),
+    summaryWebhook: webhookOrNull(fromEnv(raw.summaryWebhook)),
     coaches,
   };
 }

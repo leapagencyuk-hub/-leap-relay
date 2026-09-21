@@ -93,7 +93,12 @@
     "escalateUrgentAfterDays": 1,
     "maxOpenPerCoach": 8,
     "maxOpenOpportunitiesPerCoach": 3,
-    "escalateMaxPerRun": 5
+    "escalateMaxPerRun": 5,
+    "_interactive": "true when coaches can click buttons (bot mode). false changes escalation to a data signal and closes stale cases, since nothing else would.",
+    "interactive": false,
+    "escalateNoChangeAfterDays": 7,
+    "maxOpenDays": 21,
+    "reopenCooldownDays": 7
   },
   "monitoring": {
     "_ignoreGroups": "Teams nobody is coaching. Their data still accrues, but no case is opened and nothing is posted. Matching ignores case and spacing.",

@@ -11,6 +11,9 @@
 //   node cli.mjs cases [--coach E] [--all]      the open caseload
 //   node cli.mjs case <id>                      one case and its history
 //   node cli.mjs effectiveness                  which interventions work
+//   node cli.mjs teams                          how each team's caseload resolves
+//   node cli.mjs snooze <id> <days> [reason]    quiet a creator (holiday, break)
+//   node cli.mjs close <id> [note]              close a case by hand
 //   node cli.mjs discord-register               register the slash commands
 //   node cli.mjs discord-scaffold [--write]     build routes.json from the live data
 //   node cli.mjs discord-check                  which teams have nowhere to post
@@ -21,9 +24,10 @@ import {
   loadConfig, ingestFile, rebuildSeries, analyse, buildDigests,
   renderNetworkSummary, toJson, runDaily, CaseStore, effectiveness,
 } from './lib/pipeline.mjs';
+import { Store as SeriesStore } from './lib/store.mjs';
 import { Store } from './lib/store.mjs';
 import { computeMetrics, tierOf } from './lib/metrics.mjs';
-import { STATUS, isOpen } from './lib/cases.mjs';
+import { STATUS, isOpen, teamOutcomes, snooze, resolve } from './lib/cases.mjs';
 import { PLAYBOOK, VERDICT_LABEL } from './lib/playbook.mjs';
 import { loadRoutes } from './lib/notify.mjs';
 import { coverage, routeFor } from './lib/dispatch.mjs';
@@ -255,10 +259,20 @@ function cmdEffectiveness() {
   if (!entries.length) {
     return console.log('No graded outcomes yet. Cases are graded once their follow-up window closes.');
   }
+  const anyLogged = Object.values(byPlaybook).some((p) => p.acted.total > 0);
   console.log('Which interventions work\n');
-  console.log('  "coached" is cases where a coach logged an action. "left alone" is the');
-  console.log('  rest — the share that came back without anyone doing anything. The gap');
-  console.log('  between them is what the coaching is actually worth.\n');
+  if (!anyLogged) {
+    // Without button clicks nothing records that a coach acted, so every case
+    // lands in "left alone" and the lift column would be a lie.
+    console.log('  ⚠️  No coach actions are being logged, so there is no control group and');
+    console.log('     nothing here separates coaching from natural recovery. What you are');
+    console.log('     seeing is the recovery rate after a creator was flagged, whoever did');
+    console.log('     what. For per-team outcomes use: cli.mjs teams\n');
+  } else {
+    console.log('  "coached" is cases where a coach logged an action. "left alone" is the');
+    console.log('  rest — the share that came back without anyone doing anything. The gap');
+    console.log('  between them is what the coaching is actually worth.\n');
+  }
   const pc = (x) => (x == null ? '   —' : `${Math.round(x * 100)}%`.padStart(4));
   console.log(`  ${'intervention'.padEnd(28)} ${'coached'.padStart(8)} ${'rate'.padStart(5)}  ${'left alone'.padStart(10)} ${'rate'.padStart(5)}  ${'lift'.padStart(5)}`);
   for (const [id, p] of entries.sort((a, b) => (b[1].acted.total + b[1].untouched.total) - (a[1].acted.total + a[1].untouched.total))) {
@@ -302,27 +316,45 @@ function cmdDiscordScaffold() {
   const prevGroups = existing.discord?.groups ?? {};
   const prevCoaches = existing.discord?.coaches ?? {};
 
+  const webhookMode = flag('webhooks') || existing.discord?.mode === 'webhook';
+  const slot = (g) => (webhookMode
+    ? { webhook: `PASTE_WEBHOOK_URL  (${g.creators} creators)` }
+    : { channelId: `PASTE_CHANNEL_ID  (${g.creators} creators)` });
+
   const out = {
     discord: {
       enabled: true,
-      mode: 'bot',
+      mode: webhookMode ? 'webhook' : 'bot',
       routeBy: 'group',
-      botToken: 'env:DISCORD_BOT_TOKEN',
-      publicKey: 'env:DISCORD_PUBLIC_KEY',
-      applicationId: 'env:DISCORD_APP_ID',
-      escalationChannelId: existing.discord?.escalationChannelId ?? 'PASTE_MANAGERS_CHANNEL_ID',
-      summaryChannelId: existing.discord?.summaryChannelId ?? 'PASTE_SUMMARY_CHANNEL_ID',
+      ...(webhookMode
+        ? { _webhooks: 'Channel → Edit Channel → Integrations → Webhooks → New Webhook → Copy URL.' }
+        : {
+          botToken: 'env:DISCORD_BOT_TOKEN',
+          publicKey: 'env:DISCORD_PUBLIC_KEY',
+          applicationId: 'env:DISCORD_APP_ID',
+        }),
+      escalation: existing.discord?.escalationWebhook ?? existing.discord?.escalationChannelId
+        ? undefined : undefined,
+      ...(webhookMode
+        ? {
+          escalationWebhook: existing.discord?.escalationWebhook ?? 'PASTE_MANAGERS_WEBHOOK_URL',
+          summaryWebhook: existing.discord?.summaryWebhook ?? 'PASTE_SUMMARY_WEBHOOK_URL',
+        }
+        : {
+          escalationChannelId: existing.discord?.escalationChannelId ?? 'PASTE_MANAGERS_CHANNEL_ID',
+          summaryChannelId: existing.discord?.summaryChannelId ?? 'PASTE_SUMMARY_CHANNEL_ID',
+        }),
       groups: {},
       coaches: {},
     },
   };
+  delete out.discord.escalation;
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
   for (const g of groups) {
     // Teams on the ignore list need no channel — say so rather than leaving a
     // placeholder that looks like unfinished work.
     if (ignored.has(groupKey(g.label))) continue;
-    out.discord.groups[g.label] = prevGroups[g.label]
-      ?? { channelId: `PASTE_CHANNEL_ID  (${g.creators} creators)` };
+    out.discord.groups[g.label] = prevGroups[g.label] ?? slot(g);
   }
   if (ignored.size) {
     out.discord._ignoredTeams = `Not routed, by choice (config.json monitoring.ignoreGroups): ${
@@ -400,17 +432,63 @@ function cmdDiscordCheck() {
   }
 }
 
+function cmdTeams() {
+  const store = new CaseStore(config.dataDir);
+  const asOf = new SeriesStore(config.dataDir).readSeries().lastAsOf
+    ?? new Date().toISOString().slice(0, 10);
+  const rows = teamOutcomes(store, { now: asOf });
+  if (!rows.length) return console.log('No decline cases yet.');
+
+  console.log(`How each team's flagged creators actually turned out (as of ${asOf})\n`);
+  console.log(`  ${'team'.padEnd(18)} ${'opened'.padStart(6)} ${'open'.padStart(5)} ${'fixed'.padStart(6)} ${'stale'.padStart(6)} ${'left'.padStart(5)}  ${'fixed%'.padStart(7)}  median days  oldest open`);
+  for (const r of rows) {
+    const pc = (x) => (x == null ? '     —' : `${Math.round(x * 100)}%`.padStart(6));
+    console.log(`  ${r.team.slice(0, 18).padEnd(18)} ${String(r.opened).padStart(6)} ${String(r.open).padStart(5)} ${String(r.recovered).padStart(6)} ${String(r.wentStale).padStart(6)} ${String(r.lost).padStart(5)}  ${pc(r.recoveryRate)}  ${String(r.medianDaysToRecover ?? '—').padStart(11)}  ${String(r.oldestOpenDays || '—').padStart(11)}`);
+  }
+  console.log('');
+  console.log('  fixed  = the creator came back to their normal');
+  console.log('  stale  = the case ran to the limit still down — nothing worked, or nothing was tried');
+  const worrying = rows.filter((r) => r.closed >= 3 && (r.staleRate ?? 0) > 0.6);
+  if (worrying.length) {
+    console.log(`\n⚠️  ${worrying.length} team(s) where most flagged creators never recovered:`);
+    for (const r of worrying) {
+      console.log(`     ${r.team} — ${r.wentStale}/${r.closed} went stale (${r.coaches.join(', ')})`);
+    }
+  }
+}
+
+function cmdSnooze() {
+  const [id, days, ...rest] = positional;
+  if (!id || !days) die('usage: cli.mjs snooze <case-id> <days> [reason]');
+  const store = new CaseStore(config.dataDir);
+  const asOf = new SeriesStore(config.dataDir).readSeries().lastAsOf
+    ?? new Date().toISOString().slice(0, 10);
+  const res = snooze(store, id, option('by', 'cli'), Number(days), rest.join(' ') || null, asOf);
+  if (!res.ok) die(res.error);
+  console.log(`${id} @${res.case.username} snoozed until ${res.case.snoozedUntil}`);
+}
+
+function cmdClose() {
+  const [id, ...rest] = positional;
+  if (!id) die('usage: cli.mjs close <case-id> [note]');
+  const store = new CaseStore(config.dataDir);
+  const res = resolve(store, id, option('by', 'cli'), rest.join(' ') || 'closed from the CLI');
+  if (!res.ok) die(res.error);
+  console.log(`${id} @${res.case.username} closed`);
+}
+
 const commands = {
   ingest: cmdIngest, report: cmdReport, coach: cmdCoach,
   creator: cmdCreator, rebuild: cmdRebuild, status: cmdStatus,
   run: cmdRun, cases: cmdCases, case: cmdCase,
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,
+  teams: cmdTeams, snooze: cmdSnooze, close: cmdClose,
 };
 
 if (!command || !commands[command]) {
   console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
-    .split('\n').slice(2, 16).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+    .split('\n').slice(2, 19).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
   process.exit(command ? 1 : 0);
 }
 try {
