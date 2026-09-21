@@ -11,6 +11,7 @@
 import { PLAYBOOK, VERDICT_LABEL } from './playbook.mjs';
 import { CONFIDENCE_LABEL, KIND } from './causes.mjs';
 import { ACTIVATION_PLAYBOOK } from './activation.mjs';
+import { profileUrl } from './profile.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -224,6 +225,44 @@ function causeFields(caseRecord) {
   return out;
 }
 
+/**
+ * The header every card shares: who, which team, and a click straight through
+ * to their profile — which is where a coach goes to see the thing the export
+ * cannot show them, namely what the creator has actually been posting.
+ */
+function authorBlock(caseRecord, avatar) {
+  return {
+    name: `@${caseRecord.username}${caseRecord.group ? `  ·  ${caseRecord.group}` : ''}`,
+    url: profileUrl(caseRecord.username),
+    ...(avatar ? { icon_url: avatar } : {}),
+  };
+}
+
+/**
+ * Follower movement, offered as what it is.
+ *
+ * The export contains nothing about short form — no posts, no views, no videos.
+ * New followers while they are still streaming is the closest observable
+ * signal, because that is the traffic short form would bring. Labelled as a
+ * proxy rather than dressed up as a post count.
+ */
+function trafficField(m) {
+  const now = Math.round(m.curr7?.newFollowers ?? 0);
+  const before = Math.round(m.prev7?.newFollowers ?? 0);
+  const monthly = m.monthOnMonth?.newFollowers;
+  if (!now && !before && !monthly) return null;
+  // A percentage off a tiny base is noise: 1 follower to 8 is "+700%", which
+  // tells a coach nothing and makes the card look unserious.
+  const trend = before >= 10
+    ? `${pct((now - before) / before)} on last week`
+    : before > 0 ? `${n(before)} last week` : null;
+  return {
+    name: 'New followers',
+    value: `${n(now)} this week${trend ? `\n${trend}` : ''}\n_proxy for short form_`,
+    inline: true,
+  };
+}
+
 function statusLine(c) {
   if (c.status === 'acknowledged') return `Picked up by ${c.acknowledgedBy ?? 'a coach'}`;
   if (c.status === 'actioned') return `Actioned, checking back on ${c.followUpOn}`;
@@ -234,14 +273,15 @@ function statusLine(c) {
 }
 
 /** The card a coach sees when a creator starts slipping. */
-export function declineEmbed(caseRecord, alert, { mention = null, buttons = true } = {}) {
+export function declineEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null } = {}) {
   const m = alert.metrics;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
 
   return {
     content: mention ?? undefined,
     embeds: [{
-      title: `${SEVERITY_LABEL[caseRecord.severity] ?? 'Notice'} — @${caseRecord.username}: ${book.title}`,
+      author: authorBlock(caseRecord, avatar),
+      title: `${SEVERITY_LABEL[caseRecord.severity] ?? 'Notice'} — ${book.title}`,
       description: alert.signals.map((s) => `• **${s.label}** — ${s.detail}`).join('\n').slice(0, 3800),
       color: COLOR[caseRecord.severity] ?? COLOR.neutral,
       fields: [
@@ -272,9 +312,10 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
             monthField(m, caseRecord),
           ]),
         ...causeFields(caseRecord),
+        trafficField(m),
         { name: `Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
       ].filter(Boolean),
-      footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
+      footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -282,7 +323,7 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
 }
 
 /** The card for a creator who can still land a 200k month. */
-export function opportunityEmbed(caseRecord, row, { mention = null, buttons = true } = {}) {
+export function opportunityEmbed(caseRecord, row, { mention = null, buttons = true, avatar = null } = {}) {
   const short = Math.max(0, 200000 - row.projected);
   const monthName = new Date(`${row.month}-01T00:00:00Z`)
     .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
@@ -297,7 +338,8 @@ export function opportunityEmbed(caseRecord, row, { mention = null, buttons = tr
   return {
     content: mention ?? undefined,
     embeds: [{
-      title: `@${caseRecord.username} can still hit 200k in ${monthName}`,
+      author: authorBlock(caseRecord, avatar),
+      title: `Can still hit 200k in ${monthName}`,
       description: `**${n(row.monthToDate)} / 200,000** this month, with `
         + `**${row.daysLeftInMonth} day${row.daysLeftInMonth === 1 ? '' : 's'}** left.\n`
         + `At this week's rate they finish on ${n(row.projected)}`
@@ -315,7 +357,7 @@ export function opportunityEmbed(caseRecord, row, { mention = null, buttons = tr
         ...causeFields(caseRecord),
         { name: 'Check back in 14 days', value: PLAYBOOK.OPPORTUNITY.success },
       ].filter(Boolean),
-      footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
+      footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -323,28 +365,41 @@ export function opportunityEmbed(caseRecord, row, { mention = null, buttons = tr
 }
 
 /** The card for a creator who has not started. */
-export function activationEmbed(caseRecord, { mention = null, buttons = true } = {}) {
+export function activationEmbed(caseRecord, { mention = null, buttons = true, avatar = null, metrics = null } = {}) {
   const book = ACTIVATION_PLAYBOOK[caseRecord.stage] ?? {};
   const ctx = caseRecord.context ?? {};
-  const history = ctx.bestMonth > 0
-    ? `Best month on record: ${n(ctx.bestMonth)} diamonds.`
-    : 'No earnings on record at all.';
+
+  const stats = [
+    ctx.day != null
+      ? { name: 'Day', value: `**${ctx.day}**\nsince joining`, inline: true }
+      : null,
+    {
+      name: 'Gone live?',
+      value: ctx.everLive ? 'Yes\nbut not earning' : '**Never**\nnot once',
+      inline: true,
+    },
+    {
+      name: 'Best month',
+      value: ctx.bestMonth > 0 ? `${n(ctx.bestMonth)}\ndiamonds` : 'None\non record',
+      inline: true,
+    },
+  ].filter(Boolean);
 
   return {
     content: mention ?? undefined,
     embeds: [{
-      title: `@${caseRecord.username} — ${book.title ?? caseRecord.stage}`,
-      description: `${book.concern ?? ''}\n\n`
-        + (ctx.day != null ? `**Day ${ctx.day}** since joining. ` : '')
-        + (ctx.everLive ? 'They have gone live.' : '**They have never gone live.**')
-        + ` ${history}`,
+      author: authorBlock(caseRecord, avatar),
+      title: book.title ?? caseRecord.stage,
+      description: book.concern ?? '',
       color: caseRecord.stage === 'DECIDE' ? COLOR.warn : COLOR.watch,
       fields: [
+        ...stats,
+        ...(metrics ? [trafficField(metrics)].filter(Boolean) : []),
         { name: 'Ask them', value: (book.ask ?? []).map((a) => `• ${a}`).join('\n').slice(0, 1024) },
         ...(book.check?.length ? [{ name: 'Before you call', value: book.check.join('; ').slice(0, 1024) }] : []),
         { name: 'What good looks like', value: book.success ?? 'Any activity.' },
       ],
-      footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
+      footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -404,14 +459,15 @@ export function programmesEmbed({ asOf, campaign, concentration, config, totals 
 }
 
 /** Posted when a follow-up window closes, so the coach learns what their call did. */
-export function followUpEmbed(caseRecord, { mention = null, buttons = true } = {}) {
+export function followUpEmbed(caseRecord, { mention = null, buttons = true, avatar = null } = {}) {
   const o = caseRecord.outcome;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
   const good = o.verdict === 'recovered';
   return {
     content: mention ?? undefined,
     embeds: [{
-      title: `@${caseRecord.username} — ${VERDICT_LABEL[o.verdict] ?? o.verdict}`,
+      author: authorBlock(caseRecord, avatar),
+      title: VERDICT_LABEL[o.verdict] ?? o.verdict,
       description: good
         ? `That worked. ${book.title} case opened ${caseRecord.openedOn} is now closed.`
         : `Followed up on the ${book.title.toLowerCase()} case from ${caseRecord.openedOn}. `

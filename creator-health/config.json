@@ -134,5 +134,14 @@
   "uploads": {
     "warnAfterDays": 2,
     "urgentAfterDays": 4
+  },
+  "avatars": {
+    "_note": "Best effort via TikTok oEmbed. Cached, capped per run, and a failure just means a card without a picture. Add manual entries as {\"username\": \"https://...\"} if the lookup does not work.",
+    "enabled": true,
+    "ttlDays": 30,
+    "retryFailedAfterDays": 7,
+    "maxLookupsPerRun": 25,
+    "timeoutMs": 5000,
+    "manual": {}
   }
 }

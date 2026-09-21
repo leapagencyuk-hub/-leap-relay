@@ -19,6 +19,7 @@ export const COLUMNS = {
   diamondsLastMonth: 'Diamonds last month',
   liveDurationLastMonth: 'LIVE duration (hours) last month',
   validLiveDaysLastMonth: 'Valid go LIVE days last month',
+  newFollowersLastMonth: 'New followers last month',
   matches: 'Matches',
   diamondsFromMatches: 'Diamonds from matches',
   diamondsFromMultiGuest: 'Diamonds from multi-guest',
@@ -142,6 +143,7 @@ export function normalizeRow(raw) {
       diamonds: parseNumber(get('diamondsLastMonth')),
       liveHours: parseDurationHours(get('liveDurationLastMonth')),
       validLiveDays: parseNumber(get('validLiveDaysLastMonth')),
+      newFollowers: parseNumber(get('newFollowersLastMonth')),
     },
     // flags
     quit,

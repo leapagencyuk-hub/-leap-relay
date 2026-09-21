@@ -256,6 +256,7 @@ export function computeMetrics(creator, endDate) {
       diamonds: build('diamonds', creator.lastMonth?.diamonds ?? null),
       liveHours: build('liveHours', creator.lastMonth?.liveHours ?? null),
       validLiveDays: build('validLiveDays', creator.lastMonth?.validLiveDays ?? null),
+      newFollowers: build('newFollowers', creator.lastMonth?.newFollowers ?? null),
     };
   })();
 

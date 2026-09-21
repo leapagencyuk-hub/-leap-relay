@@ -8,6 +8,7 @@ import {
   escalationEmbed, overviewEmbed, programmesEmbed,
 } from './discord.mjs';
 import { campaignGap, concentrationRisk, programmesDue, uploadStaleness } from './programmes.mjs';
+import { Avatars } from './profile.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -143,6 +144,16 @@ export async function dispatch({
   const check = preflight(discordConfig);
   if (!dryRun && !check.ok) return { sent: [], previews: [], skipped: check.reason };
   const client = new Discord({ token: discordConfig.botToken });
+
+  // Look up pictures for the creators about to be posted about, before any
+  // card is built. Capped and cached, and a miss simply means no picture.
+  const avatars = new Avatars(config.dataDir ?? '.', config.avatars);
+  if (!dryRun) {
+    await avatars.warm([
+      ...changes.opened.map((c) => c.username),
+      ...changes.dueFollowUps.map((c) => c.username),
+    ]);
+  }
   // Webhooks cannot carry working buttons at all, and a bot cannot until its
   // interactions endpoint is reachable.
   const buttons = discordConfig.mode === 'bot' && discordConfig.interactionsReady !== false;
@@ -170,13 +181,13 @@ export async function dispatch({
     if (c.kind === 'decline') {
       const alert = alertByKey.get(c.creatorKey);
       if (!alert) continue;
-      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons }), c);
+      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatars.get(c.username) }), c);
     } else if (c.kind === 'activation') {
-      await send('activation-opened', c.coach, route, activationEmbed(c, { mention: route.mention, buttons }), c);
+      await send('activation-opened', c.coach, route, activationEmbed(c, { mention: route.mention, buttons, avatar: avatars.get(c.username), metrics: metricsByKey.get(c.creatorKey) }), c);
     } else {
       const row = spotlightByKey.get(c.creatorKey);
       if (!row) continue;
-      await send('opportunity-opened', c.coach, route, opportunityEmbed(c, row, { mention: route.mention, buttons }), c);
+      await send('opportunity-opened', c.coach, route, opportunityEmbed(c, row, { mention: route.mention, buttons, avatar: avatars.get(c.username) }), c);
     }
   }
 
@@ -189,7 +200,7 @@ export async function dispatch({
     const alert = alertByKey.get(c.creatorKey);
     if (!alert) continue;
     const route = routeFor(c, discordConfig);
-    const payload = declineEmbed(c, alert, { mention: route.mention, buttons });
+    const payload = declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatars.get(c.username) });
     payload.embeds[0].title = `${payload.embeds[0].title} (getting worse)`;
     await send('case-worsened', c.coach, route, payload, c);
   }
@@ -197,7 +208,7 @@ export async function dispatch({
   // --- follow-ups that came due --------------------------------------------
   for (const c of changes.dueFollowUps) {
     const route = routeFor(c, discordConfig);
-    await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention, buttons }), c);
+    await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention, buttons, avatar: avatars.get(c.username) }), c);
   }
 
   // --- nobody picked these up ----------------------------------------------

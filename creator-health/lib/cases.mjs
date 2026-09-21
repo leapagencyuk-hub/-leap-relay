@@ -37,7 +37,7 @@ const daysBetween = (a, b) =>
 
 /** Short, unambiguous, and quotable out loud on a call. */
 function newCaseId(kind, asOf) {
-  const prefix = kind === 'opportunity' ? 'O' : 'D';
+  const prefix = { opportunity: 'O', activation: 'A' }[kind] ?? 'D';
   return `${prefix}-${asOf.replace(/-/g, '').slice(2)}-${crypto.randomBytes(2).toString('hex')}`;
 }
 

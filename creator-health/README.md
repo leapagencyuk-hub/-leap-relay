@@ -373,6 +373,35 @@ explicit note that week-on-week is degrading and the 200k month is being
 tracked blind. One day behind is normal, because the export always covers the
 day before it is produced.
 
+## What the cards show, and what they cannot
+
+Every card carries an author line: the creator's handle, their team, and a
+**link straight to their TikTok profile**. That link matters more than it
+looks — it is where a coach goes to see the one thing the export cannot show
+them, namely what the creator has actually been posting.
+
+Avatars are best effort. The export has no picture, so they come from TikTok's
+public oEmbed endpoint: cached for 30 days, capped per run, failures cached too
+so a run never retries in a loop. A miss costs a picture and nothing else. If
+the lookup does not work for your network, `avatars.manual` takes
+`{"username": "https://..."}` entries and wins over the lookup.
+
+### There is no short-form data in the export
+
+All 41 columns are LIVE, fans or diamonds. No posts, no views, no videos.
+Counting how much short form a creator published is **not possible from this
+file**, and any number claiming to would be invented.
+
+The closest honest signal is **new followers while they are still streaming** —
+that is the traffic short form would have brought. It appears on the cards
+labelled as a proxy, never as a post count. Percentages are suppressed below a
+base of 10, because "+700%" from one follower to eight is noise dressed as
+insight.
+
+If short-form tracking matters, it needs a second data source — TikTok's
+Creator Centre export or the API — and the pipeline can take it as another
+upload.
+
 ## The support system
 
 An alert is an event: it fires, it is gone, and a week later nobody remembers
@@ -1093,6 +1122,9 @@ Everything lives in `config.json` — no code changes needed.
 | `programmes.campaign` | Minimum size before a creator belongs on the campaign list |
 | `programmes.concentration` | Fan-club share and earnings that count as exposure |
 | `uploads.warnAfterDays` | Days without an export before the overview says so |
+| `avatars.enabled` | Whether to attempt profile-picture lookups at all |
+| `avatars.maxLookupsPerRun` | Cap on lookups, so a rate limit never stalls a run |
+| `avatars.manual` | Hand-set avatar URLs, which win over the lookup |
 | `discord.interactionsReady` | `false` posts cards without buttons, until the endpoint is live |
 | `cases.interactive` | `false` when nobody can click: changes escalation and closing |
 | `cases.escalateNoChangeAfterDays` | Days open and still declining before the managers hear |
