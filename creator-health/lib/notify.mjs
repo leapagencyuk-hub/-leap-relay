@@ -15,9 +15,20 @@ import path from 'node:path';
  *   "summary": { "url": "https://hooks.slack.com/..." }
  * }
  */
+/**
+ * Routing config, local first.
+ *
+ * `routes.json` holds real webhook URLs and is gitignored, so it never reaches
+ * a deploy. `routes.deploy.json` is the committed twin that refers to
+ * environment variables instead — without this fallback a deployed service
+ * starts with no Discord config at all and silently posts nothing.
+ */
 export function loadRoutes(configDir) {
-  const p = path.join(configDir, 'routes.json');
-  if (!fs.existsSync(p)) return { default: null, coaches: {}, summary: null, discord: emptyDiscord() };
+  const p = [
+    path.join(configDir, 'routes.json'),
+    path.join(configDir, 'routes.deploy.json'),
+  ].find((f) => fs.existsSync(f));
+  if (!p) return { default: null, coaches: {}, summary: null, discord: emptyDiscord() };
   const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
   // Environment variables win, so no token or webhook URL is ever committed.
   const expand = (r) => (r?.url?.startsWith('env:') ? { ...r, url: process.env[r.url.slice(4)] } : r);

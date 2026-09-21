@@ -1,0 +1,100 @@
+{
+  "discord": {
+    "enabled": true,
+    "mode": "webhook",
+    "routeBy": "group",
+    "_webhooks": "Channel → Edit Channel → Integrations → Webhooks → New Webhook → Copy URL.",
+    "summaryWebhook": "env:DISCORD_WEBHOOK_OVERVIEW",
+    "groups": {
+      "Team Alpha": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",
+        "channelId": "1551546764471836832"
+      },
+      "Team Charlie": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_CHARLIE",
+        "channelId": "1551542147524726864"
+      },
+      "Team Indigo": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_INDIGO",
+        "channelId": "1551543063065792703"
+      },
+      "Team Bravo": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_BRAVO",
+        "channelId": "1551543229336260728"
+      },
+      "TEAM GOLF": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_GOLF",
+        "channelId": "1551543018643914853"
+      },
+      "Not in a group": {
+        "webhook": "env:DISCORD_WEBHOOK_NOT_IN_A_GROUP",
+        "channelId": "1551542128037855292"
+      },
+      "Team Echo": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_ECHO",
+        "channelId": "1551542976688300134"
+      },
+      "Team Delta": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_DELTA",
+        "channelId": "1551541822986129408"
+      },
+      "Team Foxtrot": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_FOXTROT",
+        "channelId": "1551542997940961280"
+      },
+      "Team Hotel": {
+        "webhook": "env:DISCORD_WEBHOOK_TEAM_HOTEL",
+        "channelId": "1551543042626945137"
+      }
+    },
+    "coaches": {
+      "alex_593@hotmail.co.uk": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "amykinsincolour@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "bigbamc.tt@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "chavvyy26@hotmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "colesygaming007@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "itsmalkintiktok@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "joshbates93@hotmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "leapagencyuk@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "mujustreamer@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "rowlandratty@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "senninha.1985@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "sherif.begain@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "staysocialuk1@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "surgeagency.tt@gmail.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      },
+      "tiktokphil@icloud.com": {
+        "mention": "PASTE_DISCORD_USER_MENTION"
+      }
+    },
+    "_ignoredTeams": "Not routed, by choice (config.json monitoring.ignoreGroups): Surge Agency (23), TEAM TRUCKERS (7), Stay Social (4), Team Ratty (2)",
+    "_note": "Webhook is used when set; channelId is kept so switching to a bot later needs only a token."
+  }
+}

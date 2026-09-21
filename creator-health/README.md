@@ -589,6 +589,11 @@ That prints the environment variables to set on the host, and writes
 `routes.deploy.json` containing `env:VAR_NAME` references and no secrets, safe
 to commit. Rotating a webhook is then a dashboard change, not a code change.
 
+`loadRoutes` reads `routes.json` when it exists and falls back to
+`routes.deploy.json`, so the same code runs locally off real URLs and on the
+host off environment variables. Re-run `discord-env --write` after adding a
+team, or its cards will have nowhere to go once deployed.
+
 ### Webhook setup
 
 1. In Discord: **Channel → Edit Channel → Integrations → Webhooks → New Webhook**, copy the URL.
