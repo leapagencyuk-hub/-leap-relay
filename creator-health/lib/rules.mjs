@@ -193,7 +193,13 @@ function valueAtRisk(m) {
   return Math.max(0, Math.round(m.curr28.diamonds - projected));
 }
 
-/** The lever with the most headroom, phrased as something a coach can say. */
+/**
+ * A one-line pointer for the plain-text digest.
+ *
+ * Intentionally thinner than it used to be: the Discord card carries the ranked
+ * causes and the questions from `causes.mjs`, and duplicating a prescription
+ * here would only disagree with it.
+ */
 export function suggestAction(m, signals) {
   const codes = new Set(signals.map((s) => s.code));
   const perHour = m.diamondsPerHour28;
@@ -241,6 +247,11 @@ export function evaluateDecline(creators, metricsByKey, config, state = { open: 
       continue;
     }
     if (m.historyDays < cfg.minHistoryDays || !m.hasFullPrev7) { skipped.tooNew++; continue; }
+    // Both comparison windows have to be built from days we actually observed.
+    // Without this, the first fortnight of use generates alerts that are pure
+    // artifacts of spreading a back-fill snapshot evenly across its days.
+    const need = cfg.eligibility.minExactDaysPerWindow ?? 5;
+    if (m.exact.curr7 < need || m.exact.prev7 < need) { skipped.coarse = (skipped.coarse ?? 0) + 1; continue; }
 
     const tier = tierOf(m, config.tiers);
     if (tier === 'dormant') { skipped.dormant++; continue; }

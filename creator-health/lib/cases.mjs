@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import { captureBaseline, playbookFor, PLAYBOOK } from './playbook.mjs';
+import { rankCauses } from './causes.mjs';
 
 export const STATUS = {
   OPEN: 'open',                 // raised, nobody has picked it up
@@ -156,6 +157,10 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
         signals: codes,
         playbookId: book.id,
         baseline: captureBaseline(alert.metrics),
+        // Ranked at the moment the case opens, against the data as it looked
+        // then. Re-ranking later would quietly rewrite the coach's starting
+        // point after they had already acted on it.
+        causes: rankCauses(alert.metrics),
         valueAtRisk: alert.valueAtRisk,
         status: STATUS.OPEN,
         followUpOn: null,
@@ -179,6 +184,10 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
       existing.severity = grew ? alert.severity : existing.severity;
       existing.signals = [...new Set([...existing.signals, ...codes])];
       existing.valueAtRisk = alert.valueAtRisk;
+      // A case that gets worse often gets worse for a new reason, so the
+      // ranking is refreshed here even though the opening one is preserved
+      // in the history.
+      existing.causes = rankCauses(alert.metrics);
       store.log(existing, 'worsened', {
         note: grew ? `escalated to ${alert.severity}` : `new signals: ${newCodes.join(', ')}`,
       });
@@ -210,6 +219,7 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
         signals: ['OPPORTUNITY'],
         playbookId: 'OPPORTUNITY',
         baseline: captureBaseline(m),
+        causes: rankCauses(m),
         context: {
           day: row.day, daysLeft: row.daysLeft, earned: row.earned,
           requiredPerDay: row.requiredPerDay, currentPerDayAtOpen: row.currentPerDay,

@@ -126,13 +126,36 @@ function cmdStatus() {
   console.log(`data dir   ${config.dataDir}`);
   console.log(`snapshots  ${dates.length}${dates.length ? ` (${dates[0]} → ${dates[dates.length - 1]})` : ''}`);
   console.log(`creators   ${Object.keys(series.creators).length}`);
-  if (dates.length > 1) {
-    const missing = [];
-    for (let d = dates[0]; d < dates[dates.length - 1];) {
-      d = new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
-      if (!dates.includes(d) && d < dates[dates.length - 1]) missing.push(d);
-    }
-    console.log(`gaps       ${missing.length ? missing.join(', ') : 'none'}`);
+  if (!dates.length) return;
+
+  const missing = [];
+  for (let d = dates[0]; d < dates.at(-1);) {
+    d = new Date(Date.parse(`${d}T00:00:00Z`) + 86400000).toISOString().slice(0, 10);
+    if (!dates.includes(d) && d < dates.at(-1)) missing.push(d);
+  }
+  console.log(`missing    ${missing.length ? `${missing.length} day(s) with no upload` : 'none'}`);
+
+  // Week-on-week needs real daily readings in both windows, so say plainly how
+  // close the data is to supporting decline detection rather than leaving the
+  // first fortnight looking broken.
+  const need = config.decline.eligibility.minExactDaysPerWindow ?? 5;
+  const sample = Object.values(series.creators).filter((c) => !c.quitOn).slice(0, 200);
+  const ready = sample.filter((c) => {
+    const m = computeMetrics(c, series.lastAsOf);
+    return m.exact.curr7 >= need && m.exact.prev7 >= need;
+  }).length;
+  const exactDays = new Set();
+  for (const c of sample) for (const o of c.obs) if (o.span === 1 && !o.partial) exactDays.add(o.date);
+  console.log('');
+  if (ready > sample.length * 0.5) {
+    console.log(`decline detection  ON — ${ready}/${sample.length} sampled creators have enough daily readings`);
+  } else {
+    const have = exactDays.size;
+    const short = Math.max(1, (need * 2) - have);
+    console.log(`decline detection  NOT YET — needs ${need} real daily readings in each of two`);
+    console.log(`                   consecutive weeks. ${have} exact day(s) so far;`);
+    console.log(`                   about ${short} more daily upload(s) to go.`);
+    console.log(`                   The 200k tracker and month-on-month work already.`);
   }
 }
 
@@ -205,8 +228,15 @@ function cmdCase() {
   console.log(`  coach     ${c.coach}   group ${c.group ?? '—'}`);
   console.log(`  status    ${STATE_ICON[c.status] ?? ''} ${c.status}${c.followUpOn ? ` (follow-up ${c.followUpOn})` : ''}`);
   console.log(`  opened    ${c.openedOn}   signals: ${c.signals.join(', ')}`);
-  console.log(`  playbook  ${book?.title ?? c.playbookId}`);
-  console.log(`            ${book?.ask ?? ''}`);
+  console.log(`  concern   ${book?.title ?? c.playbookId} — ${book?.concern ?? ''}`);
+  for (const cause of c.causes ?? []) {
+    const tag = cause.kind === 'lever' ? 'lever' : cause.confidence;
+    console.log(`\n  [${tag}] ${cause.label}`);
+    for (const e of cause.evidence) console.log(`     · ${e}`);
+    if (cause.kind !== 'lever') {
+      for (const a of cause.ask) console.log(`     ? ${a}`);
+    }
+  }
   if (c.outcome) console.log(`  outcome   ${VERDICT_LABEL[c.outcome.verdict] ?? c.outcome.verdict} on ${c.outcome.on}`);
   console.log('\n  history:');
   for (const h of c.history) {

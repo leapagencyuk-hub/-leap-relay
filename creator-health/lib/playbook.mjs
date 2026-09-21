@@ -1,15 +1,15 @@
-// What to actually do about each kind of slide, and how we will know whether it
-// worked.
+// The area of concern, and how we will know whether it got better.
 //
-// Every entry pairs an intervention with a measurable success test and a
-// follow-up window. That pairing is the whole point: an alert that only says
-// "this creator is down" produces a conversation, while an alert that says
-// "do this, we will check in 7 days, and here is what better looks like"
-// produces a result you can count.
+// Deliberately not a set of instructions. The coaches already know how to fix
+// these things — what costs them time is working out which creator needs
+// attention and which of the usual causes it is this time. So each entry names
+// the area, sets a follow-up window, and defines what better looks like. The
+// specific questions come from `causes.mjs`, which reads the data for the
+// signature of each cause and ranks them.
 //
-// The windows are deliberately different per signal. Attendance can recover
-// inside a week because it is a scheduling decision. Conversion cannot — it
-// needs content changes that take a fortnight to show up in the numbers.
+// The windows differ per signal on purpose. Attendance can recover inside a
+// week because it is a scheduling decision. Conversion cannot — it needs
+// content changes that take a fortnight to show up in the numbers.
 
 const HOURS_RECOVERY = 0.85;
 
@@ -53,8 +53,7 @@ export const PLAYBOOK = {
     title: 'Off air',
     followUpDays: 7,
     priority: 100,
-    ask: 'Phone call today, not a message. Find out what changed, then agree a fixed schedule for the next 7 days and put it in writing.',
-    watchFor: 'A named reason. "Busy" is not a reason — illness, a second job, a family situation and burnout all need different help.',
+    concern: 'They have stopped going live entirely. Everything else is secondary until you know why.',
     success: 'Back live on at least half their usual days within a week.',
     test: (m, c) => grade(m.curr7.validLiveDays, c.baseline.weeklyLiveDays * 0.5,
       c.baseline.atOpen.weeklyLiveDays, 1),
@@ -64,8 +63,7 @@ export const PLAYBOOK = {
     title: 'Dropping LIVE days',
     followUpDays: 7,
     priority: 90,
-    ask: 'Ask what is blocking the missing days before talking about content. Rebuild the schedule around the days they can actually commit to, even if that is fewer days than before.',
-    watchFor: 'A schedule that stopped fitting their life. A creator keeping three reliable days beats one failing at six.',
+    concern: 'They are turning up fewer days than they used to. Attendance goes before earnings do.',
     success: 'LIVE days back within one of their normal week.',
     test: (m, c) => grade(m.curr7.validLiveDays, c.baseline.weeklyLiveDays - 1,
       c.baseline.atOpen.weeklyLiveDays, 1),
@@ -75,8 +73,7 @@ export const PLAYBOOK = {
     title: 'Shorter sessions',
     followUpDays: 10,
     priority: 70,
-    ask: 'Sessions shortening is usually burnout, a schedule clash, or a room that has gone quiet. Find out which, then rebuild session length before adding any days.',
-    watchFor: 'If they are ending early because the room is dead, this is really a conversion problem — treat it as one.',
+    concern: 'Sessions are getting shorter. Usually the first sign of something else.',
     success: 'Weekly LIVE hours back to 85% of normal.',
     test: (m, c) => grade(m.curr7.liveHours, c.baseline.weeklyHours, c.baseline.atOpen.weeklyHours),
   },
@@ -85,8 +82,7 @@ export const PLAYBOOK = {
     title: 'Sessions short for weeks',
     followUpDays: 10,
     priority: 75,
-    ask: 'This has been running for weeks, so the new pattern is now their habit. Rebuilding it needs a specific commitment for specific days, not general encouragement.',
-    watchFor: 'Treat this as a reset rather than a recovery — agree the schedule you want from here, not the one they used to do.',
+    concern: 'Short sessions have become their normal. This is now a habit, not a bad week.',
     success: 'Weekly LIVE hours back to 85% of their old normal.',
     test: (m, c) => grade(m.curr7.liveHours, c.baseline.weeklyHours, c.baseline.atOpen.weeklyHours),
   },
@@ -95,8 +91,7 @@ export const PLAYBOOK = {
     title: 'Room not converting',
     followUpDays: 14,
     priority: 60,
-    ask: 'The hours are there and the diamonds are not. Watch a recent LIVE together and check the basics: goals on screen, gift callouts by name, whether the format changed, and whether they are streaming at their usual time.',
-    watchFor: 'A format or time-slot change they made themselves is the most common cause and the easiest to reverse.',
+    concern: 'The hours are there and the money is not. Something in the room has changed.',
     success: 'Diamonds per LIVE hour back to 85% of normal.',
     test: (m, c) => grade(m.diamondsPerHour7 ?? 0, c.baseline.diamondsPerHour ?? 0,
       (c.baseline.atOpen.weeklyDiamonds || 0) / Math.max(0.5, c.baseline.atOpen.weeklyHours)),
@@ -106,8 +101,7 @@ export const PLAYBOOK = {
     title: 'Fan club thinning',
     followUpDays: 14,
     priority: 50,
-    ask: 'Get a members-only segment running this week, and have them personally message the top members who have gone quiet. Fan club decay shows up in spending a fortnight later, so this is the window to act.',
-    watchFor: 'Ask whether a specific big supporter has gone. Losing one whale reads the same in the data as losing interest, and needs a completely different response.',
+    concern: 'Their fan club is shrinking. Spending follows membership within a fortnight.',
     success: 'Active fan-club membership back to where it was when we flagged it.',
     test: (m, c) => grade(m.fanClub.activeFans ?? 0, c.baseline.activeFanClubFans ?? 0,
       c.baseline.activeFanClubFans ?? 0, 1),
@@ -117,8 +111,7 @@ export const PLAYBOOK = {
     title: 'Fan club spending less',
     followUpDays: 14,
     priority: 55,
-    ask: 'Their regulars are spending less. Have them run a members-only segment and thank the top supporters by name on stream this week.',
-    watchFor: 'Check whether the drop is spread across members or one person stopping. The data cannot tell you; the creator can.',
+    concern: 'Their regulars are spending less. Worth knowing whether it is the same people or fewer of them.',
     success: 'Fan club diamonds back to 85% of normal.',
     test: (m, c) => grade(m.curr7.fanClubDiamonds, c.baseline.weeklyDiamonds * 0.8,
       c.baseline.atOpen.weeklyDiamonds * 0.8),
@@ -128,8 +121,7 @@ export const PLAYBOOK = {
     title: 'Income resting on too few people',
     followUpDays: 21,
     priority: 40,
-    ask: 'Almost all of their income comes from a handful of people, and that group is shrinking. The work here is widening the base: new-viewer hooks, a lower entry gift tier, and matches to reach new rooms.',
-    watchFor: 'This is not urgent this week but it is how a top creator collapses in a month. Book it in rather than firefighting it later.',
+    concern: 'Almost all their income rests on a handful of people, and that group is shrinking.',
     success: 'Fan club share of diamonds falling while total diamonds hold.',
     test: (m, c) => grade(m.curr7.diamonds, c.baseline.weeklyDiamonds, c.baseline.atOpen.weeklyDiamonds),
   },
@@ -138,8 +130,7 @@ export const PLAYBOOK = {
     title: 'Earnings down',
     followUpDays: 10,
     priority: 65,
-    ask: 'Diamonds are down with no single obvious cause in the numbers. A check-in call is the fastest way to find out what the data cannot see.',
-    watchFor: 'Ask about anything that changed off-platform: their mood, their schedule, another network approaching them.',
+    concern: 'Earnings are down with no single obvious cause in the numbers.',
     success: 'Weekly diamonds back to 85% of normal.',
     test: (m, c) => grade(m.curr7.diamonds, c.baseline.weeklyDiamonds, c.baseline.atOpen.weeklyDiamonds),
   },
@@ -148,8 +139,7 @@ export const PLAYBOOK = {
     title: 'Earnings down for weeks',
     followUpDays: 14,
     priority: 80,
-    ask: 'This has been running for weeks and has become their new normal. Treat it as a rebuild: agree one specific change, and review it together in a fortnight.',
-    watchFor: 'If several weeks of coaching have not moved it, the honest question is whether the format itself has stopped working.',
+    concern: 'Earnings have been down for weeks. This is their new normal unless something changes.',
     success: 'Weekly diamonds back to 85% of their old normal.',
     test: (m, c) => grade(m.curr7.diamonds, c.baseline.weeklyDiamonds, c.baseline.atOpen.weeklyDiamonds),
   },
@@ -158,8 +148,7 @@ export const PLAYBOOK = {
     title: 'Inside 90 days, reachable',
     followUpDays: 14,
     priority: 30,
-    ask: 'Agree the specific lever with them and put a number on it. A creator who knows they need two more LIVE days a week will do it; one told to "push harder" will not.',
-    watchFor: 'Check the ask is actually sustainable. Burning them out at day 50 loses the target and the creator.',
+    concern: 'Inside their first 90 days and behind the 200k pace, but the numbers say they can still get there.',
     success: 'Daily run rate at or above what the target needs.',
     test: (m, c) => {
       const required = c.context?.requiredPerDay ?? 0;

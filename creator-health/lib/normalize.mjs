@@ -19,6 +19,9 @@ export const COLUMNS = {
   diamondsLastMonth: 'Diamonds last month',
   liveDurationLastMonth: 'LIVE duration (hours) last month',
   validLiveDaysLastMonth: 'Valid go LIVE days last month',
+  matches: 'Matches',
+  diamondsFromMatches: 'Diamonds from matches',
+  diamondsFromMultiGuest: 'Diamonds from multi-guest',
   graduationStatus: 'Graduation status',
   tierStatus: 'Tier status',
   newFans: 'New fans',
@@ -121,6 +124,12 @@ export function normalizeRow(raw) {
       newFollowers: parseNumber(get('newFollowers')) ?? 0,
       newFans: parseNumber(get('newFans')) ?? 0,
       fanClubDiamonds: parseNumber(get('fanClubDiamonds')) ?? 0,
+      // Campaign participation. "Matches" is the clearest evidence in the whole
+      // export that a creator has or has not been pushing, and it is the one
+      // cause on the coaches' list the data can confirm outright.
+      matches: parseNumber(get('matches')) ?? 0,
+      diamondsFromMatches: parseNumber(get('diamondsFromMatches')) ?? 0,
+      diamondsFromMultiGuest: parseNumber(get('diamondsFromMultiGuest')) ?? 0,
     },
     // point-in-time levels (not cumulative within the month)
     level: {

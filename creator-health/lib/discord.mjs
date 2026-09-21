@@ -9,6 +9,7 @@
 // Everything below produces the same embeds either way, so a network can start
 // on webhooks and move to a bot without the messages changing.
 import { PLAYBOOK, VERDICT_LABEL } from './playbook.mjs';
+import { CONFIDENCE_LABEL, KIND } from './causes.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -126,6 +127,63 @@ export function caseButtons(caseRecord) {
 
 // --- embeds ------------------------------------------------------------------
 
+/** Month on month, prorated to the same point — or diamonds at risk if we cannot. */
+function monthField(m, caseRecord) {
+  const mom = m.monthOnMonth?.diamonds;
+  if (!mom || mom.change == null) {
+    return { name: 'At risk', value: `~${n(caseRecord.valueAtRisk)} diamonds over 28 days`, inline: true };
+  }
+  return {
+    name: `vs ${m.monthOnMonth.previousMonth}`,
+    value: [
+      `${n(mom.monthToDate)} so far`,
+      `${n(mom.lastMonthToSamePoint)} by day ${m.monthOnMonth.dayOfMonth} last month`,
+      `**${pct(mom.change)}**`,
+    ].join('\n'),
+    inline: true,
+  };
+}
+
+/**
+ * Why, then what to ask. The coaches know how to help — this exists to point
+ * them at the right conversation, not to script it.
+ */
+function causeFields(caseRecord) {
+  const ranked = caseRecord.causes ?? [];
+  if (!ranked.length) return [];
+  const causes = ranked.filter((c) => c.kind !== KIND.LEVER);
+  const levers = ranked.filter((c) => c.kind === KIND.LEVER);
+  const out = [];
+
+  if (causes.length) {
+    out.push({
+      name: '🔍 Most likely why',
+      value: causes.map((c) =>
+        `**${c.label}** _(${CONFIDENCE_LABEL[c.confidence]})_\n${c.evidence.map((e) => `• ${e}`).join('\n')}`,
+      ).join('\n\n').slice(0, 1024),
+    });
+    const top = causes[0];
+    out.push({
+      name: '💬 Ask them',
+      value: top.ask.map((a) => `• ${a}`).join('\n').slice(0, 1024),
+    });
+    if (top.check?.length) {
+      out.push({
+        name: '📎 Before you call',
+        value: `${top.check.join('; ')}${top.resolution ? `\n_${top.resolution}_` : ''}`.slice(0, 1024),
+      });
+    }
+  }
+
+  if (levers.length) {
+    out.push({
+      name: '🚀 Also worth pushing',
+      value: levers.map((l) => `**${l.label}** — ${l.evidence[0]}`).join('\n').slice(0, 1024),
+    });
+  }
+  return out;
+}
+
 function statusLine(c) {
   if (c.status === 'acknowledged') return `🙋 Picked up by ${c.acknowledgedBy ?? 'a coach'}`;
   if (c.status === 'actioned') return `✅ Actioned — checking back on ${c.followUpOn}`;
@@ -166,15 +224,10 @@ export function declineEmbed(caseRecord, alert, { mention = null } = {}) {
           ].join('\n'),
           inline: true,
         },
-        {
-          name: 'At risk',
-          value: `~${n(caseRecord.valueAtRisk)} diamonds over 28 days`,
-          inline: true,
-        },
-        { name: '👉 What to do', value: book.ask.slice(0, 1000) },
-        { name: '👂 Listen for', value: book.watchFor.slice(0, 1000) },
+        monthField(m, caseRecord),
+        ...causeFields(caseRecord),
         { name: `📋 Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
-      ],
+      ].filter(Boolean),
       footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],
@@ -199,9 +252,9 @@ export function opportunityEmbed(caseRecord, row, { mention = null } = {}) {
         { name: 'Needs', value: `${n(ctx.requiredPerDay)}/day`, inline: true },
         { name: 'Converts at', value: `${n(ctx.diamondsPerHour)}/LIVE hour`, inline: true },
         { name: `👉 The lever: ${ctx.lever}`, value: ctx.ask.slice(0, 1000) },
-        { name: '👂 Listen for', value: PLAYBOOK.OPPORTUNITY.watchFor.slice(0, 1000) },
+        ...causeFields(caseRecord),
         { name: '📋 Check back in 14 days', value: PLAYBOOK.OPPORTUNITY.success },
-      ],
+      ].filter(Boolean),
       footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],

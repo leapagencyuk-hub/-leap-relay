@@ -11,7 +11,8 @@
     "eligibility": {
       "minPrev7LiveHours": 2,
       "minPrev28Diamonds": 2000,
-      "minActiveDays28": 4
+      "minActiveDays28": 4,
+      "minExactDaysPerWindow": 5
     },
     "byTier": {
       "core": {

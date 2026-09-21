@@ -177,6 +177,29 @@ not a decline problem.
 
 Alert state persists. A coach is messaged when something is **new** or has
 **worsened**, then not again for 5 days unless it deteriorates further.
+Recoveries are reported once, and a coach is only messaged when something is
+**new** or has **worsened** — then not again for 5 days unless it deteriorates
+further. Volume numbers are in [what a coach receives](#what-a-coach-receives).
+
+### Ranking
+
+Coaches get a sorted list, not an alphabetical one. Rank is severity first, then
+**diamonds at risk** = what the next 28 days lose if this week's rate holds. The
+biggest losses come first.
+
+### Not everyone is eligible
+
+In the sample file, **242 of 806 active creators earned zero diamonds all
+month** and 548 of 798 earned nothing on the day measured. Alerting on them
+would bury the real signal. A creator must have an established rhythm — at
+least 4 valid LIVE days in the trailing 28 — before "deviation" means anything.
+Everyone else belongs on an **activation** list, which is a recruitment problem,
+not a decline problem.
+
+### Not the same alert every morning
+
+Alert state persists. A coach is messaged when something is **new** or has
+**worsened**, then not again for 5 days unless it deteriorates further.
 Recoveries are reported once. Measured over a simulated week of daily runs:
 
 | Day | Open | Messaged | Call-worthy | New | Worsened | Recovered |
@@ -192,6 +215,10 @@ day across 16 coaches — roughly 2–3 each.**
 
 ### What a coach receives
 
+In Discord, one card per creator — the numbers, then why, then what to ask.
+See [the playbook](#the-playbook-find-it-dont-prescribe-it) for a full card.
+The plain-text digest (`cli.mjs report`) remains for anyone not on Discord:
+
 ```
 LEAP creator check — 2026-09-15
 Coach: joshbates93@hotmail.com
@@ -203,25 +230,25 @@ DECLINING — 16 creators, ~569,737 diamonds at risk
    • 2 fewer LIVE days this week — 4 valid LIVE days in the last 7, down from 6.
    • Fan Club diamonds -38% — Fan club gave 14,819 this week vs 24,084 last week.
    • Diamonds -43% — 15,384 this week vs 26,965 last week — 11,581 fewer.
-   • Diamonds -44% below their normal — 15,384 this week against a 27,389 weekly
-     average before this started — this has been running for weeks, not days.
-   At risk: ~31,655 diamonds over the next 28 days if this holds
-   👉 They have dropped 2 LIVE days a week. Getting those back is worth about
-      8,875 diamonds a week. Ask what is blocking those days before talking
-      about content.
 
 EARLY SIGNS — one signal only, worth a message not a call (13)
    🟡 @hex_rated — Fan Club diamonds -33%
    🟡 @georgia.senpai — Fan Club diamonds -35%
-   🟡 @fort26857 — Fan Club diamonds -50%
 ```
 
-(That is a cold start on simulated data — the first run flags everything at
-once. See the volume table below for the steady state.)
+Volume, measured over a simulated week of daily runs:
 
-Every alert ends with a concrete ask derived from which lever actually moved —
-attendance, session length, or conversion — with the diamonds attached so the
-coach can lead with the number.
+| Day | Open | Messaged | Call-worthy | New | Worsened | Recovered |
+|---|---|---|---|---|---|---|
+| 1 (cold start) | 129 | 129 | 68 | 129 | 0 | 0 |
+| 2 | 135 | 36 | 16 | 27 | 9 | 20 |
+| 3 | 130 | 30 | 19 | 16 | 14 | 19 |
+| 4 | 145 | 57 | 32 | 32 | 25 | 17 |
+| 5 | 143 | 40 | 23 | 23 | 17 | 21 |
+
+Day one flags everything at once; after that it settles to **30-57 messages a
+day across 16 coaches — roughly 2-3 each**, before the work-in-progress limit
+trims it further.
 
 ---
 
@@ -351,28 +378,87 @@ Without the cap, the simulated network reached **152 open cases in five days and
 kept climbing**. With it, the caseload settles at **~90 across 16 coaches** and
 holds there.
 
-### The playbook
+### The playbook: find it, don't prescribe it
 
-Each signal maps to a named intervention with a follow-up window and a success
-test. The windows differ on purpose: attendance can recover inside a week because
-it is a scheduling decision, conversion cannot because it needs content changes.
+The coaches already know how to fix these things. What costs them time is
+working out *which* creator needs attention today, and which of the usual
+causes it is this time, across hundreds of creators. So the tool names the area
+of concern, ranks the likely causes against the data, and hands over the
+questions that tell them apart. It does not write the intervention.
 
-| Trigger | Intervention | Check back | Success is |
-|---|---|---|---|
-| Off air | Phone call today; agree a fixed 7-day schedule in writing | 7d | Back live on half their usual days |
-| Dropping LIVE days | Ask what is blocking the days before discussing content | 7d | LIVE days within one of normal |
-| Shorter sessions | Find out if it is burnout, a clash, or a dead room | 10d | Hours back to 85% |
-| Short for weeks | Treat as a reset: agree the schedule you want from here | 10d | Hours back to 85% |
-| Room not converting | Watch a LIVE together: goals, callouts, format, time slot | 14d | Diamonds/hour back to 85% |
-| Fan club thinning | Members-only segment; personally message quiet top fans | 14d | Membership back to flagged level |
-| Fan club spending less | Members-only segment; thank top supporters by name | 14d | Fan club diamonds back to 85% |
-| Income too concentrated | Widen the base: new-viewer hooks, lower gift tier, matches | 21d | Fan club share falling, total holding |
-| Earnings down | Check-in call — the data cannot see what changed off-platform | 10d | Diamonds back to 85% |
-| Down for weeks | Rebuild: one specific change, reviewed in a fortnight | 14d | Diamonds back to 85% |
-| Inside 90 days, reachable | Agree the lever and put a number on it | 14d | Run rate at or above target |
+Each concern sets a follow-up window and a definition of better. The windows
+differ on purpose: attendance can recover inside a week because it is a
+scheduling decision, conversion cannot because it needs content changes.
 
-Every card carries the ask, what to listen for, and what success looks like —
-so the coach is not left to invent the intervention at 9am.
+| Area of concern | Check back | Better looks like |
+|---|---|---|
+| Off air | 7d | Back live on half their usual days |
+| Dropping LIVE days | 7d | LIVE days within one of normal |
+| Shorter sessions | 10d | Hours back to 85% |
+| Short for weeks | 10d | Hours back to 85% |
+| Room not converting | 14d | Diamonds/hour back to 85% |
+| Fan club thinning | 14d | Membership back to flagged level |
+| Fan club spending less | 14d | Fan club diamonds back to 85% |
+| Income too concentrated | 21d | Fan club share falling, total holding |
+| Earnings down | 10d | Diamonds back to 85% |
+| Down for weeks | 14d | Diamonds back to 85% |
+| Inside 90 days, reachable | 14d | Run rate at or above target |
+
+### Why: the nine things that actually go wrong
+
+`lib/causes.mjs` reads the data for the signature of each of the causes LEAP
+sees in practice, and ranks them. Confidence is stated honestly, because a coach
+told "lost gifters" who finds a creator on holiday stops trusting the tool:
+
+- **the data points at this** — the pattern is there directly
+- **consistent with the data** — possible, but not singled out
+- **worth ruling out** — the data cannot see this at all; it is on the list
+  because it is common
+
+| Cause | How the data shows it |
+|---|---|
+| Less hours, schedule slipped | Hours or LIVE days down; days dark |
+| Lost gifters | Fan club membership down — the people left |
+| Gifters ran out of money | Spending down while membership holds — same faces, smaller gifts |
+| No goals or revenue boosting | Diamonds per hour down while hours hold |
+| Stopped campaigns | They used to match, and have not for 21+ days |
+| No short form bringing traffic | New followers down while still streaming |
+| Holidays | A clean stop after a reliable run |
+| Drama | Everything down at once *while hours hold*, or total fans actually falling |
+| Doesn't get coins → growth | Newer creator, hours in, very low conversion |
+
+**Causes and levers are kept apart, and that distinction matters.** Four
+creators in five have never done a campaign, so "not taking part in campaigns"
+as a *cause* is just the base rate wearing a diagnosis hat — it would fire on
+80% of the network and mean nothing. As a *lever* on a creator who is already
+struggling, it is genuinely useful. A cause has to be something that **changed**.
+
+The card leads with **why**, then **what to ask**, then **what to check before
+you call**:
+
+```
+🔍 Most likely why
+   Less hours — schedule has slipped (the data points at this)
+   • 9 days with no LIVE at all
+   • LIVE hours -100% — 0.0h this week vs 16.1h last
+
+💬 Ask them
+   • Do they actually have a written schedule, or is it whenever they feel like it?
+   • If they have one — what got in the way this week?
+   • Is the schedule still realistic for their life right now, or has something changed?
+
+📎 Before you call
+   Their last agreed schedule, and whether this is the first week they have missed it
+
+🚀 Also worth pushing
+   Has never done a campaign or match — no matches on record at all
+```
+
+When nothing matches, the fallback is still questions — "what changed for them
+in the last couple of weeks?", "are they still enjoying it?" — because that is
+more use to a coach than a number that went down.
+
+---
 
 ### Measuring whether it works
 
@@ -401,6 +487,55 @@ Nothing here means much until a few months of cases have accumulated. That is
 precisely why it records from day one.
 
 ---
+
+## Week on week, month on month
+
+Both, from the same daily uploads.
+
+**Week on week** is the 7 days to date against the 7 before, judged against each
+creator's own volatility, plus a weeks 3-8 baseline so slides that have already
+settled stay visible.
+
+**Month on month is prorated.** Comparing month-to-date on the 8th against a
+full previous month would read as a 70% collapse for a creator doing exactly
+what they always do, so the previous month is scaled to the same point before
+comparing:
+
+```
+vs 2026-08
+  531,799 so far
+  98,504 by day 20 last month
+  +440%
+```
+
+It prefers the previous month **accrued from our own snapshots** — exact, and
+works between any two months once the history exists. Before that it falls back
+to the export's own "last month" columns, so it works from day one. Ingesting a
+month-end export (like the August file) gives a real closed month immediately.
+
+### When decline detection switches on
+
+This is worth understanding, because it looks like the tool is doing nothing at
+first, and it isn't.
+
+A back-fill snapshot covering 14 days gets spread evenly across them. That
+totals correctly, but it flattens every day to the same value — so comparing a
+week of *that* against a week of real daily readings produces a swing that says
+nothing about the creator. Early testing produced exactly this: a creator
+flagged at **-73%** whose week was entirely an artifact of even spreading.
+
+So week-on-week rules refuse to fire until **both** comparison windows contain
+at least 5 days we actually observed. `cli.mjs status` says where you are:
+
+```
+decline detection  NOT YET — needs 5 real daily readings in each of two
+                   consecutive weeks. 1 exact day(s) so far;
+                   about 9 more daily upload(s) to go.
+                   The 200k tracker and month-on-month work already.
+```
+
+The 200k tracker, month-on-month and the campaign signals do not depend on
+day-level comparisons, so they work from the first upload.
 
 ## Discord
 
@@ -584,6 +719,7 @@ Everything lives in `config.json` — no code changes needed.
 | `cases.escalateMaxPerRun` | Cap on names in one escalation post |
 | `cases.autoResolveClearDays` | Clear days before a case closes itself |
 | `cases.openCasesForEarlySigns` | Whether single-signal warnings become cases (off by default) |
+| `decline.eligibility.minExactDaysPerWindow` | Real daily readings needed in each week before week-on-week fires |
 
 **Tune against real data.** The thresholds here are derived from the two sample
 files plus a simulation. After a month of real uploads, re-run `rebuild` and
@@ -599,6 +735,13 @@ declines are being missed, lower the tier drop percentages.
   this.
 - **Deltas are daily, not hourly.** Nothing here can see *within* a day. Fine
   for coaching; not a real-time alerting system.
+- **Drama and holidays are barely visible in this export.** Both are on the
+  cause list because they are common, not because the data detects them. They
+  are raised as questions, and the confidence label says so.
+- **Adding a column means re-ingesting.** Snapshots store the normalised rows,
+  so a new field (campaigns, multi-guest) only appears in exports ingested
+  after the change. Re-run `ingest --force` over the original files if you
+  still have them.
 - **A missed upload blurs, it does not break.** The days in a gap share their
   totals evenly, which keeps 7- and 28-day windows correct but makes those
   individual days approximate. `cli.mjs status` lists every gap.

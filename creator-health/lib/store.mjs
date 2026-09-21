@@ -7,6 +7,7 @@ import path from 'node:path';
 export const CUMULATIVE_FIELDS = [
   'diamonds', 'liveHours', 'validLiveDays', 'liveStreams',
   'newFollowers', 'newFans', 'fanClubDiamonds',
+  'matches', 'diamondsFromMatches', 'diamondsFromMultiGuest',
 ];
 export const LEVEL_FIELDS = ['totalFans', 'activeFanClubFans', 'fanContribution'];
 
@@ -118,6 +119,8 @@ export function applySnapshot(series, snapshot) {
     }
     Object.assign(c, {
       group: row.group, manager: row.manager,
+      // Kept current so month-on-month has a denominator from day one.
+      lastMonth: row.lastMonth,
       joinDate: row.joinDate ?? c.joinDate,
       lastSeen: asOf, quitOn: null,
       graduationStatus: row.graduationStatus,

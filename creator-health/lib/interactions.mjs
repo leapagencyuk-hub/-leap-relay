@@ -103,7 +103,7 @@ function actionModal(caseRecord) {
           style: 2,
           required: true,
           max_length: 500,
-          placeholder: book.ask.slice(0, 100),
+          placeholder: 'Called / messaged them, and what came of it',
         }],
       }],
     },

@@ -404,6 +404,6 @@ test('the playbook picks the most urgent signal present', () => {
   for (const [id, entry] of Object.entries(PLAYBOOK)) {
     assert.equal(entry.id, id, `${id} is keyed by its own id`);
     assert.ok(entry.followUpDays > 0 && typeof entry.test === 'function', `${id} is measurable`);
-    assert.ok(entry.ask && entry.success, `${id} says what to do and what success is`);
+    assert.ok(entry.concern && entry.success, `${id} names the concern and what success is`);
   }
 });
