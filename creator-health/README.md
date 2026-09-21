@@ -582,13 +582,37 @@ are not moving their creators, and whether the data itself is healthy.
 
 ```
 LEAP creator overview — 2026-09-20
-  Sent today        4 card(s) · Team Alpha 2 · Team Indigo 1 · Team Charlie 1
-  Caseload          4 open · 4 new · 0 closed
-  At risk           ~0 diamonds over 28 days · 819 creators tracked
-  First 90 days     14 on track · 310 behind · 6 on the boost list
-  Data              Last export 2026-09-20 · 17 days never uploaded
-                       Decline detection: off — needs ~9 more daily uploads
+
+  Sent today        59 cards · Team Alpha 10 · Team Bravo 8 · Team Delta 8 ...
+  Caseload          59 open · 59 new · 18 held (coaches at their limit)
+  At risk           ~6,620,769 diamonds over 28 days · 819 creators tracked
+
+  Urgent — needs a call today (43)
+    @iamscone   · Not in a group · ~679,113 at risk
+    @gh0s733    · Team Bravo     · ~375,961 at risk
+    @justmelau  · Team Alpha     · ~302,133 at risk
+
+  Where the caseload sits
+    Not in a group — 5 open, 2 urgent  · ~1,139,058 at risk
+    Team Bravo     — 8 open, 7 urgent  ·   ~919,834 at risk
+    Team Alpha     — 10 open, 5 urgent ·   ~829,347 at risk
+
+  Biggest losses
+    @iamscone (Not in a group) — -78% on last month, ~679,113 at risk
+
+  Data
+    Last export 2026-09-20 · 17 days never uploaded
+    Month on month: on (vs 2026-08)
+    Week on week: needs ~9 more daily uploads
 ```
+
+Every figure is quoted on the basis its own alert was raised on. A month-raised
+case shows its month change, not a weekly one — an earlier version printed
+"+326%" beside "urgent" because it reached for weekly data the alert had
+deliberately ignored, which reads as the tool being broken.
+
+The two detectors are reported separately for the same reason: "decline
+detection: off" above 43 urgent cases is a contradiction, not a status.
 
 **Once a day is enforced**, not assumed: `run` may fire more than once (a
 retried upload, a manual re-run) and reposting the same overview is how a
