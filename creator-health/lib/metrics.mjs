@@ -77,6 +77,19 @@ function previousMonthKey(iso) {
   return m === 1 ? `${y - 1}-12` : `${y}-${String(m - 1).padStart(2, '0')}`;
 }
 
+/**
+ * Totals per calendar month. Passing a null field counts days instead, which
+ * is how we tell a genuinely quiet month from one we simply did not watch.
+ */
+function monthlyTotals(byDay, field) {
+  const out = {};
+  for (const [day, v] of byDay) {
+    const key = day.slice(0, 7);
+    out[key] = (out[key] ?? 0) + (field ? (v[field] ?? 0) : 1);
+  }
+  return out;
+}
+
 /** Everything we hold for one calendar month, with how much of it we saw. */
 function monthTotals(byDay, monthKey) {
   const totals = Object.fromEntries(CUMULATIVE_FIELDS.map((f) => [f, 0]));
@@ -295,6 +308,10 @@ export function computeMetrics(creator, endDate) {
       share7: curr7.diamonds > 0 ? curr7.fanClubDiamonds / curr7.diamonds : null,
     },
     monthOnMonth,
+    // Per calendar month, because the 200k target is a monthly one: a creator
+    // has to land 200,000 inside a single month, not accumulate it over three.
+    monthlyDiamonds: monthlyTotals(byDay, 'diamonds'),
+    monthlyCoverage: monthlyTotals(byDay, null),
     // Campaign participation. Coaches ask "when did they last push?" — this is
     // the answer, plus how much of their income it is worth.
     lastMatch: lastMovement(creator, endDate, 'matches'),

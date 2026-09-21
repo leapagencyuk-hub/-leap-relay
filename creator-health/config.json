@@ -55,30 +55,15 @@
   "ramp": {
     "targetDiamonds": 200000,
     "windowDays": 90,
-    "curve": [
-      {
-        "day": 0,
-        "pct": 0
-      },
-      {
-        "day": 30,
-        "pct": 0.15
-      },
-      {
-        "day": 60,
-        "pct": 0.45
-      },
-      {
-        "day": 90,
-        "pct": 1
-      }
-    ],
     "atRiskRatio": 0.6,
     "sustainableHoursPerDay": 4,
     "maxHoursPerDay": 6,
     "sustainableDaysPerWeek": 6,
     "spotlightCount": 20,
-    "minRecentLiveDays": 2
+    "minRecentLiveDays": 2,
+    "_target": "200,000 diamonds inside a single calendar month. The first 90 days give roughly three attempts.",
+    "minDaysLeftToPush": 7,
+    "reachableRatio": 0.6
   },
   "digest": {
     "maxAlertsPerCoach": 12,

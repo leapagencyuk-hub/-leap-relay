@@ -154,9 +154,9 @@ from 58% to 79%.
 **3. One signal is a nudge; two that agree is a phone call.** A single metric
 moving is noise more often than it is a problem. The output is graded:
 
-- 🔴 **urgent** — a leading *and* a confirming signal agree, or one severe signal
-- 🟠 **warn** — two signals agree
-- 🟡 **early** — one signal only; a one-line mention, not an interruption
+- **urgent** — a leading *and* a confirming signal agree, or one severe signal
+- **warn** — two signals agree
+- **early** — one signal only; a one-line mention, not an interruption
 
 ### Ranking
 
@@ -225,15 +225,15 @@ Coach: joshbates93@hotmail.com
 
 DECLINING — 16 creators, ~569,737 diamonds at risk
 
-🔴 @sur3shot — Team Alpha, day 503
+@sur3shot — Team Alpha, day 503
    This week: 15,384 diamonds (-43%) · 8.0h LIVE (-25%) · 4 LIVE days
    • 2 fewer LIVE days this week — 4 valid LIVE days in the last 7, down from 6.
    • Fan Club diamonds -38% — Fan club gave 14,819 this week vs 24,084 last week.
    • Diamonds -43% — 15,384 this week vs 26,965 last week — 11,581 fewer.
 
 EARLY SIGNS — one signal only, worth a message not a call (13)
-   🟡 @hex_rated — Fan Club diamonds -33%
-   🟡 @georgia.senpai — Fan Club diamonds -35%
+   @hex_rated — Fan Club diamonds -33%
+   @georgia.senpai — Fan Club diamonds -35%
 ```
 
 Volume, measured over a simulated week of daily runs:
@@ -252,71 +252,73 @@ trims it further.
 
 ---
 
-## The first 90 days: 200,000 diamonds
+## The 200k target
 
-### Tracking
+**200,000 diamonds inside a single calendar month.** Not a running total over
+90 days — a creator has to land it in one month, and their first 90 days give
+them roughly three attempts.
 
-`Days since joining` is in the export, so the cohort is exact. Cumulative
-diamonds since joining is not, so it is accrued daily from the deltas.
+That reset matters. A creator who manages 26,000 in August starts September on
+zero, not 174,000 behind. Each month is a fresh attempt, and the coaching
+conversation is about *this* month, which is the only one they can still change.
 
-For creators who joined **before** this tool started, the pipeline reports
-`blindDays` and marks the figure `exact: false` rather than quietly guessing.
-One month of otherwise-lost history is recovered from the `Diamonds last month`
-column on a creator's first snapshot. From a clean start every figure is exact.
+It also makes the tracking far more reliable than a cumulative target would be.
+Every attempt is measured inside one calendar month, which is exactly the
+window the export reports, so nothing has to be accrued across a period the
+tool never watched. No blind days, no estimates.
 
-### The pacing curve
+### What is tracked
 
-Straight-line pacing (2,222/day from day one) is wrong — new creators ramp, and
-it would flag every promising creator as failing in week one. The default curve:
+| | |
+|---|---|
+| Attempt months | Every calendar month their first 90 days touch |
+| Viable | At least 20 days available — joining on the 28th is not an attempt |
+| This month | Month-to-date against a prorated pace target |
+| Projection | Month-to-date scaled to the full month at this week's rate |
+| Earlier months | What they actually did, so a near miss reads differently to a flat month |
+| Attempts left | Whole months still ahead inside the window |
 
-| Milestone | Target | Share |
-|---|---|---|
-| Day 30 | 30,000 | 15% |
-| Day 60 | 90,000 | 45% |
-| Day 90 | 200,000 | 100% |
+Status is `ACHIEVED` (any month cleared 200k) / `ON_TRACK` (this month projects
+over) / `AT_RISK` / `OFF_TRACK` / `MISSED` (window closed, never landed one).
 
-Interpolated between milestones and fully configurable. Status is `ON_TRACK` /
-`AT_RISK` / `OFF_TRACK` / `ACHIEVED` / `MISSED` against that curve, shown
-alongside the projection from the current run rate — because "ahead of pace but
-the current rate finishes 93,000 short" is a real and important state.
+A month we barely watched is **not** recorded as a failed attempt — coverage
+below 80% of its days is marked unobserved rather than counted as a miss.
 
 ### Who has the potential
 
-This is the part that answers "how do we boost them." Two creators both on
-30,000 at day 40 are not the same creator:
+Two creators both on 30,000 at day 40 are not the same creator:
 
-- 4,800 diamonds/hour, streaming 1.2h a day → **massive headroom**
-- 180 diamonds/hour, streaming 7h a day → already maxed out
+- 4,800 diamonds/hour, streaming 1.2h a day — **massive headroom**
+- 180 diamonds/hour, streaming 7h a day — already maxed out
 
 So potential is scored as **conversion rate × unused sustainable hours × days
-remaining** — not on current output. Then the gap is closed with the cheapest
-lever first:
-
-1. **days** — add LIVE days at their existing session length (cheapest, biggest early win)
-2. **hours** — lengthen sessions, capped at what is sustainable
-3. **rate** — improve diamonds per hour; slowest to move, needs real coaching
-
-Each produces a specific ask:
+left in the month**, not on current output. Then the gap is closed with the
+cheapest lever first: **days** (add LIVE days at their existing session length),
+**hours** (lengthen sessions, capped at sustainable), **rate** (improve
+diamonds per hour — slowest, needs real coaching).
 
 ```
-🔴 @ohburnzyy — day 42 of 90 (48 left) — OFF TRACK
-   32,013 / 200,000 (16%) · pace target by now 54,000
-   Doing 1,317/day, needs 3,500/day · at 1,171 diamonds per LIVE hour
-   On this week's rate they finish day 90 on 95,250 — 104,750 short
-   👉 Needs about 3.0h LIVE a day (currently 0.7h) at their 1,171 diamonds/hour.
-      Build to 6 days a week first, then lengthen sessions.
+@baron_after_dark can still hit 200k in September
+
+  91,227 / 200,000 this month, with 10 days left.
+  At this week's rate they finish on 136,841 — 63,159 short.
+  Day 25 of 90: 2 further months to try after this one.
+
+  Doing          4,231/day
+  Needs          10,877/day
+  Converts at    7,310/LIVE hour
+
+  The lever: days
+    Add 4 LIVE days a week at their usual 2.1h. That alone covers the gap.
+
+  Earlier months
+    2026-08: 26,656
 ```
 
-The **boost list** is the short version: behind on the curve, but with the
-conversion rate and unused hours to actually get there. In the sample data only
-~20 of 336 creators inside 90 days are worth a coach's week — the rest are
-either already on track or need activation before they need a target.
-
-Sober note: median month-to-date diamonds for a creator inside 90 days is **47**.
-200k in 90 days is a genuine stretch for all but a handful. The tool's job is to
-find that handful early and put the coaching hours there.
-
----
+The **boost list** is the short version: behind this month's pace, enough days
+left in the month to act, and the rate and unused hours to actually land it.
+A creator with three days left in the month is not on it — there is nothing a
+coach can do by then that the numbers would show.
 
 ## The support system
 
@@ -437,20 +439,20 @@ The card leads with **why**, then **what to ask**, then **what to check before
 you call**:
 
 ```
-🔍 Most likely why
+Most likely why
    Less hours — schedule has slipped (the data points at this)
    • 9 days with no LIVE at all
    • LIVE hours -100% — 0.0h this week vs 16.1h last
 
-💬 Ask them
+Ask them
    • Do they actually have a written schedule, or is it whenever they feel like it?
    • If they have one — what got in the way this week?
    • Is the schedule still realistic for their life right now, or has something changed?
 
-📎 Before you call
+Before you call
    Their last agreed schedule, and whether this is the first week they have missed it
 
-🚀 Also worth pushing
+Also worth pushing
    Has never done a campaign or match — no matches on record at all
 ```
 
@@ -559,11 +561,11 @@ are not moving their creators, and whether the data itself is healthy.
 
 ```
 LEAP creator overview — 2026-09-20
-  📬 Sent today        4 card(s) · Team Alpha 2 · Team Indigo 1 · Team Charlie 1
-  📂 Caseload          4 open · 4 new · 0 closed
-  💎 At risk           ~0 diamonds over 28 days · 819 creators tracked
-  🎯 First 90 days     14 on track · 310 behind · 6 on the boost list
-  🩺 Data              Last export 2026-09-20 · ⚠️ 17 days never uploaded
+  Sent today        4 card(s) · Team Alpha 2 · Team Indigo 1 · Team Charlie 1
+  Caseload          4 open · 4 new · 0 closed
+  At risk           ~0 diamonds over 28 days · 819 creators tracked
+  First 90 days     14 on track · 310 behind · 6 on the boost list
+  Data              Last export 2026-09-20 · 17 days never uploaded
                        Decline detection: off — needs ~9 more daily uploads
 ```
 
@@ -632,10 +634,10 @@ honestly:
   Team Alpha                233  channel 111111111111110000
                                  ↳ 2 coaches share this channel: josh@…, amy@…
   Team Charlie              127  channel 111111111111110002
-  Not in a group             48  ⚠️  NOWHERE
-  Surge Agency               23  ⚠️  NOWHERE
+  Not in a group             48   NOWHERE
+  Surge Agency               23   NOWHERE
 
-⚠️  5 team(s) with no channel, covering 84 creators
+ 5 team(s) with no channel, covering 84 creators
 ```
 
 Routing falls back team → coach → default channel, so a team with no channel
@@ -966,6 +968,8 @@ Everything lives in `config.json` — no code changes needed.
 | `ramp.sustainableHoursPerDay` | What counts as a reasonable ask |
 | `ramp.spotlightCount` | How many creators on the weekly boost list |
 | `ramp.minRecentLiveDays` | LIVE days in the last week before a creator can be "boosted" |
+| `ramp.minDaysLeftToPush` | Days left in the month before a push is still worth making |
+| `ramp.reachableRatio` | How close to 200k the month must be able to get to qualify |
 | `cases.maxOpenPerCoach` | The work-in-progress limit — the most important number here |
 | `cases.maxOpenOpportunitiesPerCoach` | Boost-list cases per coach |
 | `cases.escalateAfterDays` | Days unacknowledged before the managers' channel hears |
@@ -990,9 +994,10 @@ declines are being missed, lower the tier drop percentages.
 
 ## Known limits
 
-- **Pre-tracking history is a hole.** Creators who joined before day one of the
-  tool carry `blindDays` and `exact: false` on the 200k figure. Only time fixes
-  this.
+- **Months before tracking started are unknown.** An earlier attempt we did not
+  watch is marked unobserved rather than counted as a miss, so a creator may
+  have landed a 200k month we cannot see. Only time fixes this, and the current
+  month is always exact.
 - **Deltas are daily, not hourly.** Nothing here can see *within* a day. Fine
   for coaching; not a real-time alerting system.
 - **Drama and holidays are barely visible in this export.** Both are on the

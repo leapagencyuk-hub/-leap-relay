@@ -6,7 +6,7 @@ import path from 'node:path';
 import { parseDurationHours, parseRatio, parsePeriod, normalizeExport } from '../lib/normalize.mjs';
 import { Store, applySnapshot } from '../lib/store.mjs';
 import { computeMetrics } from '../lib/metrics.mjs';
-import { curveTarget, evaluateRamp } from '../lib/ramp.mjs';
+import { attemptMonths, evaluateRamp } from '../lib/ramp.mjs';
 import { readSheetObjects } from '../lib/xlsx.mjs';
 
 const tmp = () => fs.mkdtempSync(path.join(os.tmpdir(), 'ch-'));
@@ -112,34 +112,99 @@ test('a dark streak counts consecutive days with no valid LIVE day', () => {
   assert.equal(m.darkStreak, 3);
 });
 
-test('the ramp curve front-loads nothing and lands on the target', () => {
-  const cfg = { targetDiamonds: 200000, curve: [
-    { day: 0, pct: 0 }, { day: 30, pct: 0.15 }, { day: 60, pct: 0.45 }, { day: 90, pct: 1 }] };
-  assert.equal(curveTarget(0, cfg), 0);
-  assert.equal(curveTarget(30, cfg), 30000);
-  assert.equal(curveTarget(60, cfg), 90000);
-  assert.equal(curveTarget(90, cfg), 200000);
-  assert.equal(curveTarget(45, cfg), 60000, 'interpolates between milestones');
-  assert.ok(curveTarget(15, cfg) < curveTarget(75, cfg) / 2, 'later days carry more of the target');
+test('the attempt months are the calendar months their first 90 days touch', () => {
+  // Joining mid-month still gives that month as an attempt, but a creator who
+  // joins on the 28th has three days of it — counted, not called viable.
+  const mid = attemptMonths('2026-09-10', 90);
+  assert.deepEqual(mid.map((m) => m.key), ['2026-09', '2026-10', '2026-11', '2026-12']);
+  assert.equal(mid[0].available, 21, 'the 10th to the 30th');
+  assert.equal(mid[0].viable, true);
+
+  const late = attemptMonths('2026-09-28', 90);
+  assert.equal(late[0].available, 3);
+  assert.equal(late[0].viable, false, 'three days is not a real attempt');
+
+  assert.deepEqual(attemptMonths('2026-12-01', 90).map((m) => m.key),
+    ['2026-12', '2027-01', '2027-02', '2027-03'], 'the window rolls over the year end');
 });
 
-test('the ramp tracker declares blind days instead of inventing them', () => {
-  const series = { creators: {}, lastAsOf: null };
-  // Joined in July; we only start seeing them in September.
-  applySnapshot(series, snap('2026-09-10', '2026-09-01', { diamonds: 20000 },
-    { joinDate: '2026-07-15', daysSinceJoining: 57 }));
-  applySnapshot(series, snap('2026-09-11', '2026-09-01', { diamonds: 22000 },
-    { joinDate: '2026-07-15', daysSinceJoining: 58 }));
-  const c = series.creators['id:1'];
-  const metricsByKey = new Map([[c.key, computeMetrics(c, '2026-09-11')]]);
-  const [row] = evaluateRamp([c], metricsByKey, {
-    ramp: { targetDiamonds: 200000, windowDays: 90, atRiskRatio: 0.6,
-      curve: [{ day: 0, pct: 0 }, { day: 30, pct: 0.15 }, { day: 60, pct: 0.45 }, { day: 90, pct: 1 }],
-      sustainableHoursPerDay: 4, maxHoursPerDay: 6, sustainableDaysPerWeek: 6, spotlightCount: 20 },
-  });
-  assert.equal(row.exact, false);
-  assert.ok(row.blindDays > 0, 'the months before tracking are reported, not guessed');
-  assert.equal(row.earned, 22000, 'only what was actually observed is counted');
+test('the monthly target resets, so a bad month is not carried forward', () => {
+  const config = {
+    ramp: {
+      targetDiamonds: 200000, windowDays: 90, atRiskRatio: 0.6,
+      sustainableHoursPerDay: 4, maxHoursPerDay: 6, sustainableDaysPerWeek: 6,
+      spotlightCount: 20, minRecentLiveDays: 2, minDaysLeftToPush: 7, reachableRatio: 0.6,
+    },
+  };
+  const creator = { key: 'id:1', username: 'x', joinDate: '2026-08-01', quitOn: null, group: 'T', manager: 'c@leap' };
+  // August was a write-off; September is halfway through and on pace.
+  const metrics = {
+    endDate: '2026-09-15', daysSinceJoining: 45,
+    curr7: { diamonds: 50000, liveHours: 20, validLiveDays: 5 },
+    curr28: { diamonds: 200000, liveHours: 80 },
+    dailyDiamonds7: 7000, diamondsPerHour28: 2500, diamondsPerHour7: 2500,
+    hoursPerActiveDay28: 4, historyDays: 28,
+    monthlyDiamonds: { '2026-08': 20000, '2026-09': 105000 },
+    monthlyCoverage: { '2026-08': 31, '2026-09': 15 },
+    monthOnMonth: { diamonds: { monthToDate: 105000 } },
+  };
+  const [row] = evaluateRamp([creator], new Map([['id:1', metrics]]), config);
+
+  assert.equal(row.month, '2026-09');
+  assert.equal(row.monthToDate, 105000, 'August does not count against September');
+  assert.equal(row.paceTarget, 100000, 'halfway through a 30-day month');
+  assert.equal(row.projected, 210000);
+  assert.equal(row.status, 'ON_TRACK');
+  assert.equal(row.bestMonth.key, '2026-08');
+  assert.equal(row.attemptsLeft, 1, 'October is still inside the 90 days');
+});
+
+test('landing 200k in any month counts, even if later months are worse', () => {
+  const config = {
+    ramp: {
+      targetDiamonds: 200000, windowDays: 90, atRiskRatio: 0.6,
+      sustainableHoursPerDay: 4, maxHoursPerDay: 6, sustainableDaysPerWeek: 6,
+      spotlightCount: 20, minRecentLiveDays: 2, minDaysLeftToPush: 7, reachableRatio: 0.6,
+    },
+  };
+  const creator = { key: 'id:1', username: 'x', joinDate: '2026-08-01', quitOn: null };
+  const metrics = {
+    endDate: '2026-09-15', daysSinceJoining: 45,
+    curr7: { diamonds: 1000, liveHours: 5, validLiveDays: 2 },
+    curr28: { diamonds: 5000, liveHours: 20 },
+    dailyDiamonds7: 143, diamondsPerHour28: 250, diamondsPerHour7: 200,
+    hoursPerActiveDay28: 2, historyDays: 28,
+    monthlyDiamonds: { '2026-08': 240000, '2026-09': 2000 },
+    monthlyCoverage: { '2026-08': 31, '2026-09': 15 },
+    monthOnMonth: { diamonds: { monthToDate: 2000 } },
+  };
+  const [row] = evaluateRamp([creator], new Map([['id:1', metrics]]), config);
+  assert.equal(row.status, 'ACHIEVED');
+  assert.equal(row.achievedIn, '2026-08');
+});
+
+test('a month we barely watched is not recorded as a failed attempt', () => {
+  const config = {
+    ramp: {
+      targetDiamonds: 200000, windowDays: 90, atRiskRatio: 0.6,
+      sustainableHoursPerDay: 4, maxHoursPerDay: 6, sustainableDaysPerWeek: 6,
+      spotlightCount: 20, minRecentLiveDays: 2, minDaysLeftToPush: 7, reachableRatio: 0.6,
+    },
+  };
+  const creator = { key: 'id:1', username: 'x', joinDate: '2026-08-01', quitOn: null };
+  const metrics = {
+    endDate: '2026-09-15', daysSinceJoining: 45,
+    curr7: { diamonds: 10000, liveHours: 10, validLiveDays: 4 },
+    curr28: { diamonds: 40000, liveHours: 40 },
+    dailyDiamonds7: 1429, diamondsPerHour28: 1000, diamondsPerHour7: 1000,
+    hoursPerActiveDay28: 2.5, historyDays: 28,
+    monthlyDiamonds: { '2026-08': 3000, '2026-09': 20000 },
+    monthlyCoverage: { '2026-08': 2, '2026-09': 15 },
+    monthOnMonth: { diamonds: { monthToDate: 20000 } },
+  };
+  const [row] = evaluateRamp([creator], new Map([['id:1', metrics]]), config);
+  assert.equal(row.pastAttempts.find((a) => a.key === '2026-08').observed, false,
+    'two days of coverage cannot judge a month');
 });
 
 test('quit rows are matched by username because their ID is masked', () => {

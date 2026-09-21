@@ -133,7 +133,7 @@ function cmdStatus() {
   const dates = store.listSnapshotDates();
   const series = store.readSeries();
   console.log(`data dir   ${config.dataDir}`);
-  console.log(`snapshots  ${dates.length}${dates.length ? ` (${dates[0]} → ${dates[dates.length - 1]})` : ''}`);
+  console.log(`snapshots  ${dates.length}${dates.length ? ` (${dates[0]} ${dates[dates.length - 1]})` : ''}`);
   console.log(`creators   ${Object.keys(series.creators).length}`);
   if (!dates.length) return;
 
@@ -170,9 +170,9 @@ function cmdStatus() {
 
 // --- the daily run and the caseload -----------------------------------------
 
-const STATE_ICON = {
-  [STATUS.OPEN]: '⏳', [STATUS.ACKNOWLEDGED]: '🙋', [STATUS.ACTIONED]: '✅',
-  [STATUS.RESOLVED]: '🎉', [STATUS.SNOOZED]: '😴', [STATUS.LOST]: '⚪',
+const STATE_LABEL = {
+  [STATUS.OPEN]: 'open', [STATUS.ACKNOWLEDGED]: 'picked up', [STATUS.ACTIONED]: 'actioned',
+  [STATUS.RESOLVED]: 'resolved', [STATUS.SNOOZED]: 'snoozed', [STATUS.LOST]: 'left',
 };
 
 async function cmdRun() {
@@ -205,11 +205,11 @@ async function cmdRun() {
     const delivered = delivery.sent.filter((x) => x.ok && !x.skipped);
     console.log(`\n  Discord: ${delivered.length} message(s)${dry ? ' previewed' : ' sent'}${failed.length ? `, ${failed.length} failed` : ''}`);
     for (const x of skipped) console.log(`    · ${x.label} skipped — ${x.skipped}`);
-    for (const f of failed.slice(0, 5)) console.log(`    ✗ ${f.label} → ${f.coach}: ${f.error}`);
+    for (const f of failed.slice(0, 5)) console.log(`    ${f.label} ${f.coach}: ${f.error}`);
   }
   if (dry && flag('preview')) {
     for (const p of delivery.previews.slice(0, Number(option('limit', 3)))) {
-      console.log(`\n--- ${p.label} → ${p.coach} ---`);
+      console.log(`\n--- ${p.label} ${p.coach} ---`);
       console.log(JSON.stringify(p.payload, null, 2));
     }
   }
@@ -226,7 +226,7 @@ function cmdCases() {
   console.log(`${rows.length} case${rows.length === 1 ? '' : 's'}\n`);
   for (const c of rows) {
     const book = PLAYBOOK[c.playbookId];
-    console.log(`${STATE_ICON[c.status] ?? '•'} ${c.id.padEnd(16)} @${c.username.padEnd(22)} ${(book?.title ?? c.playbookId).padEnd(28)} ${c.coach}`);
+    console.log(`${(STATE_LABEL[c.status] ?? c.status).padEnd(10)} ${c.id.padEnd(16)} @${c.username.padEnd(22)} ${(book?.title ?? c.playbookId).padEnd(28)} ${c.coach}`);
     console.log(`   opened ${c.openedOn}${c.followUpOn ? ` · follow-up ${c.followUpOn}` : ''}${c.valueAtRisk ? ` · ~${c.valueAtRisk.toLocaleString('en-GB')} at risk` : ''}${c.outcome ? ` · ${VERDICT_LABEL[c.outcome.verdict]}` : ''}`);
   }
 }
@@ -240,7 +240,7 @@ function cmdCase() {
   const book = PLAYBOOK[c.playbookId];
   console.log(`${c.id}  @${c.username}  ${c.kind}`);
   console.log(`  coach     ${c.coach}   group ${c.group ?? '—'}`);
-  console.log(`  status    ${STATE_ICON[c.status] ?? ''} ${c.status}${c.followUpOn ? ` (follow-up ${c.followUpOn})` : ''}`);
+  console.log(`  status    ${STATE_LABEL[c.status] ?? c.status}${c.followUpOn ? ` (follow-up ${c.followUpOn})` : ''}`);
   console.log(`  opened    ${c.openedOn}   signals: ${c.signals.join(', ')}`);
   console.log(`  concern   ${book?.title ?? c.playbookId} — ${book?.concern ?? ''}`);
   for (const cause of c.causes ?? []) {
@@ -270,7 +270,7 @@ function cmdEffectiveness() {
   if (!anyLogged) {
     // Without button clicks nothing records that a coach acted, so every case
     // lands in "left alone" and the lift column would be a lie.
-    console.log('  ⚠️  No coach actions are being logged, so there is no control group and');
+    console.log('   No coach actions are being logged, so there is no control group and');
     console.log('     nothing here separates coaching from natural recovery. What you are');
     console.log('     seeing is the recovery rate after a creator was flagged, whoever did');
     console.log('     what. For per-team outcomes use: cli.mjs teams\n');
@@ -333,7 +333,7 @@ function cmdDiscordScaffold() {
       mode: webhookMode ? 'webhook' : 'bot',
       routeBy: 'group',
       ...(webhookMode
-        ? { _webhooks: 'Channel → Edit Channel → Integrations → Webhooks → New Webhook → Copy URL.' }
+        ? { _webhooks: 'Channel Edit Channel Integrations Webhooks New Webhook Copy URL.' }
         : {
           botToken: 'env:DISCORD_BOT_TOKEN',
           publicKey: 'env:DISCORD_PUBLIC_KEY',
@@ -424,7 +424,7 @@ function cmdDiscordEnv() {
     console.log('Nothing to lift — routes.json already refers to environment variables only.');
     return;
   }
-  console.log('# Set these on the host (Render: Environment → Add Environment Variable).');
+  console.log('# Set these on the host (Render: Environment Add Environment Variable).');
   console.log('# Treat them like passwords: a webhook URL is enough to post to that channel.\n');
   for (const [k, v] of env) console.log(`${k}=${v}`);
   console.log(`\n# --- routes.deploy.json (safe to commit: no secrets) ---`);
@@ -457,11 +457,11 @@ function cmdDiscordCheck() {
     const route = routeFor({ coach: sample?.manager, group: g.label }, discord);
     const dest = route.webhook ? `webhook …${route.webhook.slice(-6)}`
       : route.channelId ? `channel ${route.channelId}`
-        : route.userId ? 'DM' : '⚠️  NOWHERE';
+        : route.userId ? 'DM' : ' NOWHERE';
     const via = route.matchedGroup ? '' : route.matchedCoach ? ' (via coach)' : route.viaDefault ? ' (default)' : '';
     console.log(`  ${g.label.padEnd(20)} ${String(g.creators).padStart(8)}  ${dest}${via}`);
     if (g.coaches.length > 1) {
-      console.log(`  ${''.padEnd(20)} ${''.padStart(8)}  ↳ ${g.coaches.length} coaches share this channel: ${g.coaches.join(', ')}`);
+      console.log(`  ${''.padEnd(20)} ${''.padStart(8)}  ${g.coaches.length} coaches share this channel: ${g.coaches.join(', ')}`);
     }
   }
 
@@ -473,18 +473,18 @@ function cmdDiscordCheck() {
   const missingCreators = missing.reduce((n, g) => n + g.creators, 0);
   console.log('');
   if (missing.length) {
-    console.log(`⚠️  ${missing.length} monitored team(s) with no channel, covering ${missingCreators} creators:`);
+    console.log(` ${missing.length} monitored team(s) with no channel, covering ${missingCreators} creators:`);
     for (const g of missing) console.log(`     ${g.label} (${g.creators})`);
     console.log('   They fall back to the default channel, or go nowhere if there is not one.');
   } else {
-    console.log(`✅ every monitored team has a destination (${live.length} team(s))`);
+    console.log(`every monitored team has a destination (${live.length} team(s))`);
   }
   if (ignoredCreators) {
-    console.log(`\nℹ️  ${ignoredCreators} creator(s) in ${ignored.size} team(s) are not monitored by choice.`);
+    console.log(`\nℹ ${ignoredCreators} creator(s) in ${ignored.size} team(s) are not monitored by choice.`);
     console.log('   Their data still accrues — remove them from monitoring.ignoreGroups to switch them on.');
   }
   if (noMention.length) {
-    console.log(`\nℹ️  ${noMention.length} coach(es) with no @mention set — their cards post without a ping:`);
+    console.log(`\nℹ ${noMention.length} coach(es) with no @mention set — their cards post without a ping:`);
     for (const e of noMention) console.log(`     ${e}`);
   }
 }
@@ -507,7 +507,7 @@ function cmdTeams() {
   console.log('  stale  = the case ran to the limit still down — nothing worked, or nothing was tried');
   const worrying = rows.filter((r) => r.closed >= 3 && (r.staleRate ?? 0) > 0.6);
   if (worrying.length) {
-    console.log(`\n⚠️  ${worrying.length} team(s) where most flagged creators never recovered:`);
+    console.log(`\n ${worrying.length} team(s) where most flagged creators never recovered:`);
     for (const r of worrying) {
       console.log(`     ${r.team} — ${r.wentStale}/${r.closed} went stale (${r.coaches.join(', ')})`);
     }

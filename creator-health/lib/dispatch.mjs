@@ -175,7 +175,7 @@ export async function dispatch({
     if (!alert) continue;
     const route = routeFor(c, discordConfig);
     const payload = declineEmbed(c, alert, { mention: route.mention, buttons });
-    payload.embeds[0].title = `⏫ ${payload.embeds[0].title} — getting worse`;
+    payload.embeds[0].title = `${payload.embeds[0].title} (getting worse)`;
     await send('case-worsened', c.coach, route, payload, c);
   }
 

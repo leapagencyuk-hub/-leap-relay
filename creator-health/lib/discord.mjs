@@ -13,6 +13,8 @@ import { CONFIDENCE_LABEL, KIND } from './causes.mjs';
 
 const API = 'https://discord.com/api/v10';
 
+export const SEVERITY_LABEL = { urgent: 'Urgent', warn: 'Warning', watch: 'Early sign' };
+
 export const COLOR = {
   urgent: 0xe5484d,
   warn: 0xf76b15,
@@ -161,19 +163,19 @@ function causeFields(caseRecord) {
 
   if (causes.length) {
     out.push({
-      name: '🔍 Most likely why',
+      name: 'Most likely why',
       value: causes.map((c) =>
         `**${c.label}** _(${CONFIDENCE_LABEL[c.confidence]})_\n${c.evidence.map((e) => `• ${e}`).join('\n')}`,
       ).join('\n\n').slice(0, 1024),
     });
     const top = causes[0];
     out.push({
-      name: '💬 Ask them',
+      name: 'Ask them',
       value: top.ask.map((a) => `• ${a}`).join('\n').slice(0, 1024),
     });
     if (top.check?.length) {
       out.push({
-        name: '📎 Before you call',
+        name: 'Before you call',
         value: `${top.check.join('; ')}${top.resolution ? `\n_${top.resolution}_` : ''}`.slice(0, 1024),
       });
     }
@@ -181,7 +183,7 @@ function causeFields(caseRecord) {
 
   if (levers.length) {
     out.push({
-      name: '🚀 Also worth pushing',
+      name: 'Also worth pushing',
       value: levers.map((l) => `**${l.label}** — ${l.evidence[0]}`).join('\n').slice(0, 1024),
     });
   }
@@ -189,24 +191,23 @@ function causeFields(caseRecord) {
 }
 
 function statusLine(c) {
-  if (c.status === 'acknowledged') return `🙋 Picked up by ${c.acknowledgedBy ?? 'a coach'}`;
-  if (c.status === 'actioned') return `✅ Actioned — checking back on ${c.followUpOn}`;
-  if (c.status === 'snoozed') return `😴 Snoozed until ${c.snoozedUntil}`;
-  if (c.status === 'resolved') return '🎉 Resolved';
-  if (c.status === 'lost') return '⚪ Creator left the network';
-  return '⏳ Waiting to be picked up';
+  if (c.status === 'acknowledged') return `Picked up by ${c.acknowledgedBy ?? 'a coach'}`;
+  if (c.status === 'actioned') return `Actioned, checking back on ${c.followUpOn}`;
+  if (c.status === 'snoozed') return `Snoozed until ${c.snoozedUntil}`;
+  if (c.status === 'resolved') return 'Resolved';
+  if (c.status === 'lost') return 'Creator left the network';
+  return 'Open';
 }
 
 /** The card a coach sees when a creator starts slipping. */
 export function declineEmbed(caseRecord, alert, { mention = null, buttons = true } = {}) {
   const m = alert.metrics;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
-  const icon = { urgent: '🔴', warn: '🟠', watch: '🟡' }[caseRecord.severity] ?? '•';
 
   return {
     content: mention ?? undefined,
     embeds: [{
-      title: `${icon} @${caseRecord.username} — ${book.title}`,
+      title: `${SEVERITY_LABEL[caseRecord.severity] ?? 'Notice'} — @${caseRecord.username}: ${book.title}`,
       description: alert.signals.map((s) => `• **${s.label}** — ${s.detail}`).join('\n').slice(0, 3800),
       color: COLOR[caseRecord.severity] ?? COLOR.neutral,
       fields: [
@@ -230,7 +231,7 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
         },
         monthField(m, caseRecord),
         ...causeFields(caseRecord),
-        { name: `📋 Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
+        { name: `Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
       ].filter(Boolean),
       footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
@@ -239,25 +240,39 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
   };
 }
 
-/** The card for a creator inside 90 days who can still reach the target. */
+/** The card for a creator who can still land a 200k month. */
 export function opportunityEmbed(caseRecord, row, { mention = null, buttons = true } = {}) {
-  const ctx = caseRecord.context;
   const short = Math.max(0, 200000 - row.projected);
+  const monthName = new Date(`${row.month}-01T00:00:00Z`)
+    .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
+
+  // Earlier attempts matter: the target resets on the 1st, so a creator who did
+  // 180k last month is a different conversation from one who has never cleared 20k.
+  const history = (row.pastAttempts ?? []).filter((a) => a.observed);
+  const historyLine = history.length
+    ? history.map((a) => `${a.key}: ${n(a.diamonds)}`).join(' · ')
+    : 'No earlier month on record.';
+
   return {
     content: mention ?? undefined,
     embeds: [{
-      title: `🎯 @${caseRecord.username} — day ${ctx.day} of 90, reachable`,
-      description: `**${n(ctx.earned)} / 200,000** with **${ctx.daysLeft} days left**.\n`
-        + `On this week's rate they finish on ${n(row.projected)}`
-        + (short > 0 ? ` — **${n(short)} short**.` : ' — **clears the target**.'),
+      title: `@${caseRecord.username} can still hit 200k in ${monthName}`,
+      description: `**${n(row.monthToDate)} / 200,000** this month, with `
+        + `**${row.daysLeftInMonth} day${row.daysLeftInMonth === 1 ? '' : 's'}** left.\n`
+        + `At this week's rate they finish on ${n(row.projected)}`
+        + (short > 0 ? ` — **${n(short)} short**.` : ' — **clears it**.')
+        + (row.attemptsLeft > 0
+          ? `\nDay ${row.day} of 90: ${row.attemptsLeft} further month${row.attemptsLeft === 1 ? '' : 's'} to try after this one.`
+          : `\nDay ${row.day} of 90: this is their last month to do it.`),
       color: COLOR.opportunity,
       fields: [
-        { name: 'Doing', value: `${n(ctx.currentPerDayAtOpen)}/day`, inline: true },
-        { name: 'Needs', value: `${n(ctx.requiredPerDay)}/day`, inline: true },
-        { name: 'Converts at', value: `${n(ctx.diamondsPerHour)}/LIVE hour`, inline: true },
-        { name: `👉 The lever: ${ctx.lever}`, value: ctx.ask.slice(0, 1000) },
+        { name: 'Doing', value: `${n(row.currentPerDay)}/day`, inline: true },
+        { name: 'Needs', value: `${n(row.requiredPerDay)}/day`, inline: true },
+        { name: 'Converts at', value: `${n(row.diamondsPerHour)}/LIVE hour`, inline: true },
+        { name: `The lever: ${row.plan.lever}`, value: row.plan.ask.slice(0, 1000) },
+        { name: 'Earlier months', value: historyLine.slice(0, 1024) },
         ...causeFields(caseRecord),
-        { name: '📋 Check back in 14 days', value: PLAYBOOK.OPPORTUNITY.success },
+        { name: 'Check back in 14 days', value: PLAYBOOK.OPPORTUNITY.success },
       ].filter(Boolean),
       footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
@@ -271,11 +286,10 @@ export function followUpEmbed(caseRecord, { mention = null, buttons = true } = {
   const o = caseRecord.outcome;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
   const good = o.verdict === 'recovered';
-  const icon = { recovered: '🎉', improved: '📈', no_change: '➖', worse: '📉', quit: '⚪' }[o.verdict] ?? '•';
   return {
     content: mention ?? undefined,
     embeds: [{
-      title: `${icon} @${caseRecord.username} — ${VERDICT_LABEL[o.verdict] ?? o.verdict}`,
+      title: `@${caseRecord.username} — ${VERDICT_LABEL[o.verdict] ?? o.verdict}`,
       description: good
         ? `That worked. ${book.title} case opened ${caseRecord.openedOn} is now closed.`
         : `Followed up on the ${book.title.toLowerCase()} case from ${caseRecord.openedOn}. `
@@ -311,7 +325,7 @@ export function escalationEmbed(cases, asOf) {
     `• **@${c.username}** (${c.coach}) — open since ${c.openedOn}, ~${n(c.valueAtRisk)} at risk · \`${c.id}\``);
   return {
     embeds: [{
-      title: `⚠️ ${cases.length} case${cases.length === 1 ? '' : 's'} nobody has picked up`,
+      title: `${cases.length} case${cases.length === 1 ? '' : 's'} nobody has picked up`,
       description: lines.join('\n').slice(0, 3800),
       color: COLOR.escalation,
       footer: { text: `as of ${asOf}` },
@@ -354,15 +368,15 @@ export function overviewEmbed({
 
   const fields = [
     {
-      name: '📬 Sent today',
+      name: 'Sent today',
       value: posted.length
         ? `**${posted.length}** card(s)\n${deliveryLines.slice(0, 10).join('\n') || '—'}`
-          + (failed.length ? `\n⚠️ ${failed.length} failed to send` : '')
-        : failed.length ? `⚠️ nothing delivered — ${failed.length} failure(s)` : 'Nothing new today.',
+          + (failed.length ? `\n${failed.length} failed to send` : '')
+        : failed.length ? `nothing delivered — ${failed.length} failure(s)` : 'Nothing new today.',
       inline: true,
     },
     {
-      name: '📂 Caseload',
+      name: 'Caseload',
       value: [
         `${caseStats.open + caseStats.acknowledged + caseStats.actioned} open`,
         `${changes.opened?.length ?? 0} new · ${(changes.autoResolved?.length ?? 0)} closed`,
@@ -372,12 +386,12 @@ export function overviewEmbed({
       inline: true,
     },
     {
-      name: '💎 At risk',
+      name: 'At risk',
       value: `~${n(risk)} diamonds\nover the next 28 days\n${stats.tracked} creators tracked`,
       inline: true,
     },
     {
-      name: '🎯 First 90 days (200k)',
+      name: '200k monthly target',
       value: [
         `${byStatus.ON_TRACK ?? 0} on track · ${(byStatus.AT_RISK ?? 0) + (byStatus.OFF_TRACK ?? 0)} behind`,
         `${byStatus.ACHIEVED ?? 0} hit the target`,
@@ -389,7 +403,7 @@ export function overviewEmbed({
 
   if (changes.escalated?.length) {
     fields.push({
-      name: `⚠️ Open and still declining (${changes.escalated.length})`,
+      name: `Open and still declining (${changes.escalated.length})`,
       value: changes.escalated.slice(0, 8)
         .map((c) => `**@${c.username}** (${c.group ?? '—'}) — since ${c.openedOn}, ~${n(c.valueAtRisk)} at risk`)
         .join('\n').slice(0, 1024),
@@ -398,7 +412,7 @@ export function overviewEmbed({
 
   if (notMoving.length) {
     fields.push({
-      name: '🐢 Teams whose flagged creators are not recovering',
+      name: 'Teams whose flagged creators are not recovering',
       value: notMoving
         .map((t) => `**${t.team}** — ${t.wentStale}/${t.closed} ran out still down (${Math.round((t.recoveryRate ?? 0) * 100)}% fixed)`)
         .join('\n').slice(0, 1024),
@@ -407,7 +421,7 @@ export function overviewEmbed({
 
   if (alerts.length) {
     fields.push({
-      name: '📉 Biggest losses this week',
+      name: 'Biggest losses this week',
       value: alerts.slice(0, 5)
         .map((a) => `**@${a.creator.username}** (${a.creator.group ?? '—'}) — ${pct(a.metrics.change7.diamonds)}, ~${n(a.valueAtRisk)} at risk`)
         .join('\n').slice(0, 1024),
@@ -416,10 +430,10 @@ export function overviewEmbed({
 
   if (health) {
     fields.push({
-      name: '🩺 Data',
+      name: 'Data',
       value: [
         `Last export: ${health.lastAsOf ?? '—'} (${health.snapshots} held)`,
-        health.missingDays ? `⚠️ ${health.missingDays} day(s) never uploaded` : 'No missing days',
+        health.missingDays ? `${health.missingDays} day(s) never uploaded` : 'No missing days',
         health.declineReady
           ? 'Decline detection: on'
           : `Decline detection: off — needs ~${health.uploadsNeeded} more daily upload(s)`,

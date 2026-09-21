@@ -189,7 +189,7 @@ fs.writeFileSync(path.join(OUT, 'truth.json'), JSON.stringify({
 }, null, 2));
 
 console.log(`simulated ${DAYS} daily snapshots for ${profiles.length} creators`);
-console.log(`  ${startDate} → ${endDate}`);
+console.log(`  ${startDate} ${endDate}`);
 console.log(`  ${profiles.filter((p) => p.decline).length} creators pushed into decline`);
 console.log(`  written to ${OUT}`);
 console.log(`\nnext: node cli.mjs rebuild --config ./config.sim.json && node cli.mjs report --config ./config.sim.json`);
