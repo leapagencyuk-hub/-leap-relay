@@ -82,13 +82,16 @@
     <div class="actions">
       <button id="runBtn" type="button">Run now</button>
       <button id="overviewBtn" type="button" class="ghost">Post overview</button>
+      <button id="sampleBtn" type="button" class="ghost">Send sample cards</button>
       <button id="testBtn" type="button" class="ghost">Test Discord</button>
     </div>
     <p class="muted" style="margin:10px 0 0">
       <strong>Run now</strong> scores today's data and posts to Discord without needing a new file —
       useful when a file was already stored. <strong>Post overview</strong> re-sends the management
-      summary even if it has already gone out today. <strong>Test Discord</strong> sends one line to
-      the overview channel to prove the connection.
+      summary even if it has already gone out today. <strong>Send sample cards</strong> posts one real
+      decline and one activation card to the overview channel, so you can see exactly what a
+      coach receives without posting into their team channel.
+      <strong>Test Discord</strong> sends one line to the overview channel to prove the connection.
     </p>
   </div>
 
@@ -200,7 +203,7 @@ async function upload(file) {
 
 // Running and testing from the page, so neither needs a terminal.
 async function post(path, label, render) {
-  const btns = [$('runBtn'), $('overviewBtn'), $('testBtn')];
+  const btns = [$('runBtn'), $('overviewBtn'), $('sampleBtn'), $('testBtn')];
   btns.forEach((b) => { b.disabled = true; });
   bar.classList.add('on');
   result.classList.remove('show');
@@ -242,6 +245,19 @@ $('overviewBtn').addEventListener('click', () => post('run?force-overview=1', 'O
   + row('Messages sent', n(r.delivered), r.delivered ? 'ok' : 'warn')
   + row('Open caseload', n((r.cases?.open ?? 0) + (r.cases?.acknowledged ?? 0) + (r.cases?.actioned ?? 0)))
   + (r.failures ?? []).map((f) => row('Failed', `<span class="bad">${esc(f)}</span>`)).join('')));
+
+$('sampleBtn').addEventListener('click', () => post('selftest?sample=1', 'Sample cards', (r) => {
+  const sm = r.sample;
+  if (!sm) return `<h2>Sample cards</h2>${row('Result', '<span class="bad">nothing returned</span>')}`;
+  if (sm.error) return `<h2>Sample cards</h2>${row('Problem', `<span class="bad">${esc(sm.error)}</span>`)}`;
+  if (sm.skipped) return `<h2>Sample cards</h2>${row('Nothing to show', esc(sm.skipped))}`;
+  return `<h2>Sample cards sent to the overview channel</h2>`
+    + sm.posted.map((p) => row(
+      `${esc(p.kind)} · @${esc(p.creator)}`,
+      p.ok ? `sent${p.avatar ? ' · with avatar' : ' · no avatar'}` : `<span class="bad">${esc(p.error || 'failed')}</span>`,
+      p.ok ? 'ok' : 'bad')).join('')
+    + `<p class="muted" style="margin:10px 0 0">If "no avatar" shows, TikTok refused the lookup — tell Claude and we will switch approach.</p>`;
+}));
 
 $('testBtn').addEventListener('click', () => post('selftest?post=1', 'Discord test', (r) => {
   const c = r.config, t = r.testPost;

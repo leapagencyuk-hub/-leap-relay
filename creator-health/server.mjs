@@ -13,7 +13,8 @@
 //   POST /discord/interactions  Discord's interactions endpoint (button clicks)
 //   GET  /cases             the open caseload
 //   GET  /effectiveness     which interventions are working
-//   GET  /selftest           what this service can reach (?post=1 sends a test line)
+//   GET  /selftest           what this service can reach
+//                            ?post=1 sends a test line, ?sample=1 sends real cards
 //   GET  /health
 //
 // Uploads and /notify require UPLOAD_TOKEN if it is set: send it as
@@ -33,7 +34,8 @@ import { computeMetrics } from './lib/metrics.mjs';
 import { isOpen } from './lib/cases.mjs';
 import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 import { preflight } from './lib/dispatch.mjs';
-import { Discord } from './lib/discord.mjs';
+import { Discord, declineEmbed, activationEmbed } from './lib/discord.mjs';
+import { Avatars } from './lib/profile.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -266,6 +268,63 @@ async function handleSelfTest(req, res, url) {
       lastOverviewOn: new CaseStore(config.dataDir).data.lastOverviewOn ?? null,
     },
   };
+
+  // A real card, posted to the overview channel rather than to a coach.
+  //
+  // The point is to see exactly what a coach will get — layout, links, and
+  // whether the avatar lookup actually works, which cannot be checked any other
+  // way without posting into a team channel people are watching.
+  if (url.searchParams.get('sample') === '1') {
+    try {
+      const analysis = analyse(config, { persist: false });
+      const store2 = new CaseStore(config.dataDir);
+      const open = store2.all().filter(isOpen)
+        .sort((a, b) => (b.valueAtRisk ?? 0) - (a.valueAtRisk ?? 0));
+      const decline = open.find((c) => c.kind === 'decline');
+      const activation = open.find((c) => c.kind === 'activation');
+      const client = new Discord({ token: discord.botToken });
+      const route = discord.summaryWebhook
+        ? { webhook: discord.summaryWebhook }
+        : { channelId: discord.summaryChannelId };
+      const avatars = new Avatars(config.dataDir, config.avatars);
+      await avatars.warm([decline?.username, activation?.username].filter(Boolean));
+
+      const posts = [];
+      if (decline) {
+        const alert = analysis.alerts.find((a) => a.creator.key === decline.creatorKey);
+        if (alert) {
+          posts.push(['decline', declineEmbed(decline, alert, {
+            avatar: avatars.get(decline.username),
+            buttons: discord.mode === 'bot' && discord.interactionsReady !== false,
+          })]);
+        }
+      }
+      if (activation) {
+        posts.push(['activation', activationEmbed(activation, {
+          avatar: avatars.get(activation.username),
+          metrics: analysis.metricsByKey.get(activation.creatorKey),
+          buttons: discord.mode === 'bot' && discord.interactionsReady !== false,
+        })]);
+      }
+
+      result.sample = { posted: [], skipped: posts.length ? null : 'no open cases to render' };
+      for (const [kind, payload] of posts) {
+        payload.content = `**Sample ${kind} card** — this is what the team channel receives.`;
+        const sent = route.webhook
+          ? await client.postToWebhook(route.webhook, payload)
+          : await client.postToChannel(route.channelId, payload);
+        result.sample.posted.push({
+          kind,
+          creator: kind === 'decline' ? decline.username : activation.username,
+          ok: sent.ok,
+          avatar: Boolean(avatars.get(kind === 'decline' ? decline.username : activation.username)),
+          error: sent.error ?? null,
+        });
+      }
+    } catch (err) {
+      result.sample = { error: err.message };
+    }
+  }
 
   if (url.searchParams.get('post') === '1') {
     if (!discord.summaryWebhook) {

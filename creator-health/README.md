@@ -955,10 +955,14 @@ Deliberately not two steps. A separate "now run it" button means somebody has
 to remember it every morning, and the day they forget is the day a creator's
 slide goes unnoticed.
 
-Two buttons sit under the drop zone, so neither needs a terminal:
+Four buttons sit under the drop zone, so none of this needs a terminal:
 
 - **Run now** — scores the stored data and posts, without needing a new file.
   The one to use when an export was already stored and so never triggered a run.
+- **Send sample cards** — posts one real decline card and one activation card
+  to the **overview** channel, so you can see exactly what a coach receives
+  without posting into a team channel people are watching. It also reports
+  whether the avatar lookup worked, which cannot be checked any other way.
 - **Test Discord** — reports what the running service resolved (config file,
   teams with a destination, whether it is ready to send) and posts one line to
   the overview channel to prove the connection. Webhook URLs are never shown,
