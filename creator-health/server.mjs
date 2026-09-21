@@ -309,7 +309,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && route === '/upload') return await handleUpload(req, res, url);
     if (req.method === 'POST' && route === '/notify') return await handleNotify(req, res, url);
     if (req.method === 'POST' && route === '/run') return await handleRun(req, res, url);
-    if (route === '/selftest') return await handleSelfTest(req, res, url);
+    if (route === '/selftest') return await handleSelfTest(req, res, url);  // GET or POST
     if (req.method === 'POST' && route === '/discord/interactions') {
       return await handleDiscordInteractions(req, res);
     }

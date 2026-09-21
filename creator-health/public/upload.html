@@ -46,6 +46,14 @@
   .muted { color: var(--muted); font-size: 13px; }
   .bar { height: 4px; background: var(--line); border-radius: 2px; overflow: hidden; margin-top: 10px; display: none; }
   .bar.on { display: block; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font: inherit; font-size: 14px; padding: 9px 16px; border-radius: 8px; cursor: pointer;
+    border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  }
+  button.ghost { background: transparent; color: var(--text); border-color: var(--line); }
+  button:hover { filter: brightness(1.08); }
+  button:disabled { opacity: .5; cursor: default; filter: none; }
   .bar i { display: block; height: 100%; width: 40%; background: var(--accent); animation: slide 1s infinite linear; }
   @keyframes slide { from { transform: translateX(-100%);} to { transform: translateX(350%);} }
 </style>
@@ -67,6 +75,19 @@
   <div class="panel" id="auth" hidden>
     <label for="token">Upload token</label>
     <input type="password" id="token" placeholder="paste once, remembered on this device" autocomplete="current-password">
+  </div>
+
+  <div class="panel">
+    <h2>Actions</h2>
+    <div class="actions">
+      <button id="runBtn" type="button">Run now</button>
+      <button id="testBtn" type="button" class="ghost">Test Discord</button>
+    </div>
+    <p class="muted" style="margin:10px 0 0">
+      <strong>Run now</strong> scores today's data and posts to Discord without needing a new file —
+      useful when a file was already stored. <strong>Test Discord</strong> sends one line to the
+      overview channel to prove the connection.
+    </p>
   </div>
 
   <div class="panel" id="result"></div>
@@ -173,6 +194,58 @@ async function upload(file) {
     refresh();
   }
 }
+
+// Running and testing from the page, so neither needs a terminal.
+async function post(path, label, render) {
+  const btns = [$('runBtn'), $('testBtn')];
+  btns.forEach((b) => { b.disabled = true; });
+  bar.classList.add('on');
+  result.classList.remove('show');
+  try {
+    const sep = path.includes('?') ? '&' : '?';
+    const res = await fetch(path + (token ? `${sep}token=${encodeURIComponent(token)}` : ''), { method: 'POST' });
+    const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
+    result.classList.add('show');
+    result.innerHTML = res.ok && !data.error ? render(data)
+      : `<h2>${esc(label)} failed</h2>${row('Problem', `<span class="bad">${esc(data.error || `HTTP ${res.status}`)}</span>`)}`;
+  } catch (err) {
+    result.classList.add('show');
+    result.innerHTML = `<h2>${esc(label)} failed</h2>${row('Problem', `<span class="bad">${esc(err.message)}</span>`)}`;
+  } finally {
+    btns.forEach((b) => { b.disabled = false; });
+    bar.classList.remove('on');
+    refresh();
+  }
+}
+
+$('runBtn').addEventListener('click', () => post('run', 'Run', (r) => {
+  let html = `<h2>Run complete</h2>`
+    + row('Data up to', esc(r.asOf))
+    + row('Messages sent', n(r.delivered), r.delivered ? 'ok' : 'warn')
+    + row('New cases opened', n(r.opened))
+    + (r.followUps ? row('Follow-ups posted', n(r.followUps)) : '')
+    + (r.escalated ? row('Escalated', n(r.escalated), 'warn') : '')
+    + row('Open caseload', n((r.cases?.open ?? 0) + (r.cases?.acknowledged ?? 0) + (r.cases?.actioned ?? 0)));
+  if (r.discordSkipped) html += row('Discord', `<span class="warn">${esc(r.discordSkipped)}</span>`);
+  for (const f of r.failures ?? []) html += row('Failed', `<span class="bad">${esc(f)}</span>`);
+  if (!r.delivered && !(r.failures ?? []).length && !r.discordSkipped) {
+    html += `<p class="muted" style="margin:10px 0 0">Nothing new to send — every case here has already been posted.</p>`;
+  }
+  return html;
+}));
+
+$('testBtn').addEventListener('click', () => post('selftest?post=1', 'Discord test', (r) => {
+  const c = r.config, t = r.testPost;
+  return `<h2>Discord check</h2>`
+    + row('Config read from', esc(c.source))
+    + row('Mode', esc(c.mode))
+    + row('Overview channel', c.overview === 'set' ? 'configured' : 'MISSING', c.overview === 'set' ? 'ok' : 'bad')
+    + row('Teams with a destination', `${n(c.teamsResolved)}${c.teamsMissing.length ? ` (missing: ${esc(c.teamsMissing.join(', '))})` : ''}`,
+      c.teamsMissing.length ? 'warn' : 'ok')
+    + row('Ready to send', r.preflight.ok ? 'yes' : esc(r.preflight.reason), r.preflight.ok ? 'ok' : 'bad')
+    + row('Test message', t?.ok ? 'delivered to the overview channel' : `<span class="bad">${esc(t?.error || 'failed')}</span>`, t?.ok ? 'ok' : 'bad')
+    + row('Overview last posted', esc(r.data.lastOverviewOn ?? 'never'));
+}));
 
 drop.addEventListener('click', () => fileInput.click());
 drop.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fileInput.click(); } });

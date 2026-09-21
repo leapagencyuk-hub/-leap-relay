@@ -849,6 +849,15 @@ Deliberately not two steps. A separate "now run it" button means somebody has
 to remember it every morning, and the day they forget is the day a creator's
 slide goes unnoticed.
 
+Two buttons sit under the drop zone, so neither needs a terminal:
+
+- **Run now** — scores the stored data and posts, without needing a new file.
+  The one to use when an export was already stored and so never triggered a run.
+- **Test Discord** — reports what the running service resolved (config file,
+  teams with a destination, whether it is ready to send) and posts one line to
+  the overview channel to prove the connection. Webhook URLs are never shown,
+  so the output is safe to paste to someone.
+
 Safe to get wrong:
 
 - **Uploading the same file twice** does nothing — snapshots are keyed by the
