@@ -264,6 +264,18 @@ function trafficField(m) {
   };
 }
 
+/**
+ * The footer names the coach.
+ *
+ * Team Alpha has two coaches across its 233 creators, so a card landing in the
+ * team channel does not say whose creator it is unless the mention is
+ * configured — and mentions are optional. The name always is.
+ */
+function footerText(c) {
+  const coach = c.coach && c.coach !== 'unassigned' ? c.coach.split('@')[0] : null;
+  return [c.id, coach, statusLine(c)].filter(Boolean).join(' · ');
+}
+
 function statusLine(c) {
   if (c.status === 'acknowledged') return `Picked up by ${c.acknowledgedBy ?? 'a coach'}`;
   if (c.status === 'actioned') return `Actioned, checking back on ${c.followUpOn}`;
@@ -323,7 +335,7 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
         trafficField(m),
         { name: `Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
       ].filter(Boolean),
-      footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
+      footer: { text: footerText(caseRecord) },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -366,7 +378,7 @@ export function opportunityEmbed(caseRecord, row, { mention = null, buttons = tr
         ...causeFields(caseRecord),
         { name: 'Check back in 14 days', value: PLAYBOOK.OPPORTUNITY.success },
       ].filter(Boolean),
-      footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
+      footer: { text: footerText(caseRecord) },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -400,7 +412,7 @@ export function activationEmbed(caseRecord, { mention = null, buttons = true, av
         ...(book.check ? [{ name: 'Worth knowing', value: String(book.check).slice(0, 1024), inline: true }] : []),
         { name: 'Done when', value: book.success ?? 'Any activity.', inline: true },
       ].filter(Boolean),
-      footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
+      footer: { text: footerText(caseRecord) },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -491,7 +503,7 @@ export function followUpEmbed(caseRecord, { mention = null, buttons = true, avat
           inline: true,
         },
       ],
-      footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
+      footer: { text: footerText(caseRecord) },
       timestamp: new Date().toISOString(),
     }],
     components: good ? [] : caseButtons(caseRecord, { enabled: buttons }),
