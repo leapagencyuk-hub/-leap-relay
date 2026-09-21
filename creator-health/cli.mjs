@@ -12,6 +12,8 @@
 //   node cli.mjs case <id>                      one case and its history
 //   node cli.mjs effectiveness                  which interventions work
 //   node cli.mjs discord-register               register the slash commands
+//   node cli.mjs discord-scaffold [--write]     build routes.json from the live data
+//   node cli.mjs discord-check                  which teams have nowhere to post
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +26,7 @@ import { computeMetrics, tierOf } from './lib/metrics.mjs';
 import { STATUS, isOpen } from './lib/cases.mjs';
 import { PLAYBOOK, VERDICT_LABEL } from './lib/playbook.mjs';
 import { loadRoutes } from './lib/notify.mjs';
+import { coverage, routeFor } from './lib/dispatch.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -283,16 +286,105 @@ async function cmdDiscordRegister() {
   console.log(`registered ${COMMANDS.length} slash command(s): ${COMMANDS.map((c) => `/${c.name}`).join(', ')}`);
 }
 
+/**
+ * Write a routes.json skeleton from the teams that actually exist in the data,
+ * so nobody has to hand-transcribe a server's worth of channel IDs and guess
+ * at the spellings the export uses.
+ */
+function cmdDiscordScaffold() {
+  const series = new Store(config.dataDir).readSeries();
+  const creators = Object.values(series.creators);
+  const { groups } = coverage(creators, { groups: {} });
+  const existing = fs.existsSync(path.join(path.dirname(configPath), 'routes.json'))
+    ? JSON.parse(fs.readFileSync(path.join(path.dirname(configPath), 'routes.json'), 'utf8'))
+    : {};
+  const prevGroups = existing.discord?.groups ?? {};
+  const prevCoaches = existing.discord?.coaches ?? {};
+
+  const out = {
+    discord: {
+      enabled: true,
+      mode: 'bot',
+      routeBy: 'group',
+      botToken: 'env:DISCORD_BOT_TOKEN',
+      publicKey: 'env:DISCORD_PUBLIC_KEY',
+      applicationId: 'env:DISCORD_APP_ID',
+      escalationChannelId: existing.discord?.escalationChannelId ?? 'PASTE_MANAGERS_CHANNEL_ID',
+      summaryChannelId: existing.discord?.summaryChannelId ?? 'PASTE_SUMMARY_CHANNEL_ID',
+      groups: {},
+      coaches: {},
+    },
+  };
+  for (const g of groups) {
+    out.discord.groups[g.label] = prevGroups[g.label]
+      ?? { channelId: `PASTE_CHANNEL_ID  (${g.creators} creators)` };
+  }
+  // Coaches carry the @mention only: the channel comes from their team.
+  const coaches = new Set(creators.filter((c) => !c.quitOn && c.manager).map((c) => c.manager));
+  for (const email of [...coaches].sort()) {
+    out.discord.coaches[email] = prevCoaches[email] ?? { mention: 'PASTE_DISCORD_USER_MENTION' };
+  }
+
+  const json = JSON.stringify(out, null, 2);
+  if (!flag('write')) {
+    console.log(json);
+    console.log(`\n# ${groups.length} team(s), ${coaches.size} coach(es).`);
+    console.log('# Re-run with --write to save to routes.json (existing IDs are kept).');
+    return;
+  }
+  fs.writeFileSync(path.join(path.dirname(configPath), 'routes.json'), `${json}\n`);
+  console.log(`wrote routes.json — ${groups.length} team(s), ${coaches.size} coach(es)`);
+  console.log('Fill in the channel IDs, then run: node cli.mjs discord-check');
+}
+
+/** Does every team actually have somewhere for its cards to land? */
+function cmdDiscordCheck() {
+  const { discord } = loadRoutes(path.dirname(configPath));
+  const creators = Object.values(new Store(config.dataDir).readSeries().creators);
+  const report = coverage(creators, discord);
+
+  console.log(`routing by: ${discord.routeBy ?? 'group'}\n`);
+  console.log(`  ${'team'.padEnd(20)} ${'creators'.padStart(8)}  destination`);
+  for (const g of report.groups) {
+    const sample = creators.find((c) => !c.quitOn && (c.group ?? '') === (g.label === '(no group)' ? null : g.label));
+    const route = routeFor({ coach: sample?.manager, group: g.label }, discord);
+    const dest = route.channelId ? `channel ${route.channelId}`
+      : route.webhook ? 'webhook'
+        : route.userId ? 'DM' : '⚠️  NOWHERE';
+    const via = route.matchedGroup ? '' : route.matchedCoach ? ' (via coach)' : route.viaDefault ? ' (default)' : '';
+    console.log(`  ${g.label.padEnd(20)} ${String(g.creators).padStart(8)}  ${dest}${via}`);
+    if (g.coaches.length > 1) {
+      console.log(`  ${''.padEnd(20)} ${''.padStart(8)}  ↳ ${g.coaches.length} coaches share this channel: ${g.coaches.join(', ')}`);
+    }
+  }
+
+  const noMention = [...new Set(creators.filter((c) => !c.quitOn && c.manager).map((c) => c.manager))]
+    .filter((e) => !discord.coaches?.[e]?.mention);
+  console.log('');
+  if (report.unrouted.length) {
+    console.log(`⚠️  ${report.unrouted.length} team(s) with no channel, covering ${report.unroutedCreators} creators:`);
+    for (const g of report.unrouted) console.log(`     ${g.label} (${g.creators})`);
+    console.log('   They will fall back to the default channel, or go nowhere if there is not one.');
+  } else {
+    console.log('✅ every team has a destination');
+  }
+  if (noMention.length) {
+    console.log(`\nℹ️  ${noMention.length} coach(es) with no @mention set — their cards post without a ping:`);
+    for (const e of noMention) console.log(`     ${e}`);
+  }
+}
+
 const commands = {
   ingest: cmdIngest, report: cmdReport, coach: cmdCoach,
   creator: cmdCreator, rebuild: cmdRebuild, status: cmdStatus,
   run: cmdRun, cases: cmdCases, case: cmdCase,
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
+  'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,
 };
 
 if (!command || !commands[command]) {
   console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
-    .split('\n').slice(2, 14).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+    .split('\n').slice(2, 16).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
   process.exit(command ? 1 : 0);
 }
 try {

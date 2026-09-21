@@ -5,25 +5,75 @@
 // trains people to ignore the channel.
 import { Discord, declineEmbed, opportunityEmbed, followUpEmbed, escalationEmbed, summaryEmbed } from './discord.mjs';
 import { STATUS } from './cases.mjs';
+import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
-/** Where one coach's cards go, in order of preference. */
-function routeFor(coach, discordConfig) {
-  const entry = discordConfig.coaches?.[coach] ?? null;
+/**
+ * Where one creator's card goes.
+ *
+ * The channel comes from the team, because that is how the server is arranged,
+ * but the @mention comes from the creator's own coach. A team channel with two
+ * coaches in it would otherwise ping the wrong person for six of the creators
+ * in Team Alpha.
+ */
+export function routeFor({ coach, group }, discordConfig) {
+  const byCoach = discordConfig.coaches?.[String(coach ?? '').toLowerCase()] ?? null;
+  const byGroup = discordConfig.groups?.[groupKey(group)] ?? null;
+  const preferGroup = discordConfig.routeBy !== 'coach';
+  const primary = preferGroup ? (byGroup ?? byCoach) : (byCoach ?? byGroup);
+  const secondary = preferGroup ? byCoach : byGroup;
+
   return {
-    webhook: entry?.webhook ?? discordConfig.defaultWebhook ?? null,
-    channelId: entry?.channelId ?? discordConfig.defaultChannelId ?? null,
-    userId: entry?.userId ?? null,
-    mention: entry?.mention ?? null,
-    found: Boolean(entry),
+    webhook: primary?.webhook ?? secondary?.webhook ?? discordConfig.defaultWebhook ?? null,
+    channelId: primary?.channelId ?? secondary?.channelId ?? discordConfig.defaultChannelId ?? null,
+    userId: byCoach?.userId ?? null,
+    // Always the individual coach where we know them, whichever channel it lands in.
+    mention: byCoach?.mention ?? primary?.mention ?? null,
+    matchedGroup: Boolean(byGroup),
+    matchedCoach: Boolean(byCoach),
+    viaDefault: !primary && !secondary,
   };
 }
 
-async function deliver(client, route, payload) {
+/**
+ * Which teams and coaches have nowhere to post.
+ *
+ * Without this, a team with no channel silently falls through to the default
+ * channel or nowhere at all, and nobody notices that a whole group of creators
+ * stopped being monitored.
+ */
+export function coverage(creators, discordConfig) {
+  const groups = new Map();
+  for (const c of creators) {
+    if (c.quitOn) continue;
+    const key = groupKey(c.group);
+    const entry = groups.get(key) ?? {
+      label: c.group ?? '(no group)', creators: 0, coaches: new Set(),
+      routed: isChannelId(discordConfig.groups?.[key]?.channelId)
+        || isWebhookUrl(discordConfig.groups?.[key]?.webhook),
+    };
+    entry.creators++;
+    if (c.manager) entry.coaches.add(c.manager);
+    groups.set(key, entry);
+  }
+  const rows = [...groups.values()]
+    .map((g) => ({ ...g, coaches: [...g.coaches] }))
+    .sort((a, b) => b.creators - a.creators);
+  return {
+    groups: rows,
+    unrouted: rows.filter((g) => !g.routed),
+    unroutedCreators: rows.filter((g) => !g.routed).reduce((n, g) => n + g.creators, 0),
+  };
+}
+
+async function deliver(client, route, payload, label = '') {
   // Webhooks first: they need no bot token, so a network can start on them.
   if (route.webhook) return client.postToWebhook(route.webhook, payload);
   if (route.channelId) return client.postToChannel(route.channelId, payload);
   if (route.userId) return client.postToUser(route.userId, payload);
-  return { ok: false, error: 'no Discord destination configured for this coach' };
+  return {
+    ok: false,
+    error: `no Discord channel for ${label || 'this creator'} — add its team to routes.json (see: cli.mjs discord-check)`,
+  };
 }
 
 export function caseStats(store, asOf) {
@@ -63,8 +113,9 @@ export function preflight(discordConfig) {
       : { ok: false, reason: 'mode is "bot" but DISCORD_BOT_TOKEN is not set' };
   }
   const hasDestination = hasWebhook || discordConfig.defaultChannelId
-    || Object.values(discordConfig.coaches ?? {}).some((c) => c.channelId || c.userId);
-  if (!hasDestination) return { ok: false, reason: 'no channel, user or webhook configured for anyone' };
+    || Object.values(discordConfig.coaches ?? {}).some((c) => c.channelId || c.userId)
+    || Object.values(discordConfig.groups ?? {}).some((g) => g.channelId || g.webhook);
+  if (!hasDestination) return { ok: false, reason: 'no channel, user or webhook configured for any team or coach' };
   return { ok: true };
 }
 
@@ -85,7 +136,7 @@ export async function dispatch({
       sent.push({ label, coach, ok: true, dryRun: true });
       return;
     }
-    const res = await deliver(client, route, payload);
+    const res = await deliver(client, route, payload, caseRecord?.group ?? coach);
     if (res.ok && caseRecord && res.body?.id) {
       caseRecord.discord = { channelId: res.body.channel_id ?? route.channelId, messageId: res.body.id };
     }
@@ -94,7 +145,7 @@ export async function dispatch({
 
   // --- newly opened cases ---------------------------------------------------
   for (const c of changes.opened) {
-    const route = routeFor(c.coach, discordConfig);
+    const route = routeFor(c, discordConfig);
     if (c.kind === 'decline') {
       const alert = alertByKey.get(c.creatorKey);
       if (!alert) continue;
@@ -114,7 +165,7 @@ export async function dispatch({
     if (c.severity !== 'urgent') continue;
     const alert = alertByKey.get(c.creatorKey);
     if (!alert) continue;
-    const route = routeFor(c.coach, discordConfig);
+    const route = routeFor(c, discordConfig);
     const payload = declineEmbed(c, alert, { mention: route.mention });
     payload.embeds[0].title = `⏫ ${payload.embeds[0].title} — getting worse`;
     await send('case-worsened', c.coach, route, payload, c);
@@ -122,7 +173,7 @@ export async function dispatch({
 
   // --- follow-ups that came due --------------------------------------------
   for (const c of changes.dueFollowUps) {
-    const route = routeFor(c.coach, discordConfig);
+    const route = routeFor(c, discordConfig);
     await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention }), c);
   }
 

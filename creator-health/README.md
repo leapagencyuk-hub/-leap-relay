@@ -559,6 +559,49 @@ the feedback loop — the cards are identical either way, so nothing is wasted.
 3. Set `discord.mode` to `"webhook"` and give each coach `{"webhook": "env:WEBHOOK_JOSH"}`.
 4. Put the URLs in the environment. Done.
 
+### Routing to a server with one channel per team
+
+LEAP's server has a category per team, each with a `creator-monitoring`
+channel, so routing is **by team** by default (`routeBy: "group"`). The
+channel comes from the creator's team; the **@mention comes from their own
+coach**, which matters because Team Alpha has two coaches and pinging the
+wrong one for six creators is worse than not pinging at all.
+
+Don't transcribe it by hand — build it from the data:
+
+```bash
+node cli.mjs discord-scaffold --write   # every team that exists, with creator counts
+# paste the channel IDs and coach mentions into routes.json
+node cli.mjs discord-check              # confirms nothing is left with nowhere to go
+```
+
+The scaffold uses the team names **exactly as the export spells them** (the
+export really does contain `TEAM GOLF` and `Team Indigo ` with a trailing
+space), and keeps any IDs already filled in when re-run. Lookups are
+case- and whitespace-insensitive, so the channel named "Team Golf" in Discord
+matches "TEAM GOLF" in the data.
+
+`discord-check` is the one to run after any change. A `PASTE_CHANNEL_ID`
+placeholder is **not** treated as a destination, so a half-filled file reports
+honestly:
+
+```
+  team                 creators  destination
+  Team Alpha                233  channel 111111111111110000
+                                 ↳ 2 coaches share this channel: josh@…, amy@…
+  Team Charlie              127  channel 111111111111110002
+  Not in a group             48  ⚠️  NOWHERE
+  Surge Agency               23  ⚠️  NOWHERE
+
+⚠️  5 team(s) with no channel, covering 84 creators
+```
+
+Routing falls back team → coach → default channel, so a team with no channel
+of its own still lands somewhere if a default is set. With no default, the run
+reports the failure by team name rather than dropping it.
+
+Set `routeBy: "coach"` instead if you ever move to one channel per coach.
+
 ### Bot setup
 
 1. **https://discord.com/developers/applications → New Application.**
@@ -580,10 +623,10 @@ is read from the environment.
 
 | Message | Goes to | When |
 |---|---|---|
-| Decline card | The creator's coach | A case opens |
-| Opportunity card | The creator's coach | A boost-list case opens |
-| "Getting worse" | The creator's coach | An open case escalates to urgent |
-| Follow-up verdict | The creator's coach | The follow-up window closes |
+| Decline card | The creator's team channel | A case opens |
+| Opportunity card | The creator's team channel | A boost-list case opens |
+| "Getting worse" | The creator's team channel | An open case escalates to urgent |
+| Follow-up verdict | The creator's team channel | The follow-up window closes |
 | Unacknowledged cases | `escalationChannelId` | Top 5 per run, unclaimed past the limit |
 | Daily roll-up | `summaryChannelId` | Every run |
 
@@ -626,7 +669,9 @@ node cli.mjs creator unc.inc0            # one creator's numbers
 node cli.mjs report                      # the older plain-text digest
 node cli.mjs status                      # what is stored, and any missing days
 node cli.mjs rebuild                     # re-derive after a rule change
-node cli.mjs discord-register            # publish the slash commands
+node cli.mjs discord-scaffold --write     # build routes.json from the live teams
+node cli.mjs discord-check                # confirm every team has a channel
+node cli.mjs discord-register             # publish the slash commands
 npm test
 ```
 

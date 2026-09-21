@@ -30,30 +30,63 @@ export function loadRoutes(configDir) {
 }
 
 const fromEnv = (v) => (typeof v === 'string' && v.startsWith('env:') ? process.env[v.slice(4)] ?? null : v ?? null);
+/** Scaffolded placeholders must not be mistaken for real values. */
+const placeholderOrNull = (v) => (typeof v === 'string' && !/^PASTE_/.test(v.trim()) ? v : null);
 const emptyDiscord = () => ({ enabled: false, coaches: {} });
 
 /** Resolve the Discord block, pulling every secret from the environment. */
+/**
+ * Group names arrive from the export with inconsistent case and stray spaces
+ * ("TEAM GOLF", "Team Indigo "), so every lookup goes through this.
+ */
+export const groupKey = (name) => String(name ?? '').trim().toLowerCase().replace(/\s+/g, ' ');
+
+/**
+ * Discord snowflakes are 17-20 digits. Anything else — most often a
+ * `PASTE_CHANNEL_ID` placeholder left behind in a half-filled routes.json — is
+ * treated as unset, so a coverage check cannot report a team as routed when
+ * its card would bounce.
+ */
+export const isChannelId = (v) => typeof v === 'string' && /^\d{17,20}$/.test(v.trim());
+export const isWebhookUrl = (v) => typeof v === 'string' && /^https:\/\/\S+$/.test(v.trim());
+const channelOrNull = (v) => (isChannelId(v) ? v.trim() : null);
+const webhookOrNull = (v) => (isWebhookUrl(v) ? v.trim() : null);
+
 export function loadDiscordConfig(raw) {
   if (!raw) return emptyDiscord();
   const coaches = {};
   for (const [email, entry] of Object.entries(raw.coaches ?? {})) {
     coaches[email.toLowerCase()] = {
-      channelId: fromEnv(entry.channelId),
-      userId: fromEnv(entry.userId),
-      webhook: fromEnv(entry.webhook),
-      mention: entry.mention ?? null,
+      channelId: channelOrNull(fromEnv(entry.channelId)),
+      userId: channelOrNull(fromEnv(entry.userId)),
+      webhook: webhookOrNull(fromEnv(entry.webhook)),
+      mention: placeholderOrNull(entry.mention),
+    };
+  }
+  const groups = {};
+  for (const [name, entry] of Object.entries(raw.groups ?? {})) {
+    groups[groupKey(name)] = {
+      label: name,
+      channelId: channelOrNull(fromEnv(entry.channelId)),
+      webhook: webhookOrNull(fromEnv(entry.webhook)),
+      mention: placeholderOrNull(entry.mention),
     };
   }
   return {
     enabled: raw.enabled !== false,
     mode: raw.mode ?? 'webhook',
+    // A server with one channel per team routes by group; one channel per coach
+    // routes by coach. Group is the default because that is how LEAP's server
+    // is laid out.
+    routeBy: raw.routeBy ?? 'group',
+    groups,
     botToken: fromEnv(raw.botToken),
     publicKey: fromEnv(raw.publicKey),
     applicationId: fromEnv(raw.applicationId),
-    defaultChannelId: fromEnv(raw.defaultChannelId),
-    defaultWebhook: fromEnv(raw.defaultWebhook),
-    escalationChannelId: fromEnv(raw.escalationChannelId),
-    summaryChannelId: fromEnv(raw.summaryChannelId),
+    defaultChannelId: channelOrNull(fromEnv(raw.defaultChannelId)),
+    defaultWebhook: webhookOrNull(fromEnv(raw.defaultWebhook)),
+    escalationChannelId: channelOrNull(fromEnv(raw.escalationChannelId)),
+    summaryChannelId: channelOrNull(fromEnv(raw.summaryChannelId)),
     coaches,
   };
 }
