@@ -143,6 +143,40 @@ export const PLAYBOOK = {
     success: 'Weekly diamonds back to 85% of their old normal.',
     test: (m, c) => grade(m.curr7.diamonds, c.baseline.weeklyDiamonds, c.baseline.atOpen.weeklyDiamonds),
   },
+  MONTH_DOWN: {
+    id: 'MONTH_DOWN',
+    title: 'Down on last month',
+    followUpDays: 14,
+    priority: 85,
+    concern: 'They are well behind the pace they set last month. A whole month of ground is harder to make back than a bad week.',
+    success: 'This month\'s pace back within 15% of last month\'s.',
+    // Measured on the same footing the alert was raised on: two complete
+    // months, prorated. A weekly test here would judge the creator on data the
+    // alert never looked at.
+    test: (m) => {
+      const change = m.monthOnMonth?.diamonds?.change;
+      if (change == null) return 'no_change';
+      if (change >= -0.15) return 'recovered';
+      if (change >= -0.3) return 'improved';
+      if (change <= -0.7) return 'worse';
+      return 'no_change';
+    },
+  },
+  MONTH_HOURS_DOWN: {
+    id: 'MONTH_HOURS_DOWN',
+    title: 'Fewer hours than last month',
+    followUpDays: 10,
+    priority: 78,
+    concern: 'They are putting in materially less time than they did last month, and earnings follow hours.',
+    success: 'LIVE hours back within 15% of last month\'s pace.',
+    test: (m) => {
+      const change = m.monthOnMonth?.liveHours?.change;
+      if (change == null) return 'no_change';
+      if (change >= -0.15) return 'recovered';
+      if (change >= -0.3) return 'improved';
+      return 'no_change';
+    },
+  },
   OPPORTUNITY: {
     id: 'OPPORTUNITY',
     title: 'Inside 90 days, reachable',

@@ -17,12 +17,13 @@ const SEVERITY_ORDER = { watch: 1, warn: 2, urgent: 3 };
 // Earliest-moving signals first: this is both the detection order and the
 // order a coach should read them in.
 const SIGNAL_ORDER = [
-  'DARK', 'LIVE_DAYS_DOWN', 'HOURS_DOWN', 'SUSTAINED_HOURS_DOWN',
+  'DARK', 'LIVE_DAYS_DOWN', 'HOURS_DOWN', 'SUSTAINED_HOURS_DOWN', 'MONTH_HOURS_DOWN',
   'FANCLUB_FANS_DOWN', 'CONCENTRATION_RISK',
   'EFFICIENCY_DOWN', 'FANCLUB_DIAMONDS_DOWN', 'DIAMONDS_DOWN', 'SUSTAINED_DIAMONDS_DOWN',
+  'MONTH_DOWN',
 ];
-const LEADING = ['DARK', 'LIVE_DAYS_DOWN', 'HOURS_DOWN', 'SUSTAINED_HOURS_DOWN'];
-const LAGGING = ['DIAMONDS_DOWN', 'FANCLUB_DIAMONDS_DOWN', 'SUSTAINED_DIAMONDS_DOWN'];
+const LEADING = ['DARK', 'LIVE_DAYS_DOWN', 'HOURS_DOWN', 'SUSTAINED_HOURS_DOWN', 'MONTH_HOURS_DOWN'];
+const LAGGING = ['DIAMONDS_DOWN', 'FANCLUB_DIAMONDS_DOWN', 'SUSTAINED_DIAMONDS_DOWN', 'MONTH_DOWN'];
 const pct = (x) => (x == null ? 'n/a' : `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`);
 const round = (x, n = 0) => (x == null ? null : Number(x.toFixed(n)));
 /** Whole numbers in coach-facing text always carry thousands separators. */
@@ -39,11 +40,65 @@ function noiseAdjusted(baseThreshold, vol, multiple) {
   return Math.max(baseThreshold, Math.min(vol.cv * multiple, 0.85));
 }
 
-function signalsFor(m, tier, cfg) {
+/**
+ * `weekly` is false when we do not hold enough real daily readings to trust a
+ * week-on-week comparison. The month-on-month signals below do not need them:
+ * they compare two complete months, which is what the export reports natively,
+ * so they work from the very first upload.
+ */
+function signalsFor(m, tier, cfg, { weekly = true } = {}) {
   const t = cfg.byTier[tier];
   const out = [];
   if (!t) return out;
   const k = cfg.volatilityMultiple;
+
+  // --- 0. month on month ---------------------------------------------------
+  // Last month, prorated to the same point, against this month so far. A
+  // creator who did 500,000 by the 20th last month and 100,000 by the 20th this
+  // month is in trouble, and no amount of daily granularity is needed to say so.
+  const mom = cfg.month;
+  const md = m.monthOnMonth?.diamonds;
+  const canCompareMonths = md?.change != null
+    && (m.daysSinceJoining ?? 0) >= mom.minDaysSinceJoining
+    && md.lastMonthToSamePoint >= mom.minLastMonthPace
+    && m.monthOnMonth.dayOfMonth >= mom.minDayOfMonth;
+
+  if (canCompareMonths) {
+    const lost = Math.round(md.lastMonthToSamePoint - md.monthToDate);
+    if (md.change <= -mom.diamondsDrop && lost >= t.diamondsFloor) {
+      const severe = md.change <= -mom.urgentDrop && lost >= t.diamondsFloor * 2;
+      out.push({
+        code: 'MONTH_DOWN',
+        severity: severe ? 'urgent' : 'warn',
+        label: `Diamonds ${pct(md.change)} on last month`,
+        detail: `${fmt(md.monthToDate)} so far this month against ${fmt(md.lastMonthToSamePoint)} by the same day of ${m.monthOnMonth.previousMonth} — ${fmt(lost)} behind.`,
+      });
+    }
+    const mh = m.monthOnMonth.liveHours;
+    if (mh?.change != null && mh.change <= -mom.hoursDrop && mh.lastMonthToSamePoint >= t.hoursFloor) {
+      out.push({
+        code: 'MONTH_HOURS_DOWN',
+        severity: 'warn',
+        label: `LIVE hours ${pct(mh.change)} on last month`,
+        detail: `${fmt(mh.monthToDate, 1)}h so far against ${fmt(mh.lastMonthToSamePoint, 1)}h by the same day of ${m.monthOnMonth.previousMonth}.`,
+      });
+    }
+  }
+
+  if (!weekly) {
+    // A creator genuinely off air shows up in the allocation whatever its
+    // granularity, so that one signal still stands.
+    if (m.darkStreak >= Math.max(t.darkDays, 5)) {
+      out.push({
+        code: 'DARK',
+        severity: 'warn',
+        label: `${m.darkStreak} days with no LIVE`,
+        detail: `No valid LIVE day in the last ${m.darkStreak} days.`,
+      });
+    }
+    out.sort((a, b) => SIGNAL_ORDER.indexOf(a.code) - SIGNAL_ORDER.indexOf(b.code));
+    return out;
+  }
 
   // --- 1. attendance -------------------------------------------------------
   // "Days off air" only means something relative to a creator's own rhythm:
@@ -187,7 +242,14 @@ function gradeSignals(signals) {
 }
 
 /** Diamonds the network loses over the next 28 days if this week's rate holds. */
-function valueAtRisk(m) {
+function valueAtRisk(m, { weekly = true } = {}) {
+  // On coarse data the weekly rate is an artifact, so fall back to the month
+  // shortfall, which is measured over two complete windows.
+  if (!weekly) {
+    const md = m.monthOnMonth?.diamonds;
+    if (!md?.lastMonthTotal || md.projectedMonth == null) return 0;
+    return Math.max(0, Math.round(md.lastMonthTotal - md.projectedMonth));
+  }
   if (m.curr28.diamonds <= 0) return 0;
   const projected = m.dailyDiamonds7 * 28;
   return Math.max(0, Math.round(m.curr28.diamonds - projected));
@@ -246,22 +308,25 @@ export function evaluateDecline(creators, metricsByKey, config, state = { open: 
       if (prior) delete state.open[c.key];
       continue;
     }
-    if (m.historyDays < cfg.minHistoryDays || !m.hasFullPrev7) { skipped.tooNew++; continue; }
-    // Both comparison windows have to be built from days we actually observed.
-    // Without this, the first fortnight of use generates alerts that are pure
-    // artifacts of spreading a back-fill snapshot evenly across its days.
+    if (m.historyDays < cfg.minHistoryDays) { skipped.tooNew++; continue; }
+
+    // Week-on-week needs real daily readings in both windows: without them the
+    // comparison is an artifact of spreading a back-fill snapshot evenly across
+    // its days. Month-on-month does not, so a coarse creator is still evaluated,
+    // just on monthly evidence alone.
     const need = cfg.eligibility.minExactDaysPerWindow ?? 5;
-    if (m.exact.curr7 < need || m.exact.prev7 < need) { skipped.coarse = (skipped.coarse ?? 0) + 1; continue; }
+    const weekly = m.hasFullPrev7 && m.exact.curr7 >= need && m.exact.prev7 >= need;
+    if (!weekly) skipped.coarse = (skipped.coarse ?? 0) + 1;
 
     const tier = tierOf(m, config.tiers);
     if (tier === 'dormant') { skipped.dormant++; continue; }
     // No established pattern, nothing to deviate from. These creators belong on
     // the activation list, not the decline list.
     if (m.activeDays28 < cfg.eligibility.minActiveDays28) { skipped.ineligible++; continue; }
-    if (m.prev7.liveHours < cfg.eligibility.minPrev7LiveHours
+    if (weekly && m.prev7.liveHours < cfg.eligibility.minPrev7LiveHours
         && m.curr28.diamonds < cfg.eligibility.minPrev28Diamonds) { skipped.ineligible++; continue; }
 
-    const signals = signalsFor(m, tier, cfg);
+    const signals = signalsFor(m, tier, cfg, { weekly });
     const severity = gradeSignals(signals);
 
     if (!severity) {
@@ -282,8 +347,9 @@ export function evaluateDecline(creators, metricsByKey, config, state = { open: 
       metrics: m,
       tier,
       severity,
+      weekly,
       signals,
-      valueAtRisk: valueAtRisk(m),
+      valueAtRisk: valueAtRisk(m, { weekly }),
       action: suggestAction(m, signals),
       isNew: !prior,
       escalated: Boolean(prior) && escalated,

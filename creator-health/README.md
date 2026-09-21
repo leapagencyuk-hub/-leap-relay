@@ -492,6 +492,27 @@ precisely why it records from day one.
 
 ## Week on week, month on month
 
+### Month on month works from day one
+
+This is what makes the tool useful immediately rather than in a fortnight.
+
+Week-on-week needs real daily readings in both weeks, so it stays quiet until
+roughly ten daily uploads have accumulated. **Month-on-month needs none of
+that**: it compares two complete months, prorated to the same day, which is
+exactly what the export reports natively. Ingest one month-end export and the
+comparison is live.
+
+On LEAP's first real data — one August month-end export plus four September
+days — that meant **56 decline cases** the tool could raise honestly on day
+one, against zero from week-on-week. The worst was 434,000 diamonds behind
+August's pace.
+
+A month-raised case stays month-framed throughout: the card shows this month
+against the same point last month, the causes are read from monthly movement,
+and the follow-up is graded on the month rather than the week. Judging a
+creator on data the alert never looked at is how a tool loses a coach's trust.
+
+
 Both, from the same daily uploads.
 
 **Week on week** is the 7 days to date against the 7 before, judged against each
@@ -848,9 +869,10 @@ Set `UPLOAD_TOKEN` and the page asks for it once, then remembers it on that
 device. Without the token set, the upload endpoint is open to anyone who finds
 the URL.
 
-If nobody uploads for a day, nothing runs — follow-up verdicts and escalations
-wait for the next upload rather than firing late. That is usually what you
-want; if not, a scheduled `POST /run` covers the gap.
+A **daily safety net** runs at 09:00 UTC (`CH_DAILY_HOUR` to change it) whether
+or not anything was uploaded, so follow-up verdicts and escalations keep moving
+on a day somebody forgets. The once-a-day guard means an upload later that day
+does not post a second overview.
 
 ## Running it
 
@@ -984,6 +1006,10 @@ Everything lives in `config.json` — no code changes needed.
 | `cases.maxOpenDays` | When a case is closed for going stale, freeing the coach's slot |
 | `cases.reopenCooldownDays` | Quiet period after a stale close, before it can reopen |
 | `decline.eligibility.minExactDaysPerWindow` | Real daily readings needed in each week before week-on-week fires |
+| `decline.month.diamondsDrop` | Month-on-month fall that opens a case |
+| `decline.month.urgentDrop` | Fall that makes it urgent |
+| `decline.month.minDaysSinceJoining` | Must have been around for the whole of last month |
+| `decline.month.minDayOfMonth` | How far into the month before the comparison is fair |
 
 **Tune against real data.** The thresholds here are derived from the two sample
 files plus a simulation. After a month of real uploads, re-run `rebuild` and

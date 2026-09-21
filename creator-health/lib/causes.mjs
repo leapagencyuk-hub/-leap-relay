@@ -47,21 +47,33 @@ export const CAUSES = [
     id: 'FEWER_HOURS',
     kind: KIND.CAUSE,
     label: 'Less hours — schedule has slipped',
-    detect: (m) => {
+    detect: (m, { weekly }) => {
       const ev = [];
       if (m.darkStreak >= 3) ev.push(`${m.darkStreak} days with no LIVE at all`);
-      if (down(m.change7.liveHours, 0.2)) {
-        ev.push(`LIVE hours ${pct(m.change7.liveHours)} — ${m.curr7.liveHours.toFixed(1)}h this week vs ${m.prev7.liveHours.toFixed(1)}h last`);
-      }
-      if (m.prev7.validLiveDays - m.curr7.validLiveDays >= 1.5) {
-        ev.push(`${Math.round(m.curr7.validLiveDays)} LIVE days this week, down from ${Math.round(m.prev7.validLiveDays)}`);
+      if (weekly) {
+        if (down(m.change7.liveHours, 0.2)) {
+          ev.push(`LIVE hours ${pct(m.change7.liveHours)} — ${m.curr7.liveHours.toFixed(1)}h this week vs ${m.prev7.liveHours.toFixed(1)}h last`);
+        }
+        if (m.prev7.validLiveDays - m.curr7.validLiveDays >= 1.5) {
+          ev.push(`${Math.round(m.curr7.validLiveDays)} LIVE days this week, down from ${Math.round(m.prev7.validLiveDays)}`);
+        }
+      } else {
+        // Without trustworthy daily readings, the month tells the same story.
+        const mh = m.monthOnMonth?.liveHours;
+        const md = m.monthOnMonth?.validLiveDays;
+        if (down(mh?.change, 0.2)) {
+          ev.push(`LIVE hours ${pct(mh.change)} on last month — ${mh.monthToDate.toFixed(1)}h so far against ${mh.lastMonthToSamePoint.toFixed(1)}h by this point in ${m.monthOnMonth.previousMonth}`);
+        }
+        if (down(md?.change, 0.2)) {
+          ev.push(`${Math.round(md.monthToDate)} LIVE days this month against ${Math.round(md.lastMonthToSamePoint)} by the same point last month`);
+        }
       }
       if (!ev.length) return null;
       return { confidence: 'likely', evidence: ev };
     },
     ask: [
       'Do they actually have a written schedule, or is it whenever they feel like it?',
-      'If they have one — what got in the way this week?',
+      'If they have one — what has been getting in the way?',
       'Is the schedule still realistic for their life right now, or has something changed?',
     ],
     check: ['Their last agreed schedule, and whether this is the first week they have missed it'],
@@ -122,7 +134,9 @@ export const CAUSES = [
     id: 'LOST_GIFTERS',
     kind: KIND.CAUSE,
     label: 'Lost gifters — the people have gone',
-    detect: (m) => {
+    detect: (m, { weekly }) => {
+      if (!weekly) return null;
+
       const fansDown = m.fanClub.activeFansChange14 ?? m.fanClub.activeFansChange7;
       if (!down(fansDown, 0.2) || (m.fanClub.activeFans ?? 0) < 3) return null;
       const ev = [`Active fan club members ${pct(fansDown)} — down to ${n(m.fanClub.activeFans)}`];
@@ -142,7 +156,9 @@ export const CAUSES = [
     id: 'GIFTERS_TAPPED_OUT',
     kind: KIND.CAUSE,
     label: 'Gifters ran out of money — same people, smaller gifts',
-    detect: (m) => {
+    detect: (m, { weekly }) => {
+      if (!weekly) return null;
+
       // The distinction the data can make and a coach cannot eyeball: the same
       // faces spending less looks nothing like losing the faces, and the two
       // need completely different conversations.
@@ -168,7 +184,22 @@ export const CAUSES = [
     id: 'NO_GOALS',
     kind: KIND.CAUSE,
     label: 'No goals or revenue boosting in the room',
-    detect: (m) => {
+    detect: (m, { weekly }) => {
+      if (!weekly) {
+        // Same test, one window up: hours held across the month but the
+        // diamonds did not follow.
+        const mh = m.monthOnMonth?.liveHours;
+        const mdia = m.monthOnMonth?.diamonds;
+        if (!mh?.change != null && !mdia) return null;
+        if (!flat(mh?.change, 0.15) || !down(mdia?.change, 0.25)) return null;
+        return {
+          confidence: 'likely',
+          evidence: [
+            `Diamonds ${pct(mdia.change)} on last month while LIVE hours held (${pct(mh.change)})`,
+            'The time is going in and the room is not converting it',
+          ],
+        };
+      }
       const baseRate = m.profile.liveHours?.baseline > 0.5
         ? (m.profile.diamonds?.baseline ?? 0) / m.profile.liveHours.baseline
         : m.diamondsPerHour28;
@@ -196,7 +227,9 @@ export const CAUSES = [
     id: 'NO_SHORT_FORM',
     kind: KIND.LEVER,
     label: 'No short form content bringing new traffic in',
-    detect: (m) => {
+    detect: (m, { weekly }) => {
+      if (!weekly) return null;
+
       const followersDown = down(m.change7.newFollowers, 0.3);
       const stillLive = m.curr7.liveHours >= 2 && !down(m.change7.liveHours, 0.25);
       if (!followersDown || !stillLive) return null;
@@ -267,7 +300,9 @@ export const CAUSES = [
     id: 'DRAMA',
     kind: KIND.CAUSE,
     label: 'Drama or fallout',
-    detect: (m) => {
+    detect: (m, { weekly }) => {
+      if (!weekly) return null;
+
       // Mostly invisible in this export. It earns its place by being common,
       // not by being detectable, and saying so is the honest thing to do.
       const fansFalling = (m.fanClub.totalFansChange14 ?? 0) < 0;
@@ -308,12 +343,12 @@ export const CAUSES = [
  * is the set of questions worth asking anyway — which is still more use to a
  * coach than a number that went down.
  */
-export function rankCauses(metrics, { limit = 3, leverLimit = 2 } = {}) {
+export function rankCauses(metrics, { limit = 3, leverLimit = 2, weekly = true } = {}) {
   const found = [];
   for (const cause of CAUSES) {
     let hit = null;
     try {
-      hit = cause.detect(metrics);
+      hit = cause.detect(metrics, { weekly });
     } catch {
       hit = null; // a missing field must never take the whole digest down
     }

@@ -50,7 +50,16 @@
     "efficiencyDrop": 0.3,
     "cooldownDays": 5,
     "recoveryThreshold": 0.9,
-    "volatilityMultiple": 1.4
+    "volatilityMultiple": 1.4,
+    "month": {
+      "_note": "Month-on-month works from the first upload: it compares two complete months, so it needs no daily readings.",
+      "diamondsDrop": 0.3,
+      "urgentDrop": 0.55,
+      "hoursDrop": 0.3,
+      "minDaysSinceJoining": 50,
+      "minLastMonthPace": 5000,
+      "minDayOfMonth": 7
+    }
   },
   "ramp": {
     "targetDiamonds": 200000,

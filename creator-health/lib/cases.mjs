@@ -172,10 +172,13 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
         signals: codes,
         playbookId: book.id,
         baseline: captureBaseline(alert.metrics),
+        // Which evidence this case was raised on, so the card and the
+        // follow-up are judged the same way it was opened.
+        weekly: alert.weekly !== false,
         // Ranked at the moment the case opens, against the data as it looked
         // then. Re-ranking later would quietly rewrite the coach's starting
         // point after they had already acted on it.
-        causes: rankCauses(alert.metrics),
+        causes: rankCauses(alert.metrics, { weekly: alert.weekly !== false }),
         valueAtRisk: alert.valueAtRisk,
         status: STATUS.OPEN,
         followUpOn: null,
@@ -202,7 +205,7 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
       // A case that gets worse often gets worse for a new reason, so the
       // ranking is refreshed here even though the opening one is preserved
       // in the history.
-      existing.causes = rankCauses(alert.metrics);
+      existing.causes = rankCauses(alert.metrics, { weekly: alert.weekly !== false });
       store.log(existing, 'worsened', {
         note: grew ? `escalated to ${alert.severity}` : `new signals: ${newCodes.join(', ')}`,
       });

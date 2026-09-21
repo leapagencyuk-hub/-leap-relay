@@ -312,7 +312,44 @@ const server = http.createServer(async (req, res) => {
   }
 });
 
+/**
+ * A daily safety net.
+ *
+ * Uploading runs the pipeline, which covers the normal day. But follow-up
+ * verdicts and escalations are keyed on dates, so a day with no upload would
+ * leave them waiting - and the overview would go quiet without saying why.
+ * This runs once a day regardless, and the once-a-day guard means an upload
+ * later the same day does not post a second overview.
+ */
+function startDailySchedule() {
+  const hour = Number(process.env.CH_DAILY_HOUR ?? 9);
+  if (!Number.isFinite(hour) || hour < 0 || hour > 23) return null;
+  let lastRunOn = null;
+
+  const tick = async () => {
+    const now = new Date();
+    const today = now.toISOString().slice(0, 10);
+    if (lastRunOn === today || now.getUTCHours() < hour) return;
+    lastRunOn = today;
+    try {
+      const run = await runDaily(config, configPath, {});
+      const sent = run.delivery.sent.filter((x) => x.ok && !x.skipped).length;
+      console.log(`[daily ${today}] opened ${run.changes.opened.length}, follow-ups ${run.changes.dueFollowUps.length}, sent ${sent}`);
+    } catch (err) {
+      // Never take the service down over a scheduled run. A fresh install with
+      // nothing uploaded yet is expected, not an error.
+      const expected = /no snapshots ingested/.test(err.message);
+      console[expected ? 'log' : 'error'](`[daily ${today}] ${expected ? 'nothing to do yet' : `failed: ${err.message}`}`);
+    }
+  };
+
+  tick();
+  return setInterval(tick, 10 * 60 * 1000).unref?.() ?? null;
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`creator-health listening on :${PORT}  (data: ${config.dataDir})`);
   if (!TOKEN) console.log('warning: UPLOAD_TOKEN is not set — /upload and /notify are open');
+  startDailySchedule();
+  console.log(`daily safety-net run at ${process.env.CH_DAILY_HOUR ?? 9}:00 UTC`);
 });

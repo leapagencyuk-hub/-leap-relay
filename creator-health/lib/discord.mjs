@@ -133,6 +133,39 @@ export function caseButtons(caseRecord, { enabled = true } = {}) {
 
 // --- embeds ------------------------------------------------------------------
 
+/** The three-column month view, for a case raised on monthly evidence. */
+function monthOnlyFields(m, caseRecord) {
+  const mom = m.monthOnMonth ?? {};
+  const d = mom.diamonds ?? {};
+  const h = mom.liveHours ?? {};
+  const prev = mom.previousMonth ?? 'last month';
+  return [
+    {
+      name: `This month (to day ${mom.dayOfMonth ?? '—'})`,
+      value: [
+        `${n(d.monthToDate)} diamonds`,
+        `${h.monthToDate != null ? `${h.monthToDate.toFixed(1)}h LIVE` : '—'}`,
+        `on track for ${n(d.projectedMonth)}`,
+      ].join('\n'),
+      inline: true,
+    },
+    {
+      name: `Same point in ${prev}`,
+      value: [
+        `${n(d.lastMonthToSamePoint)} diamonds`,
+        `${h.lastMonthToSamePoint != null ? `${h.lastMonthToSamePoint.toFixed(1)}h LIVE` : '—'}`,
+        `full month: ${n(d.lastMonthTotal)}`,
+      ].join('\n'),
+      inline: true,
+    },
+    {
+      name: 'Behind by',
+      value: `${n(Math.max(0, (d.lastMonthToSamePoint ?? 0) - (d.monthToDate ?? 0)))} diamonds\n**${pct(d.change)}**`,
+      inline: true,
+    },
+  ];
+}
+
 /** Month on month, prorated to the same point — or diamonds at risk if we cannot. */
 function monthField(m, caseRecord) {
   const mom = m.monthOnMonth?.diamonds;
@@ -211,25 +244,32 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
       description: alert.signals.map((s) => `• **${s.label}** — ${s.detail}`).join('\n').slice(0, 3800),
       color: COLOR[caseRecord.severity] ?? COLOR.neutral,
       fields: [
-        {
-          name: 'This week',
-          value: [
-            `${n(m.curr7.diamonds)} diamonds (${pct(m.change7.diamonds)})`,
-            `${m.curr7.liveHours.toFixed(1)}h LIVE (${pct(m.change7.liveHours)})`,
-            `${Math.round(m.curr7.validLiveDays)} LIVE days`,
-          ].join('\n'),
-          inline: true,
-        },
-        {
-          name: 'Their normal',
-          value: [
-            `${n(caseRecord.baseline.weeklyDiamonds)} diamonds`,
-            `${caseRecord.baseline.weeklyHours.toFixed(1)}h LIVE`,
-            `${caseRecord.baseline.weeklyLiveDays.toFixed(1)} LIVE days`,
-          ].join('\n'),
-          inline: true,
-        },
-        monthField(m, caseRecord),
+        // A case raised on monthly evidence shows monthly figures. Showing a
+        // week built from spread-out snapshots beside it would invite the coach
+        // to read numbers the alert never trusted.
+        ...(caseRecord.weekly === false
+          ? monthOnlyFields(m, caseRecord)
+          : [
+            {
+              name: 'This week',
+              value: [
+                `${n(m.curr7.diamonds)} diamonds (${pct(m.change7.diamonds)})`,
+                `${m.curr7.liveHours.toFixed(1)}h LIVE (${pct(m.change7.liveHours)})`,
+                `${Math.round(m.curr7.validLiveDays)} LIVE days`,
+              ].join('\n'),
+              inline: true,
+            },
+            {
+              name: 'Their normal',
+              value: [
+                `${n(caseRecord.baseline.weeklyDiamonds)} diamonds`,
+                `${caseRecord.baseline.weeklyHours.toFixed(1)}h LIVE`,
+                `${caseRecord.baseline.weeklyLiveDays.toFixed(1)} LIVE days`,
+              ].join('\n'),
+              inline: true,
+            },
+            monthField(m, caseRecord),
+          ]),
         ...causeFields(caseRecord),
         { name: `Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
       ].filter(Boolean),
