@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Andy — the LEAP coaching brain</title>
+<style>
+  :root {
+    --bg: #0e1116; --panel: #161b22; --line: #262d38; --ink: #e6edf3;
+    --dim: #8b949e; --accent: #5b8def; --ok: #3fb950; --warn: #d29922; --bad: #f85149;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg: #f6f8fa; --panel: #fff; --line: #d8dee4; --ink: #1f2328; --dim: #636c76; }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    padding: 24px 16px 64px;
+  }
+  main { max-width: 860px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 2px; letter-spacing: -0.01em; }
+  .sub { color: var(--dim); margin: 0 0 24px; font-size: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px; margin-bottom: 16px; }
+  h2 { font-size: 13px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--dim); margin: 0 0 14px; font-weight: 600; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 14px; }
+  .stat b { display: block; font-size: 26px; font-weight: 650; letter-spacing: -0.02em; }
+  .stat span { color: var(--dim); font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .row { display: flex; gap: 9px; align-items: baseline; padding: 5px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .row:last-child { border-bottom: 0; }
+  .row .name { flex: 0 0 160px; color: var(--dim); }
+  .row .detail { flex: 1; min-width: 0; word-break: break-word; }
+  .dot { flex: 0 0 8px; height: 8px; width: 8px; border-radius: 50%; background: var(--bad); margin-top: 7px; }
+  .dot.ok { background: var(--ok); }
+  button {
+    font: inherit; font-weight: 550; color: #fff; background: var(--accent);
+    border: 0; border-radius: 8px; padding: 9px 16px; cursor: pointer;
+  }
+  button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
+  button:disabled { opacity: 0.5; cursor: default; }
+  .actions { display: flex; gap: 9px; flex-wrap: wrap; }
+  textarea, input[type=password] {
+    width: 100%; font: inherit; color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; resize: vertical;
+  }
+  textarea { min-height: 76px; }
+  .answer { white-space: pre-wrap; margin-top: 14px; }
+  .sources { margin-top: 14px; font-size: 13px; color: var(--dim); }
+  .sources a { color: var(--accent); }
+  .note { color: var(--dim); font-size: 13px; margin-top: 10px; }
+  .bad { color: var(--bad); } .warn { color: var(--warn); }
+  code { background: var(--bg); border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; font-size: 12px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Andy</h1>
+  <p class="sub">The coaching brain. Reads LEAP's library and the live creator data, and answers in Discord.</p>
+
+  <div class="panel">
+    <h2>What Andy has read</h2>
+    <div class="stats" id="stats"><span class="sub">loading…</span></div>
+    <div class="actions" style="margin-top:18px">
+      <button id="sync">Sync from Drive</button>
+      <button id="reindex" class="ghost">Reindex</button>
+      <button id="refresh" class="ghost">Refresh</button>
+    </div>
+    <div class="note" id="syncNote"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Ask Andy</h2>
+    <textarea id="question" placeholder="e.g. @sur3shot has dropped off this week — what's going on and what should I say on the call?"></textarea>
+    <div class="actions" style="margin-top:10px">
+      <button id="ask">Ask</button>
+    </div>
+    <div class="answer" id="answer"></div>
+    <div class="sources" id="sources"></div>
+  </div>
+
+  <div class="panel">
+    <h2>Readiness</h2>
+    <div id="readiness"><span class="sub">loading…</span></div>
+  </div>
+
+  <div class="panel" id="failedPanel" hidden>
+    <h2>Files Andy could not read</h2>
+    <div id="failed"></div>
+    <p class="note">A PDF with no text layer is a scan. It needs running through OCR before Andy can use it.</p>
+  </div>
+</main>
+
+<script>
+// The admin token is asked for once and kept on this device only. It never
+// leaves the browser except as the Authorization header on this service.
+const KEY = 'andy.token';
+const token = () => localStorage.getItem(KEY) || '';
+const headers = () => (token() ? { authorization: 'Bearer ' + token() } : {});
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const num = (x) => Number(x ?? 0).toLocaleString('en-GB');
+
+async function api(path, options = {}) {
+  const res = await fetch(path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
+  if (res.status === 401) {
+    const entered = prompt('Admin token for this service (ANDY_TOKEN):');
+    if (!entered) throw new Error('This needs the admin token.');
+    localStorage.setItem(KEY, entered);
+    return api(path, options);
+  }
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || ('HTTP ' + res.status));
+  return body;
+}
+
+function renderStatus(s) {
+  $('stats').innerHTML = [
+    ['Documents', num(s.documents)],
+    ['Passages', num(s.chunks)],
+    ['Retrieval', s.retrieval.replace(' (meaning + keyword)', '')],
+    ['Last sync', s.lastSync ? s.lastSync.slice(0, 10) : 'never'],
+    ['Discord', s.gateway?.ready ? 'connected' : (s.gateway?.enabled ? 'connecting' : 'off')],
+  ].map(([label, value]) => '<div class="stat"><b>' + esc(value) + '</b><span>' + esc(label) + '</span></div>').join('');
+
+  $('readiness').innerHTML = (s.readiness || []).map((c) =>
+    '<div class="row"><i class="dot' + (c.ok ? ' ok' : '') + '"></i>'
+    + '<span class="name">' + esc(c.name) + '</span>'
+    + '<span class="detail">' + esc(c.detail) + '</span></div>').join('');
+
+  const failed = s.failed || [];
+  $('failedPanel').hidden = failed.length === 0;
+  $('failed').innerHTML = failed.map((f) =>
+    '<div class="row"><span class="name">' + esc(f.name) + '</span><span class="detail bad">' + esc(f.error) + '</span></div>').join('');
+
+  $('syncNote').innerHTML = s.vectorsMatchChunks === false
+    ? '<span class="warn">The vector index does not match the passages. Reindex before trusting an answer.</span>'
+    : (s.syncing ? 'A sync is running…' : '');
+}
+
+async function refresh() {
+  try { renderStatus(await api('/status.json')); }
+  catch (err) { $('stats').innerHTML = '<span class="bad">' + esc(err.message) + '</span>'; }
+}
+
+async function runSync(path, label) {
+  const buttons = [$('sync'), $('reindex')];
+  buttons.forEach((b) => (b.disabled = true));
+  $('syncNote').textContent = label + '… this can take a few minutes on a big folder.';
+  try {
+    const report = await api(path, { method: 'POST' });
+    const bits = [];
+    if (report.added != null) bits.push(report.added + ' added', report.updated + ' updated', report.unchanged + ' unchanged', report.removed + ' removed');
+    bits.push(num(report.chunks) + ' passages', report.retrieval);
+    $('syncNote').textContent = 'Done — ' + bits.join(' · ')
+      + (report.failed?.length ? ' · ' + report.failed.length + ' could not be read' : '');
+  } catch (err) {
+    $('syncNote').innerHTML = '<span class="bad">' + esc(err.message) + '</span>';
+  } finally {
+    buttons.forEach((b) => (b.disabled = false));
+    refresh();
+  }
+}
+
+$('sync').onclick = () => runSync('/sync', 'Reading the Drive folder');
+$('reindex').onclick = () => runSync('/reindex', 'Reindexing');
+$('refresh').onclick = refresh;
+
+$('ask').onclick = async () => {
+  const question = $('question').value.trim();
+  if (!question) return;
+  $('ask').disabled = true;
+  $('answer').textContent = 'Thinking…';
+  $('sources').innerHTML = '';
+  try {
+    const result = await api('/ask', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ question }),
+    });
+    $('answer').textContent = result.text;
+    if (result.citations?.length) {
+      $('sources').innerHTML = '<b>Sources</b><br>' + result.citations.map((c) => {
+        const where = [c.heading, c.page > 1 ? 'p' + c.page : null].filter(Boolean).join(' · ');
+        const label = '#' + c.id + ' ' + esc(c.title) + (where ? ' — ' + esc(where) : '');
+        return c.link ? '<a href="' + esc(c.link) + '" target="_blank" rel="noopener">' + label + '</a>' : label;
+      }).join('<br>');
+    }
+  } catch (err) {
+    $('answer').innerHTML = '<span class="bad">' + esc(err.message) + '</span>';
+  } finally {
+    $('ask').disabled = false;
+  }
+};
+
+$('question').addEventListener('keydown', (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') $('ask').click();
+});
+
+refresh();
+</script>
+</body>
+</html>

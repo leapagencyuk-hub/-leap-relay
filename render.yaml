@@ -32,3 +32,47 @@ services:
         sync: false
       - key: DISCORD_APP_ID
         sync: false
+
+  # Andy: the coaching brain. Reads the Drive library and the creator data,
+  # and answers staff questions in Discord.
+  #
+  # The disk holds the extracted text and the search index. Losing it is not
+  # fatal — a sync rebuilds everything from Drive — but that is a slow, paid
+  # re-read of the whole folder on every deploy, so the disk stays.
+  - type: web
+    name: leap-andy
+    runtime: node
+    plan: starter          # always-on; a sleeping service fails Discord's endpoint check
+    buildCommand: cd andy && npm install
+    startCommand: node andy/server.mjs
+    healthCheckPath: /health
+    disk:
+      name: andy-brain
+      mountPath: /opt/render/project/src/andy/data
+      sizeGB: 5
+    envVars:
+      # Render supplies PORT; the server binds to it automatically.
+      - key: ANTHROPIC_API_KEY
+        sync: false        # set in the Render dashboard, never committed
+      - key: VOYAGE_API_KEY
+        sync: false
+      - key: ANDY_TOKEN
+        sync: false        # protects /sync, /reindex and /ask
+      - key: ANDY_DRIVE_FOLDER_ID
+        sync: false
+      - key: GOOGLE_SERVICE_ACCOUNT_JSON
+        sync: false        # the service account key, base64 or raw JSON
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: ANDY_DISCORD_PUBLIC_KEY
+        sync: false
+      - key: ANDY_DISCORD_APP_ID
+        sync: false
+      # Andy reads a creator's live numbers from the creator-health service.
+      - key: CREATOR_HEALTH_URL
+        fromService:
+          type: web
+          name: leap-creator-health
+          property: hostport
+      - key: UPLOAD_TOKEN
+        sync: false        # the same token creator-health is protected with

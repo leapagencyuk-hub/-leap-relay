@@ -1,0 +1,6 @@
+data/
+cache/
+routes.json
+service-account.json
+.env
+node_modules/
