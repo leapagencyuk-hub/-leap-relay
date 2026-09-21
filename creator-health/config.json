@@ -76,11 +76,22 @@
     "sustainableHoursPerDay": 4,
     "maxHoursPerDay": 6,
     "sustainableDaysPerWeek": 6,
-    "spotlightCount": 20
+    "spotlightCount": 20,
+    "minRecentLiveDays": 2
   },
   "digest": {
     "maxAlertsPerCoach": 12,
     "maxRampRowsPerCoach": 10,
     "includeRecoveries": true
+  },
+  "cases": {
+    "openCasesForEarlySigns": false,
+    "openOpportunityCases": true,
+    "autoResolveClearDays": 3,
+    "escalateAfterDays": 3,
+    "escalateUrgentAfterDays": 1,
+    "maxOpenPerCoach": 8,
+    "maxOpenOpportunitiesPerCoach": 3,
+    "escalateMaxPerRun": 5
   }
 }

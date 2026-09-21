@@ -17,14 +17,44 @@ import path from 'node:path';
  */
 export function loadRoutes(configDir) {
   const p = path.join(configDir, 'routes.json');
-  if (!fs.existsSync(p)) return { default: null, coaches: {}, summary: null };
+  if (!fs.existsSync(p)) return { default: null, coaches: {}, summary: null, discord: emptyDiscord() };
   const raw = JSON.parse(fs.readFileSync(p, 'utf8'));
-  // Environment variables win, so webhook URLs never have to be committed.
+  // Environment variables win, so no token or webhook URL is ever committed.
   const expand = (r) => (r?.url?.startsWith('env:') ? { ...r, url: process.env[r.url.slice(4)] } : r);
   return {
     default: expand(raw.default),
     summary: expand(raw.summary) ?? expand(raw.default),
     coaches: Object.fromEntries(Object.entries(raw.coaches ?? {}).map(([k, v]) => [k.toLowerCase(), expand(v)])),
+    discord: loadDiscordConfig(raw.discord),
+  };
+}
+
+const fromEnv = (v) => (typeof v === 'string' && v.startsWith('env:') ? process.env[v.slice(4)] ?? null : v ?? null);
+const emptyDiscord = () => ({ enabled: false, coaches: {} });
+
+/** Resolve the Discord block, pulling every secret from the environment. */
+export function loadDiscordConfig(raw) {
+  if (!raw) return emptyDiscord();
+  const coaches = {};
+  for (const [email, entry] of Object.entries(raw.coaches ?? {})) {
+    coaches[email.toLowerCase()] = {
+      channelId: fromEnv(entry.channelId),
+      userId: fromEnv(entry.userId),
+      webhook: fromEnv(entry.webhook),
+      mention: entry.mention ?? null,
+    };
+  }
+  return {
+    enabled: raw.enabled !== false,
+    mode: raw.mode ?? 'webhook',
+    botToken: fromEnv(raw.botToken),
+    publicKey: fromEnv(raw.publicKey),
+    applicationId: fromEnv(raw.applicationId),
+    defaultChannelId: fromEnv(raw.defaultChannelId),
+    defaultWebhook: fromEnv(raw.defaultWebhook),
+    escalationChannelId: fromEnv(raw.escalationChannelId),
+    summaryChannelId: fromEnv(raw.summaryChannelId),
+    coaches,
   };
 }
 

@@ -7,7 +7,7 @@
     "start": "node server.mjs",
     "ingest": "node cli.mjs ingest",
     "report": "node cli.mjs report",
-    "test": "node --test test/pipeline.test.mjs",
+    "test": "node --test test/*.test.mjs",
     "simulate": "node tools/simulate.mjs"
   },
   "engines": { "node": ">=18" }

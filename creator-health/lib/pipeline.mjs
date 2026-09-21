@@ -9,6 +9,9 @@ import { computeMetrics } from './metrics.mjs';
 import { evaluateDecline } from './rules.mjs';
 import { evaluateRamp, spotlight as pickSpotlight } from './ramp.mjs';
 import { renderCoachDigest, renderNetworkSummary, toJson } from './digest.mjs';
+import { CaseStore, reconcile, effectiveness } from './cases.mjs';
+import { dispatch, caseStats } from './dispatch.mjs';
+import { loadRoutes } from './notify.mjs';
 
 export function loadConfig(configPath) {
   const cfg = JSON.parse(fs.readFileSync(configPath, 'utf8'));
@@ -68,6 +71,11 @@ export function analyse(config, { asOf = null, persist = true } = {}) {
   const series = store.readSeries();
   const endDate = asOf ?? series.lastAsOf;
   if (!endDate) throw new Error('no snapshots ingested yet');
+  // Past the last snapshot every rolling window is empty, so every creator
+  // reads as having collapsed. Refuse rather than produce that.
+  if (endDate > series.lastAsOf) {
+    throw new Error(`no data for ${endDate} — the latest snapshot is ${series.lastAsOf}`);
+  }
 
   const creators = Object.values(series.creators);
   const metricsByKey = new Map();
@@ -112,4 +120,44 @@ export function buildDigests(result, config) {
   return digests;
 }
 
-export { renderNetworkSummary, toJson };
+/**
+ * The daily run: score everyone, reconcile against the open caseload, post to
+ * Discord.
+ *
+ * Kept separate from `analyse` because analysis is read-only and safe to run at
+ * any time, while this advances state that coaches can see.
+ */
+export async function runDaily(config, configPath, { asOf = null, dryRun = false } = {}) {
+  const result = analyse(config, { asOf, persist: !dryRun });
+  const store = new CaseStore(config.dataDir);
+  const changes = reconcile({
+    asOf: result.asOf,
+    alerts: result.alerts,
+    spotlight: result.spotlight,
+    metricsByKey: result.metricsByKey,
+    creators: result.creators,
+    store,
+    config,
+  });
+
+  const routes = loadRoutes(path.dirname(configPath));
+  const discordConfig = routes.discord;
+  let delivery = { sent: [], previews: [] };
+  if (discordConfig.enabled) {
+    delivery = await dispatch({
+      asOf: result.asOf,
+      changes,
+      alerts: result.alerts,
+      spotlight: result.spotlight,
+      ramp: result.ramp,
+      stats: result.stats,
+      store,
+      discordConfig,
+      dryRun,
+    });
+  }
+
+  return { result, changes, delivery, cases: caseStats(store, result.asOf), store };
+}
+
+export { renderNetworkSummary, toJson, CaseStore, effectiveness, caseStats };

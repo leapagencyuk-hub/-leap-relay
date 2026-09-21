@@ -8,6 +8,10 @@
 //   GET  /coach/:email      one coach's message
 //   GET  /creator/:name     one creator's numbers
 //   POST /notify            run today's analysis and push digests to webhooks
+//   POST /run               the daily run: reconcile cases and post to Discord
+//   POST /discord/interactions  Discord's interactions endpoint (button clicks)
+//   GET  /cases             the open caseload
+//   GET  /effectiveness     which interventions are working
 //   GET  /health
 //
 // Uploads and /notify require UPLOAD_TOKEN if it is set: send it as
@@ -17,10 +21,15 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { loadConfig, ingestFile, analyse, buildDigests, renderNetworkSummary, toJson } from './lib/pipeline.mjs';
+import {
+  loadConfig, ingestFile, analyse, buildDigests, renderNetworkSummary, toJson,
+  runDaily, CaseStore, effectiveness,
+} from './lib/pipeline.mjs';
 import { loadRoutes, sendDigests } from './lib/notify.mjs';
 import { Store } from './lib/store.mjs';
 import { computeMetrics } from './lib/metrics.mjs';
+import { isOpen } from './lib/cases.mjs';
+import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -131,12 +140,100 @@ async function handleNotify(req, res, url) {
   return json(res, 200, { asOf: result.asOf, digests: digests.length, sent });
 }
 
+/**
+ * Discord's interactions endpoint.
+ *
+ * Discord verifies the URL by sending a signed PING before it will save it, and
+ * rejects the endpoint outright if an unsigned request is ever answered with
+ * anything but 401 — so the signature check happens before the body is even
+ * parsed, against the exact bytes received.
+ */
+async function handleDiscordInteractions(req, res) {
+  const discord = loadRoutes(path.dirname(configPath)).discord;
+  if (!discord.publicKey) return json(res, 503, { error: 'DISCORD_PUBLIC_KEY is not configured' });
+
+  let raw;
+  try {
+    raw = await readBody(req, 1024 * 1024);
+  } catch (err) {
+    return json(res, 413, { error: err.message });
+  }
+
+  const ok = verifySignature(
+    discord.publicKey,
+    req.headers['x-signature-ed25519'],
+    req.headers['x-signature-timestamp'],
+    raw,
+  );
+  if (!ok) {
+    res.writeHead(401, { 'content-type': 'text/plain' });
+    return res.end('invalid request signature');
+  }
+
+  let interaction;
+  try {
+    interaction = JSON.parse(raw.toString('utf8'));
+  } catch {
+    return json(res, 400, { error: 'malformed interaction payload' });
+  }
+
+  try {
+    const reply = await handleInteraction(interaction, { config });
+    return json(res, 200, reply);
+  } catch (err) {
+    // Never leave Discord waiting: an error here still gets a valid response,
+    // or the coach sees "this interaction failed" with no explanation.
+    return json(res, 200, {
+      type: 4,
+      data: { content: `Something went wrong handling that: ${err.message}`, flags: 64 },
+    });
+  }
+}
+
+async function handleRun(req, res, url) {
+  if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+  const dryRun = url.searchParams.get('dry') === '1';
+  const { result, changes, delivery, cases } = await runDaily(config, configPath, {
+    asOf: url.searchParams.get('as-of'), dryRun,
+  });
+  return json(res, 200, {
+    asOf: result.asOf,
+    dryRun,
+    opened: changes.opened.length,
+    worsened: changes.worsened.length,
+    followUps: changes.dueFollowUps.length,
+    escalated: changes.escalated.length,
+    autoResolved: changes.autoResolved.length,
+    cases,
+    delivered: delivery.sent.length,
+    failures: delivery.sent.filter((x) => !x.ok),
+  });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
   const route = url.pathname.replace(/\/+$/, '') || '/';
   try {
     if (req.method === 'POST' && route === '/upload') return await handleUpload(req, res, url);
     if (req.method === 'POST' && route === '/notify') return await handleNotify(req, res, url);
+    if (req.method === 'POST' && route === '/run') return await handleRun(req, res, url);
+    if (req.method === 'POST' && route === '/discord/interactions') {
+      return await handleDiscordInteractions(req, res);
+    }
+    if (route === '/cases') {
+      const store = new CaseStore(config.dataDir);
+      const coach = url.searchParams.get('coach');
+      const all = url.searchParams.get('all') === '1';
+      return json(res, 200, {
+        cases: store.all()
+          .filter((c) => (all ? true : isOpen(c)))
+          .filter((c) => !coach || c.coach === coach.toLowerCase())
+          .sort((a, b) => b.valueAtRisk - a.valueAtRisk),
+      });
+    }
+    if (route === '/effectiveness') {
+      return json(res, 200, effectiveness(new CaseStore(config.dataDir)));
+    }
     if (route === '/health') {
       const store = new Store(config.dataDir);
       const dates = store.listSnapshotDates();

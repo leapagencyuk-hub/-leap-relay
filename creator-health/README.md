@@ -1,11 +1,15 @@
 # Creator health monitoring
 
-Daily pipeline over the TikTok **Creator data** export. Two jobs:
+Daily pipeline over the TikTok **Creator data** export. Three jobs:
 
 1. **Catch a creator sliding while it is still fixable** — diamonds, LIVE hours,
-   fan club — and message their coach with what changed and what to do.
+   fan club — and message their coach in Discord with what changed and what to do.
 2. **Run the first-90-days push to 200,000 diamonds** — who is on pace, who is
    behind, who has the raw ability to get there, and which lever closes the gap.
+3. **Track whether the help actually worked.** Every alert becomes a case a coach
+   owns, with a named intervention, a follow-up date, and a verdict measured from
+   the data. Over time that answers the only question that matters: which kinds
+   of support move the numbers, and for whom.
 
 ---
 
@@ -76,8 +80,18 @@ Two smaller traps also handled:
         │                             │
         └─────────────┬───────────────┘
                       ▼
-            ┌──────────────────┐   group by Creator Network manager,
-            │ 6  message coach │   render, send  lib/digest.mjs + notify.mjs
+            ┌──────────────────┐   open / update / close cases against the
+            │ 6  reconcile     │   open caseload      lib/cases.mjs
+            └──────────────────┘
+                      │
+                      ▼
+            ┌──────────────────┐   per-coach Discord cards with buttons,
+            │ 7  deliver       │   escalations, summary
+            └──────────────────┘   lib/discord.mjs + dispatch.mjs
+                      │
+                      ▼
+            ┌──────────────────┐   coach clicks → case state → follow-up →
+            │ 8  close the loop│   verdict            lib/interactions.mjs
             └──────────────────┘
 ```
 
@@ -277,17 +291,207 @@ find that handful early and put the coaching hours there.
 
 ---
 
+## The support system
+
+An alert is an event: it fires, it is gone, and a week later nobody remembers
+whether anyone did anything. A **case** is a thing somebody owns until it is
+closed. Everything the pipeline finds becomes one.
+
+```
+   rule fires
+       │
+       ▼
+   ┌────────┐  posted to the coach's Discord channel with buttons
+   │  OPEN  │
+   └────────┘
+       │  coach clicks "On it"                    ⟍ nobody clicks anything
+       ▼                                            ⟍ for 3 days (1 if urgent)
+  ┌──────────────┐                                    ▼
+  │ ACKNOWLEDGED │                            ┌────────────────┐
+  └──────────────┘                            │ → managers'    │
+       │  coach clicks "Log what I did"       │   channel      │
+       ▼  and types what they did             └────────────────┘
+  ┌──────────┐
+  │ ACTIONED │  follow-up date set from the playbook (7-21 days)
+  └──────────┘
+       │
+       ▼  on that date the success test runs against the data
+  ┌─────────────────────────────────────────┐
+  │  recovered → RESOLVED, coach told       │
+  │  anything else → back to OPEN, attempt 2│
+  └─────────────────────────────────────────┘
+```
+
+Two side doors: **"Known reason"** snoozes a creator who is ill, on holiday or
+on an agreed break, and **quitting the network** closes their cases as `lost`
+rather than as a coaching failure.
+
+### Why cases and not just alerts
+
+- **The same creator does not generate fourteen notifications in a fortnight.**
+  A creator who keeps sliding has one thread that gets updated. Only an escalation
+  to *urgent* re-posts.
+- **A coach can be chased.** "Open, unacknowledged, 3 days, 90,000 at risk" is
+  actionable in a way that "we sent a message on Tuesday" is not.
+- **Every intervention gets a verdict**, so the question of what actually helps
+  stops being an opinion.
+
+### The work-in-progress limit
+
+This is the part that keeps the system honest. A coach can hold maybe half a
+dozen open cases; beyond that the extra cards get ignored, and the important
+ones get ignored with them.
+
+So the caseload is **capped per coach** (`maxOpenPerCoach`, default 8, plus 3
+opportunity cases). When a coach is at their limit, new findings are **deferred**
+rather than posted, and the open slots go to the creators with the most diamonds
+at risk. As cases close, the next ones come through.
+
+Without the cap, the simulated network reached **152 open cases in five days and
+kept climbing**. With it, the caseload settles at **~90 across 16 coaches** and
+holds there.
+
+### The playbook
+
+Each signal maps to a named intervention with a follow-up window and a success
+test. The windows differ on purpose: attendance can recover inside a week because
+it is a scheduling decision, conversion cannot because it needs content changes.
+
+| Trigger | Intervention | Check back | Success is |
+|---|---|---|---|
+| Off air | Phone call today; agree a fixed 7-day schedule in writing | 7d | Back live on half their usual days |
+| Dropping LIVE days | Ask what is blocking the days before discussing content | 7d | LIVE days within one of normal |
+| Shorter sessions | Find out if it is burnout, a clash, or a dead room | 10d | Hours back to 85% |
+| Short for weeks | Treat as a reset: agree the schedule you want from here | 10d | Hours back to 85% |
+| Room not converting | Watch a LIVE together: goals, callouts, format, time slot | 14d | Diamonds/hour back to 85% |
+| Fan club thinning | Members-only segment; personally message quiet top fans | 14d | Membership back to flagged level |
+| Fan club spending less | Members-only segment; thank top supporters by name | 14d | Fan club diamonds back to 85% |
+| Income too concentrated | Widen the base: new-viewer hooks, lower gift tier, matches | 21d | Fan club share falling, total holding |
+| Earnings down | Check-in call — the data cannot see what changed off-platform | 10d | Diamonds back to 85% |
+| Down for weeks | Rebuild: one specific change, reviewed in a fortnight | 14d | Diamonds back to 85% |
+| Inside 90 days, reachable | Agree the lever and put a number on it | 14d | Run rate at or above target |
+
+Every card carries the ask, what to listen for, and what success looks like —
+so the coach is not left to invent the intervention at 9am.
+
+### Measuring whether it works
+
+`cli.mjs effectiveness` splits outcomes two ways:
+
+```
+  intervention                  coached  rate  left alone  rate   lift
+  Dropping LIVE days                  1 100%           5 100%     0%
+  Earnings down for weeks             0    —           2  50%      —
+```
+
+**"Left alone" is the control group.** Plenty of flagged creators come back on
+their own, and counting those as coaching wins would make every intervention look
+perfect. The gap between the two columns is what the coaching is actually worth.
+
+Two rules keep this honest:
+
+- A case that closes because the creator **stopped tripping thresholds** is not
+  recorded as recovered unless the playbook's success test agrees. A creator
+  whose lower output has simply become their new normal is a settled decline,
+  not a win.
+- Only cases where a coach **logged an action** count toward an intervention's
+  success rate.
+
+Nothing here means much until a few months of cases have accumulated. That is
+precisely why it records from day one.
+
+---
+
+## Discord
+
+### Two modes
+
+| | Webhook | Bot |
+|---|---|---|
+| Setup | Paste a URL per channel | Bot token + a public HTTPS endpoint |
+| Time to working | ~2 minutes | ~20 minutes |
+| Rich cards | Yes | Yes |
+| Buttons, forms, `/commands` | No | Yes |
+| Coach records what they did | By hand, elsewhere | One click, captured |
+
+Start on webhooks to prove the alerts are useful. Move to a bot when you want
+the feedback loop — the cards are identical either way, so nothing is wasted.
+
+### Webhook setup
+
+1. In Discord: **Channel → Edit Channel → Integrations → Webhooks → New Webhook**, copy the URL.
+2. Copy `routes.example.json` to `routes.json`.
+3. Set `discord.mode` to `"webhook"` and give each coach `{"webhook": "env:WEBHOOK_JOSH"}`.
+4. Put the URLs in the environment. Done.
+
+### Bot setup
+
+1. **https://discord.com/developers/applications → New Application.**
+2. **Bot → Add Bot → Reset Token**, copy it into `DISCORD_BOT_TOKEN`.
+3. **General Information → Public Key** → `DISCORD_PUBLIC_KEY`; the **Application ID** → `DISCORD_APP_ID`.
+4. **OAuth2 → URL Generator** → scopes `bot` + `applications.commands`, permissions
+   *Send Messages* and *Embed Links*. Open the generated URL and add the bot to your server.
+5. Deploy this service somewhere with HTTPS, then set
+   **Interactions Endpoint URL** to `https://your-host/discord/interactions`.
+   Discord sends a signed PING to verify it and will not save the URL until it passes.
+6. Turn on **Developer Mode** in Discord (User Settings → Advanced), right-click each
+   coach's channel → **Copy Channel ID**, and fill in `routes.json`.
+7. `node cli.mjs discord-register` to publish `/cases` and `/creator`.
+
+Secrets are never committed: any value in `routes.json` written as `env:VAR_NAME`
+is read from the environment.
+
+### What gets posted where
+
+| Message | Goes to | When |
+|---|---|---|
+| Decline card | The creator's coach | A case opens |
+| Opportunity card | The creator's coach | A boost-list case opens |
+| "Getting worse" | The creator's coach | An open case escalates to urgent |
+| Follow-up verdict | The creator's coach | The follow-up window closes |
+| Unacknowledged cases | `escalationChannelId` | Top 5 per run, unclaimed past the limit |
+| Daily roll-up | `summaryChannelId` | Every run |
+
+The managers' channel only ever hears about what the coaches have **not** dealt
+with. Anything else trains people to ignore it.
+
+### Slash commands
+
+- `/creator username:unc.inc0` — current numbers and any open cases, private to whoever asked
+- `/cases` — the open caseload, optionally filtered by coach
+
+### Signature verification
+
+Discord signs every interaction with Ed25519. `lib/interactions.mjs` verifies it
+against the **raw request bytes** before parsing — a re-serialised body reorders
+keys and the signature stops matching. An unsigned or tampered request gets a
+bare 401, which is what Discord requires before it will accept the endpoint.
+
+---
+
 ## Running it
 
-```bash
-cd creator-health
+The daily habit is two commands:
 
+```bash
 node cli.mjs ingest ~/Downloads/Creator_data_2026_09_16_08_37_UTC0.xlsx
-node cli.mjs report                      # network summary + every coach's message
-node cli.mjs coach josh@example.com      # one coach
-node cli.mjs creator unc.inc0            # one creator's full history
+node cli.mjs run                         # reconcile cases, post to Discord
+```
+
+`run --dry` does everything except send or save, so you can read exactly what
+your coaches would have received before anyone receives it. Add `--preview` to
+print the Discord payloads themselves.
+
+```bash
+node cli.mjs cases                       # the open caseload
+node cli.mjs cases --coach josh@x.com    # one coach's queue
+node cli.mjs case D-260915-6627          # one case and its full history
+node cli.mjs effectiveness               # which interventions work
+node cli.mjs creator unc.inc0            # one creator's numbers
+node cli.mjs report                      # the older plain-text digest
 node cli.mjs status                      # what is stored, and any missing days
 node cli.mjs rebuild                     # re-derive after a rule change
+node cli.mjs discord-register            # publish the slash commands
 npm test
 ```
 
@@ -300,16 +504,24 @@ UPLOAD_TOKEN=... npm start        # :8900
 | Route | Purpose |
 |---|---|
 | `POST /upload` | The day's `.xlsx` — raw body or a multipart form field |
-| `POST /notify` | Run today's analysis and push digests to webhooks (`?dry=1` to preview) |
+| `POST /run` | The daily run: reconcile cases and post to Discord (`?dry=1` to preview) |
+| `POST /discord/interactions` | Discord's interactions endpoint — button clicks and slash commands |
+| `GET /cases` | The open caseload (`?coach=`, `?all=1`) |
+| `GET /effectiveness` | Which interventions are working |
 | `GET /report.json` | Everything, machine-readable |
-| `GET /coach/:email` | One coach's message |
+| `GET /coach/:email` | One coach's plain-text message |
 | `GET /creator/:name` | One creator's numbers and recent history |
+| `POST /notify` | The older plain-text webhook digest |
 | `GET /health` | Snapshot count and latest date |
+
+`/upload` and `/run` require `UPLOAD_TOKEN` when it is set (as a Bearer header
+or `?token=`). `/discord/interactions` is protected by Discord's own signature
+instead, and must stay open for Discord to reach it.
 
 ```bash
 curl -X POST "https://.../upload" -H "Authorization: Bearer $UPLOAD_TOKEN" \
      -F "file=@Creator_data_2026_09_16_08_37_UTC0.xlsx"
-curl -X POST "https://.../notify" -H "Authorization: Bearer $UPLOAD_TOKEN"
+curl -X POST "https://.../run" -H "Authorization: Bearer $UPLOAD_TOKEN"
 ```
 
 Uploading the same day twice is safe. Copy `routes.example.json` to
@@ -364,6 +576,14 @@ Everything lives in `config.json` — no code changes needed.
 | `ramp.curve` | The pacing milestones |
 | `ramp.sustainableHoursPerDay` | What counts as a reasonable ask |
 | `ramp.spotlightCount` | How many creators on the weekly boost list |
+| `ramp.minRecentLiveDays` | LIVE days in the last week before a creator can be "boosted" |
+| `cases.maxOpenPerCoach` | The work-in-progress limit — the most important number here |
+| `cases.maxOpenOpportunitiesPerCoach` | Boost-list cases per coach |
+| `cases.escalateAfterDays` | Days unacknowledged before the managers' channel hears |
+| `cases.escalateUrgentAfterDays` | The same for urgent cases |
+| `cases.escalateMaxPerRun` | Cap on names in one escalation post |
+| `cases.autoResolveClearDays` | Clear days before a case closes itself |
+| `cases.openCasesForEarlySigns` | Whether single-signal warnings become cases (off by default) |
 
 **Tune against real data.** The thresholds here are derived from the two sample
 files plus a simulation. After a month of real uploads, re-run `rebuild` and
@@ -387,14 +607,28 @@ declines are being missed, lower the tier drop percentages.
   not be reconnected to their history.
 - **Thresholds are calibrated on simulated declines**, because two real files
   cannot contain a trend. They will need one real month to settle.
+- **Effectiveness numbers need volume.** With a handful of cases the "left alone"
+  control group is too small to read. Give it a few months before drawing
+  conclusions from the lift column.
+- **Discord message ids are stored but cards are not retro-edited.** If a case
+  changes state from the CLI rather than from a button, the Discord card keeps
+  the footer it was posted with until the next post about that case.
+- **The bot mode needs a public HTTPS endpoint.** On the free Render tier the
+  service sleeps, and Discord will mark the interactions endpoint as failing.
+  The paid always-on tier avoids this.
 
 ## Next, in order of value
 
 1. **A month of real uploads, then re-tune.** Nothing else matters as much.
-2. **Log what coaches do with each alert** — acted / ignored / not a problem.
-   That turns alert quality from a guess into a measurement, and is the training
-   data for ranking alerts by what actually gets fixed.
-3. **A dashboard.** `GET /report.json` already carries everything; the relay
-   service can serve a page from it.
-4. **Track intervention outcomes** — did the creator recover after the coach
-   called? That is the number that proves the tool is worth running.
+2. **Get coaches using the buttons.** The effectiveness report is only as good as
+   the action log behind it, and a case nobody clicks is a case nobody measured.
+   Worth watching the `actioned` column per coach for the first few weeks.
+3. **A dashboard.** `GET /report.json` and `GET /cases` already carry everything;
+   the relay service can serve a page from them.
+4. **Re-tune the work-in-progress limit from real behaviour.** If coaches clear
+   their queue every day, raise it. If cases sit unacknowledged, the limit is not
+   the problem — the alerts are not earning attention, and the thresholds should
+   rise instead.
+5. **Rank by expected value, not just diamonds at risk.** Once the effectiveness
+   table has volume, "at risk × how often this intervention works" is a better
+   sort order than raw exposure.

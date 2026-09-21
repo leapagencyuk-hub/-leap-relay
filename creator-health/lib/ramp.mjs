@@ -82,20 +82,32 @@ const STATUS = {
  *   rate   - earn more per hour (slowest to move, needs real coaching)
  */
 function planFor(m, requiredPerDay, cfg) {
-  const perHour = m.diamondsPerHour28;
+  // "Current" must mean the same thing here as in the projection on the card,
+  // or the plan contradicts the number beside it: a creator whose recent week
+  // is below their 28-day average would be told to hold while the projection
+  // says they finish short. Everything below is therefore measured over the
+  // same last 7 days that produce `dailyDiamonds7`.
   const currentPerDay = m.dailyDiamonds7;
-  const daysPerWeek = Math.min(7, m.activeDays28 / 4);
-  const hoursPerSession = m.hoursPerActiveDay28;
+  const currentHoursPerDay = m.curr7.liveHours / 7;
+  const daysPerWeek = Math.min(7, m.curr7.validLiveDays);
+
+  // Conversion rate is the one figure worth taking from the longer window —
+  // it is a property of their room, not of last week. New creators have no
+  // 28-day history to speak of, so fall back to the week we do have.
+  const perHour = (m.historyDays >= 14 ? m.diamondsPerHour28 : null)
+    ?? m.diamondsPerHour7 ?? m.diamondsPerHour28;
+  const hoursPerSession = daysPerWeek > 0
+    ? m.curr7.liveHours / daysPerWeek
+    : m.hoursPerActiveDay28;
 
   if (!perHour || perHour <= 0 || !hoursPerSession) {
     return { lever: 'activate', feasible: false, ask: 'Not enough LIVE history yet — the first job is a consistent schedule, not a target.' };
   }
 
   const requiredHoursPerDay = requiredPerDay / perHour;
-  const currentHoursPerDay = (hoursPerSession * daysPerWeek) / 7;
-  const extraHoursPerDay = requiredHoursPerDay - currentHoursPerDay;
+  const gapPerDay = requiredPerDay - currentPerDay;
 
-  if (extraHoursPerDay <= 0) {
+  if (gapPerDay <= 0) {
     return { lever: 'hold', feasible: true, requiredHoursPerDay, currentHoursPerDay,
       ask: `Already at the rate needed — hold ${hoursPerSession.toFixed(1)}h a session, ${daysPerWeek.toFixed(1)} days a week.` };
   }
@@ -104,11 +116,12 @@ function planFor(m, requiredPerDay, cfg) {
   const dayHeadroom = Math.max(0, cfg.sustainableDaysPerWeek - daysPerWeek);
   const gainFromDays = (dayHeadroom * hoursPerSession * perHour) / 7;
 
-  if (gainFromDays >= requiredPerDay - currentPerDay) {
-    const daysNeeded = ((requiredPerDay - currentPerDay) * 7) / (hoursPerSession * perHour);
+  if (gainFromDays >= gapPerDay) {
+    // Whole days: "add 0.7 of a LIVE day" is not an instruction anyone can act on.
+    const daysNeeded = Math.max(1, Math.ceil((gapPerDay * 7) / (hoursPerSession * perHour)));
     return {
       lever: 'days', feasible: true, requiredHoursPerDay, currentHoursPerDay,
-      ask: `Add ${Math.ceil(daysNeeded * 10) / 10} LIVE day${daysNeeded > 1 ? 's' : ''} a week at their usual ${hoursPerSession.toFixed(1)}h. That alone covers the gap.`,
+      ask: `Add ${daysNeeded} LIVE day${daysNeeded > 1 ? 's' : ''} a week at their usual ${hoursPerSession.toFixed(1)}h. That alone covers the gap.`,
     };
   }
 
@@ -193,6 +206,12 @@ export function spotlight(rows, config) {
   const cfg = config.ramp;
   return rows
     .filter((r) => r.daysLeft > 7 && !r.willHit && r.plan.feasible && r.potential > 0)
+    // Still actually streaming. A creator who has gone quiet scores highest on
+    // raw headroom precisely because they are doing nothing, which would put
+    // the most dormant creators at the top of a list meant for the most
+    // promising ones. They need the decline path, not a growth target.
+    .filter((r) => r.metrics.curr7.validLiveDays >= cfg.minRecentLiveDays
+      && r.metrics.curr7.diamonds > 0)
     .filter((r) => r.earned + r.potential >= cfg.targetDiamonds * 0.5)
     .slice(0, cfg.spotlightCount);
 }

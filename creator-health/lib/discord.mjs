@@ -1,0 +1,296 @@
+// Discord delivery. No library: the REST calls we need are four endpoints, and
+// `fetch` has been built into Node since 18.
+//
+// Two modes, because they have very different setup costs:
+//   webhook - paste a URL per channel, working in two minutes, no buttons
+//   bot     - a bot token and a public interactions URL, but coaches can then
+//             action a case with one click instead of typing anything
+//
+// Everything below produces the same embeds either way, so a network can start
+// on webhooks and move to a bot without the messages changing.
+import { PLAYBOOK, VERDICT_LABEL } from './playbook.mjs';
+
+const API = 'https://discord.com/api/v10';
+
+export const COLOR = {
+  urgent: 0xe5484d,
+  warn: 0xf76b15,
+  watch: 0xffc53d,
+  opportunity: 0x3e63dd,
+  recovered: 0x30a46c,
+  escalation: 0xab4aba,
+  neutral: 0x8b8d98,
+};
+
+const n = (x) => (x == null ? '—' : Math.round(x).toLocaleString('en-GB'));
+const pct = (x) => (x == null ? '—' : `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`);
+
+/**
+ * One Discord request, with the rate limiter respected.
+ *
+ * Discord answers 429 with the exact wait in `retry_after`; honouring it is the
+ * difference between a digest that delivers and a bot that gets temporarily
+ * banned for hammering. A network of 16 coaches posts well inside the limits,
+ * but a cold start posting 100+ cases at once will hit them.
+ */
+async function request(method, route, { token, body = null, retries = 3 } = {}) {
+  let lastError = null;
+  let networkFailures = 0;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      const res = await fetch(route.startsWith('http') ? route : `${API}${route}`, {
+        method,
+        headers: {
+          'content-type': 'application/json',
+          ...(token ? { authorization: `Bot ${token}` } : {}),
+        },
+        body: body ? JSON.stringify(body) : undefined,
+        signal: AbortSignal.timeout(10000),
+      });
+
+      if (res.status === 429) {
+        const info = await res.json().catch(() => ({}));
+        const wait = Math.min((info.retry_after ?? 1) * 1000 + 250, 30000);
+        await new Promise((r) => setTimeout(r, wait));
+        lastError = 'rate limited';
+        continue;
+      }
+      if (res.status === 204) return { ok: true, body: null };
+      const text = await res.text();
+      const parsed = text ? JSON.parse(text) : null;
+      if (res.ok) return { ok: true, body: parsed };
+      // 4xx other than rate limiting will not fix itself.
+      if (res.status < 500) return { ok: false, status: res.status, error: text.slice(0, 300) };
+      lastError = `HTTP ${res.status}`;
+    } catch (err) {
+      // A timeout or refused connection will not fix itself twice in a row;
+      // retrying it for every message turns one outage into a stalled run.
+      lastError = err.message;
+      if (++networkFailures >= 2) return { ok: false, error: `network: ${lastError}` };
+    }
+    await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
+  }
+  return { ok: false, error: lastError };
+}
+
+export class Discord {
+  constructor({ token = null } = {}) { this.token = token; }
+
+  postToChannel(channelId, payload) {
+    return request('POST', `/channels/${channelId}/messages`, { token: this.token, body: payload });
+  }
+
+  editMessage(channelId, messageId, payload) {
+    return request('PATCH', `/channels/${channelId}/messages/${messageId}`, { token: this.token, body: payload });
+  }
+
+  postToWebhook(url, payload) {
+    // `?wait=true` makes Discord return the created message, so the id can be
+    // stored on the case and the card edited later.
+    return request('POST', `${url}${url.includes('?') ? '&' : '?'}wait=true`, { body: payload });
+  }
+
+  /** DM a coach. Discord requires opening the channel before posting to it. */
+  async postToUser(userId, payload) {
+    const dm = await request('POST', '/users/@me/channels', {
+      token: this.token, body: { recipient_id: userId },
+    });
+    if (!dm.ok) return dm;
+    return this.postToChannel(dm.body.id, payload);
+  }
+}
+
+// --- components --------------------------------------------------------------
+
+const BUTTON = { PRIMARY: 1, SECONDARY: 2, SUCCESS: 3, DANGER: 4 };
+
+/** custom_id carries the action and the case: `ch:<action>:<caseId>`. */
+export const customId = (action, caseId) => `ch:${action}:${caseId}`;
+export function parseCustomId(raw) {
+  const [ns, action, caseId] = String(raw ?? '').split(':');
+  return ns === 'ch' && action && caseId ? { action, caseId } : null;
+}
+
+export function caseButtons(caseRecord) {
+  const id = caseRecord.id;
+  const row = [
+    { type: 2, style: BUTTON.PRIMARY, label: 'On it', custom_id: customId('ack', id) },
+    { type: 2, style: BUTTON.SUCCESS, label: 'Log what I did', custom_id: customId('act', id) },
+    { type: 2, style: BUTTON.SECONDARY, label: 'Known reason', custom_id: customId('snooze', id) },
+  ];
+  if (caseRecord.kind === 'decline') {
+    row.push({ type: 2, style: BUTTON.SECONDARY, label: 'Close', custom_id: customId('done', id) });
+  }
+  return [{ type: 1, components: row }];
+}
+
+// --- embeds ------------------------------------------------------------------
+
+function statusLine(c) {
+  if (c.status === 'acknowledged') return `🙋 Picked up by ${c.acknowledgedBy ?? 'a coach'}`;
+  if (c.status === 'actioned') return `✅ Actioned — checking back on ${c.followUpOn}`;
+  if (c.status === 'snoozed') return `😴 Snoozed until ${c.snoozedUntil}`;
+  if (c.status === 'resolved') return '🎉 Resolved';
+  if (c.status === 'lost') return '⚪ Creator left the network';
+  return '⏳ Waiting to be picked up';
+}
+
+/** The card a coach sees when a creator starts slipping. */
+export function declineEmbed(caseRecord, alert, { mention = null } = {}) {
+  const m = alert.metrics;
+  const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
+  const icon = { urgent: '🔴', warn: '🟠', watch: '🟡' }[caseRecord.severity] ?? '•';
+
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      title: `${icon} @${caseRecord.username} — ${book.title}`,
+      description: alert.signals.map((s) => `• **${s.label}** — ${s.detail}`).join('\n').slice(0, 3800),
+      color: COLOR[caseRecord.severity] ?? COLOR.neutral,
+      fields: [
+        {
+          name: 'This week',
+          value: [
+            `${n(m.curr7.diamonds)} diamonds (${pct(m.change7.diamonds)})`,
+            `${m.curr7.liveHours.toFixed(1)}h LIVE (${pct(m.change7.liveHours)})`,
+            `${Math.round(m.curr7.validLiveDays)} LIVE days`,
+          ].join('\n'),
+          inline: true,
+        },
+        {
+          name: 'Their normal',
+          value: [
+            `${n(caseRecord.baseline.weeklyDiamonds)} diamonds`,
+            `${caseRecord.baseline.weeklyHours.toFixed(1)}h LIVE`,
+            `${caseRecord.baseline.weeklyLiveDays.toFixed(1)} LIVE days`,
+          ].join('\n'),
+          inline: true,
+        },
+        {
+          name: 'At risk',
+          value: `~${n(caseRecord.valueAtRisk)} diamonds over 28 days`,
+          inline: true,
+        },
+        { name: '👉 What to do', value: book.ask.slice(0, 1000) },
+        { name: '👂 Listen for', value: book.watchFor.slice(0, 1000) },
+        { name: `📋 Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
+      ],
+      footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
+      timestamp: new Date().toISOString(),
+    }],
+    components: caseButtons(caseRecord),
+  };
+}
+
+/** The card for a creator inside 90 days who can still reach the target. */
+export function opportunityEmbed(caseRecord, row, { mention = null } = {}) {
+  const ctx = caseRecord.context;
+  const short = Math.max(0, 200000 - row.projected);
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      title: `🎯 @${caseRecord.username} — day ${ctx.day} of 90, reachable`,
+      description: `**${n(ctx.earned)} / 200,000** with **${ctx.daysLeft} days left**.\n`
+        + `On this week's rate they finish on ${n(row.projected)}`
+        + (short > 0 ? ` — **${n(short)} short**.` : ' — **clears the target**.'),
+      color: COLOR.opportunity,
+      fields: [
+        { name: 'Doing', value: `${n(ctx.currentPerDayAtOpen)}/day`, inline: true },
+        { name: 'Needs', value: `${n(ctx.requiredPerDay)}/day`, inline: true },
+        { name: 'Converts at', value: `${n(ctx.diamondsPerHour)}/LIVE hour`, inline: true },
+        { name: `👉 The lever: ${ctx.lever}`, value: ctx.ask.slice(0, 1000) },
+        { name: '👂 Listen for', value: PLAYBOOK.OPPORTUNITY.watchFor.slice(0, 1000) },
+        { name: '📋 Check back in 14 days', value: PLAYBOOK.OPPORTUNITY.success },
+      ],
+      footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
+      timestamp: new Date().toISOString(),
+    }],
+    components: caseButtons(caseRecord),
+  };
+}
+
+/** Posted when a follow-up window closes, so the coach learns what their call did. */
+export function followUpEmbed(caseRecord, { mention = null } = {}) {
+  const o = caseRecord.outcome;
+  const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
+  const good = o.verdict === 'recovered';
+  const icon = { recovered: '🎉', improved: '📈', no_change: '➖', worse: '📉', quit: '⚪' }[o.verdict] ?? '•';
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      title: `${icon} @${caseRecord.username} — ${VERDICT_LABEL[o.verdict] ?? o.verdict}`,
+      description: good
+        ? `That worked. ${book.title} case opened ${caseRecord.openedOn} is now closed.`
+        : `Followed up on the ${book.title.toLowerCase()} case from ${caseRecord.openedOn}. `
+          + `Back to you — this is attempt ${caseRecord.attempts ?? 1}.`,
+      color: good ? COLOR.recovered : COLOR.warn,
+      fields: [
+        {
+          name: 'Now',
+          value: `${n(o.measured?.weeklyDiamonds)} diamonds\n${o.measured?.weeklyHours ?? '—'}h LIVE\n${o.measured?.weeklyLiveDays ?? '—'} LIVE days`,
+          inline: true,
+        },
+        {
+          name: 'When we flagged it',
+          value: `${n(caseRecord.baseline.atOpen.weeklyDiamonds)} diamonds\n${caseRecord.baseline.atOpen.weeklyHours}h LIVE\n${caseRecord.baseline.atOpen.weeklyLiveDays} LIVE days`,
+          inline: true,
+        },
+        {
+          name: 'Their normal',
+          value: `${n(caseRecord.baseline.weeklyDiamonds)} diamonds\n${caseRecord.baseline.weeklyHours}h LIVE\n${caseRecord.baseline.weeklyLiveDays} LIVE days`,
+          inline: true,
+        },
+      ],
+      footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
+      timestamp: new Date().toISOString(),
+    }],
+    components: good ? [] : caseButtons(caseRecord),
+  };
+}
+
+/** Sent to the managers' channel when nobody has picked a case up. */
+export function escalationEmbed(cases, asOf) {
+  const lines = cases.slice(0, 20).map((c) =>
+    `• **@${c.username}** (${c.coach}) — open since ${c.openedOn}, ~${n(c.valueAtRisk)} at risk · \`${c.id}\``);
+  return {
+    embeds: [{
+      title: `⚠️ ${cases.length} case${cases.length === 1 ? '' : 's'} nobody has picked up`,
+      description: lines.join('\n').slice(0, 3800),
+      color: COLOR.escalation,
+      footer: { text: `as of ${asOf}` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/** Daily roll-up for whoever runs the network. */
+export function summaryEmbed({ asOf, stats, caseStats, alerts, ramp, spotlight }) {
+  const risk = alerts.reduce((s, a) => s + a.valueAtRisk, 0);
+  const byStatus = {};
+  for (const r of ramp) byStatus[r.status] = (byStatus[r.status] ?? 0) + 1;
+  return {
+    embeds: [{
+      title: `LEAP network health — ${asOf}`,
+      color: COLOR.neutral,
+      fields: [
+        {
+          name: 'Caseload',
+          value: [
+            `${caseStats.open} open · ${caseStats.acknowledged} picked up · ${caseStats.actioned} actioned`,
+            `${caseStats.openedToday} opened today · ${caseStats.resolvedToday} closed today`,
+            caseStats.unacknowledged ? `⚠️ ${caseStats.unacknowledged} untouched` : '✅ nothing untouched',
+          ].join('\n'),
+          inline: false,
+        },
+        { name: 'Creators', value: `${stats.tracked} active\n${stats.quit} quit`, inline: true },
+        { name: 'At risk', value: `~${n(risk)} diamonds\nover 28 days`, inline: true },
+        {
+          name: 'First 90 days',
+          value: `${byStatus.ON_TRACK ?? 0} on track\n${(byStatus.AT_RISK ?? 0) + (byStatus.OFF_TRACK ?? 0)} behind\n${spotlight.length} on the boost list`,
+          inline: true,
+        },
+      ],
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}

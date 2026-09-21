@@ -75,6 +75,11 @@ for (let i = 0; i < declining; i++) {
 }
 
 function dailyFor(p, date) {
+  // Nobody streams before they join the network.
+  if (p.row.joinDate && date < p.row.joinDate) {
+    return { diamonds: 0, liveHours: 0, validLiveDays: 0, liveStreams: 0,
+      newFollowers: 0, newFans: 0, fanClubDiamonds: 0 };
+  }
   let liveChance = p.liveRatio;
   let hours = p.hoursPerLiveDay;
   let rate = p.perLiveDay / (p.hoursPerLiveDay || 1);

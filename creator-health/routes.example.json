@@ -1,10 +1,44 @@
 {
-  "_comment": "Copy to routes.json. Any URL may be written as env:VAR_NAME to read it from the environment instead of this file.",
+  "_comment": "Copy to routes.json (gitignored). Any value written as env:VAR_NAME is read from the environment, so no token or webhook URL is ever committed.",
+
+  "discord": {
+    "enabled": true,
+    "_mode": "'webhook' needs nothing but URLs and works in two minutes, but has no buttons. 'bot' needs a bot token and a public interactions URL, and lets coaches action a case with one click.",
+    "mode": "bot",
+
+    "botToken": "env:DISCORD_BOT_TOKEN",
+    "publicKey": "env:DISCORD_PUBLIC_KEY",
+    "applicationId": "env:DISCORD_APP_ID",
+
+    "_channels": "Right-click a Discord channel with Developer Mode on to Copy Channel ID.",
+    "escalationChannelId": "env:DISCORD_ESCALATION_CHANNEL",
+    "summaryChannelId": "env:DISCORD_SUMMARY_CHANNEL",
+    "defaultChannelId": "env:DISCORD_FALLBACK_CHANNEL",
+
+    "coaches": {
+      "joshbates93@hotmail.com": {
+        "channelId": "env:DISCORD_CHANNEL_JOSH",
+        "mention": "<@123456789012345678>"
+      },
+      "alex_593@hotmail.co.uk": {
+        "channelId": "env:DISCORD_CHANNEL_ALEX",
+        "mention": "<@234567890123456789>"
+      },
+      "leapagencyuk@gmail.com": {
+        "userId": "env:DISCORD_USER_OWNER",
+        "_userId": "A user ID sends the card as a direct message instead of to a channel."
+      },
+      "example-webhook-coach@leap": {
+        "webhook": "env:DISCORD_WEBHOOK_EXAMPLE",
+        "_webhook": "A channel webhook URL. Used in preference to channelId, so a single coach can be moved to webhook mode without changing anything else."
+      }
+    }
+  },
+
+  "_plainTextFallback": "Used by `cli.mjs report` and the older text digests. Discord above is the live path.",
   "default": { "url": "env:COACH_WEBHOOK_DEFAULT" },
   "summary": { "url": "env:NETWORK_WEBHOOK" },
   "coaches": {
-    "joshbates93@hotmail.com": { "url": "env:WEBHOOK_JOSH", "mention": "<@U01JOSH>" },
-    "alex_593@hotmail.co.uk": { "url": "env:WEBHOOK_ALEX", "mention": "<@U01ALEX>" },
-    "leapagencyuk@gmail.com": { "url": "env:WEBHOOK_OWNER" }
+    "joshbates93@hotmail.com": { "url": "env:WEBHOOK_JOSH" }
   }
 }
