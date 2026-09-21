@@ -3,7 +3,11 @@
 // The rule throughout: a coach hears about their own creators, and the managers'
 // channel hears only about what the coaches have not dealt with. Anything else
 // trains people to ignore the channel.
-import { Discord, declineEmbed, opportunityEmbed, followUpEmbed, escalationEmbed, overviewEmbed } from './discord.mjs';
+import {
+  Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
+  escalationEmbed, overviewEmbed, programmesEmbed,
+} from './discord.mjs';
+import { campaignGap, concentrationRisk, programmesDue, uploadStaleness } from './programmes.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -126,7 +130,16 @@ export function preflight(discordConfig) {
 export async function dispatch({
   asOf, changes, alerts, spotlight, ramp, stats, store, discordConfig,
   dryRun = false, forceSummary = false, health = null,
+  creators = [], metricsByKey = new Map(), activation = [], config = {},
 }) {
+  const activationSummary = activation.length ? {
+    total: activation.length,
+    newNotStarted: activation.filter((r) => r.stage === 'NO_START').length,
+    stalled: activation.filter((r) => r.stage === 'STALLED').length,
+    decide: activation.filter((r) => r.stage === 'DECIDE').length,
+    dormant: activation.filter((r) => r.stage === 'DORMANT').length,
+    open: store.all().filter((c) => c.kind === 'activation' && isOpen(c)).length,
+  } : null;
   const check = preflight(discordConfig);
   if (!dryRun && !check.ok) return { sent: [], previews: [], skipped: check.reason };
   const client = new Discord({ token: discordConfig.botToken });
@@ -158,6 +171,8 @@ export async function dispatch({
       const alert = alertByKey.get(c.creatorKey);
       if (!alert) continue;
       await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons }), c);
+    } else if (c.kind === 'activation') {
+      await send('activation-opened', c.coach, route, activationEmbed(c, { mention: route.mention, buttons }), c);
     } else {
       const row = spotlightByKey.get(c.creatorKey);
       if (!row) continue;
@@ -200,12 +215,29 @@ export async function dispatch({
   const summaryRoute = discordConfig.summaryWebhook
     ? { webhook: discordConfig.summaryWebhook }
     : discordConfig.summaryChannelId ? { channelId: discordConfig.summaryChannelId } : null;
+
+  // --- the weekly network post ---------------------------------------------
+  if (summaryRoute && programmesDue(config, store, asOf)) {
+    const campaign = campaignGap(creators, metricsByKey, config);
+    const concentration = concentrationRisk(creators, metricsByKey, config);
+    if (campaign.length || concentration.length) {
+      await send('programmes', '(overview)', summaryRoute, programmesEmbed({
+        asOf, campaign, concentration, config,
+        totals: { earning: creators.filter((c) => !c.quitOn
+          && (metricsByKey.get(c.key)?.curr28.diamonds ?? 0) > 0).length },
+      }));
+      if (!dryRun) store.data.lastProgrammesOn = asOf;
+    }
+  }
+
   const alreadyPosted = store.data.lastOverviewOn === asOf;
   if (summaryRoute && (!alreadyPosted || forceSummary)) {
     await send('overview', '(overview)', summaryRoute, overviewEmbed({
       asOf, stats, caseStats: caseStats(store, asOf), alerts, ramp, spotlight,
       changes, sent, teams: teamOutcomes(store, { now: asOf }), health,
       openCases: store.all().filter(isOpen),
+      staleness: uploadStaleness(asOf, config),
+      activation: activationSummary,
     }));
     if (!dryRun) store.data.lastOverviewOn = asOf;
   } else if (summaryRoute && alreadyPosted) {

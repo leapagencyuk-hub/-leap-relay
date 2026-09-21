@@ -8,6 +8,7 @@ import { Store, applySnapshot } from './store.mjs';
 import { computeMetrics } from './metrics.mjs';
 import { evaluateDecline } from './rules.mjs';
 import { evaluateRamp, spotlight as pickSpotlight } from './ramp.mjs';
+import { evaluateActivation } from './activation.mjs';
 import { renderCoachDigest, renderNetworkSummary, toJson } from './digest.mjs';
 import { CaseStore, reconcile, effectiveness } from './cases.mjs';
 import { dispatch, caseStats } from './dispatch.mjs';
@@ -87,6 +88,7 @@ export function analyse(config, { asOf = null, persist = true } = {}) {
 
   const ramp = evaluateRamp(creators, metricsByKey, config);
   const spotlight = pickSpotlight(ramp, config);
+  const activation = evaluateActivation(creators, metricsByKey, config);
 
   const stats = {
     tracked: creators.filter((c) => !c.quitOn).length,
@@ -95,7 +97,7 @@ export function analyse(config, { asOf = null, persist = true } = {}) {
     skipped,
   };
 
-  return { asOf: endDate, creators, metricsByKey, alerts, recoveries, ramp, spotlight, stats };
+  return { asOf: endDate, creators, metricsByKey, alerts, recoveries, ramp, spotlight, activation, stats };
 }
 
 /** Group the results by coach and render one message each. */
@@ -177,6 +179,7 @@ export async function runDaily(config, configPath, { asOf = null, dryRun = false
     creators: result.creators,
     store,
     config,
+    activation: result.activation,
   });
 
   const routes = loadRoutes(path.dirname(configPath));
@@ -195,6 +198,10 @@ export async function runDaily(config, configPath, { asOf = null, dryRun = false
       dryRun,
       forceSummary,
       health: dataHealth(config, result.asOf),
+      creators: result.creators,
+      metricsByKey: result.metricsByKey,
+      activation: result.activation,
+      config,
     });
   }
 

@@ -10,6 +10,7 @@
 // on webhooks and move to a bot without the messages changing.
 import { PLAYBOOK, VERDICT_LABEL } from './playbook.mjs';
 import { CONFIDENCE_LABEL, KIND } from './causes.mjs';
+import { ACTIVATION_PLAYBOOK } from './activation.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -321,6 +322,87 @@ export function opportunityEmbed(caseRecord, row, { mention = null, buttons = tr
   };
 }
 
+/** The card for a creator who has not started. */
+export function activationEmbed(caseRecord, { mention = null, buttons = true } = {}) {
+  const book = ACTIVATION_PLAYBOOK[caseRecord.stage] ?? {};
+  const ctx = caseRecord.context ?? {};
+  const history = ctx.bestMonth > 0
+    ? `Best month on record: ${n(ctx.bestMonth)} diamonds.`
+    : 'No earnings on record at all.';
+
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      title: `@${caseRecord.username} — ${book.title ?? caseRecord.stage}`,
+      description: `${book.concern ?? ''}\n\n`
+        + (ctx.day != null ? `**Day ${ctx.day}** since joining. ` : '')
+        + (ctx.everLive ? 'They have gone live.' : '**They have never gone live.**')
+        + ` ${history}`,
+      color: caseRecord.stage === 'DECIDE' ? COLOR.warn : COLOR.watch,
+      fields: [
+        { name: 'Ask them', value: (book.ask ?? []).map((a) => `• ${a}`).join('\n').slice(0, 1024) },
+        ...(book.check?.length ? [{ name: 'Before you call', value: book.check.join('; ').slice(0, 1024) }] : []),
+        { name: 'What good looks like', value: book.success ?? 'Any activity.' },
+      ],
+      footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
+      timestamp: new Date().toISOString(),
+    }],
+    components: caseButtons(caseRecord, { enabled: buttons }),
+  };
+}
+
+/**
+ * The weekly network post: findings that are a programme decision rather than a
+ * conversation with one creator.
+ */
+export function programmesEmbed({ asOf, campaign, concentration, config, totals }) {
+  const size = config.programmes.listSize;
+  const fields = [];
+
+  if (campaign.length) {
+    const upside = campaign.reduce((t, r) => t + r.upside, 0);
+    fields.push({
+      name: `Never done a campaign or match (${campaign.length} of ${totals.earning} earning creators)`,
+      value: `These already have a room. It has just never been put in front of anyone else's.\n\n`
+        + campaign.slice(0, size)
+          .map((r) => `**@${r.creator.creatorId ? r.creator.username : r.creator.username}** · ${r.creator.group ?? '—'} · ${n(r.diamonds28)} in 28d at ${n(r.perHour)}/hour`)
+          .join('\n').slice(0, 900),
+    });
+    fields.push({
+      name: 'Why it matters',
+      value: `${Math.round((campaign.length / Math.max(1, totals.earning)) * 100)}% of earning creators have never matched. `
+        + `Between them they are already producing ~${n(upside)} diamonds a month without ever reaching a new room.`,
+    });
+  }
+
+  if (concentration.length) {
+    fields.push({
+      name: `Income resting on a handful of people (${concentration.length})`,
+      value: `90%+ of their diamonds come from their fan club. One member leaving is a visible drop.\n\n`
+        + concentration.slice(0, size)
+          .map((r) => `**@${r.creator.username}** · ${r.creator.group ?? '—'} · ${Math.round(r.share * 100)}% from ${n(r.members)} members${r.perMember ? ` (~${n(r.perMember)} each)` : ''}`)
+          .join('\n').slice(0, 900),
+    });
+    fields.push({
+      name: 'Why it matters',
+      value: 'This is not urgent this week and it is how a top creator collapses in a month. '
+        + 'The fix is reach, not retention: short form, matches, a lower entry gift tier.',
+    });
+  }
+
+  return {
+    embeds: [{
+      title: `LEAP network programmes — week of ${asOf}`,
+      description: 'Findings that are a decision about how the network runs, rather than '
+        + 'something to raise with one creator at a time.',
+      color: COLOR.opportunity,
+      fields,
+      footer: { text: 'Posted weekly.' },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
 /** Posted when a follow-up window closes, so the coach learns what their call did. */
 export function followUpEmbed(caseRecord, { mention = null, buttons = true } = {}) {
   const o = caseRecord.outcome;
@@ -384,7 +466,7 @@ export function escalationEmbed(cases, asOf) {
  */
 export function overviewEmbed({
   asOf, stats, caseStats, alerts, ramp, spotlight, changes = {}, sent = [], teams = [],
-  health = null, openCases = [],
+  health = null, openCases = [], staleness = null, activation = null,
 }) {
   const risk = alerts.reduce((s, a) => s + a.valueAtRisk, 0);
   const byStatus = {};
@@ -407,7 +489,17 @@ export function overviewEmbed({
     .sort((a, b) => b.wentStale - a.wentStale)
     .slice(0, 5);
 
-  const fields = [
+  const fields = [];
+
+  // Stale data first: every other number below it is only as good as this.
+  if (staleness && staleness.level !== 'ok' && staleness.level !== 'none') {
+    fields.push({
+      name: staleness.level === 'urgent' ? 'UPLOAD OVERDUE' : 'Upload overdue',
+      value: staleness.message,
+    });
+  }
+
+  fields.push(
     {
       name: 'Sent today',
       value: posted.length
@@ -440,7 +532,21 @@ export function overviewEmbed({
       ].join('\n'),
       inline: true,
     },
-  ];
+  );
+
+  // The creators the decline rules cannot see, because they never started.
+  if (activation?.total) {
+    fields.push({
+      name: 'Never started',
+      value: [
+        `**${activation.total}** earning nothing this month`,
+        `${activation.newNotStarted} never gone live · ${activation.stalled} live but earning nothing`,
+        `${activation.decide} need a decision · ${activation.dormant} established and stopped`,
+        `${activation.open} on the activation list now`,
+      ].join('\n'),
+      inline: false,
+    });
+  }
 
   // Who needs a call today. Management's first question is never "how many
   // cases" — it is "which creators, and whose".

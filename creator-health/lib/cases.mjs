@@ -16,6 +16,7 @@ import crypto from 'node:crypto';
 import { captureBaseline, playbookFor, PLAYBOOK } from './playbook.mjs';
 import { rankCauses } from './causes.mjs';
 import { groupKey } from './notify.mjs';
+import { ACTIVATION_PLAYBOOK, ACTIVATION_STAGE } from './activation.mjs';
 
 export const STATUS = {
   OPEN: 'open',                 // raised, nobody has picked it up
@@ -87,7 +88,9 @@ export class CaseStore {
  * follow-up is due, cases nobody has picked up, and cases that resolved
  * themselves.
  */
-export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, store, config }) {
+export function reconcile({
+  asOf, alerts, spotlight, metricsByKey, creators, store, config, activation = [],
+}) {
   const cfg = config.cases;
   const opened = [];
   const escalated = [];
@@ -256,6 +259,64 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
     }
   }
 
+  // --- open activation cases -----------------------------------------------
+  // Separate budget from declines, because they compete for different hours: a
+  // coach chasing a first stream is not doing the same work as one saving a
+  // creator who has slipped, and the two should not crowd each other out.
+  if (cfg.openActivationCases && activation.length) {
+    const actCfg = config.activation;
+    const openAct = new Map();
+    for (const c of store.all()) {
+      if (c.kind !== 'activation' || !isOpen(c)) continue;
+      openAct.set(c.coach, (openAct.get(c.coach) ?? 0) + 1);
+    }
+    for (const row of activation) {
+      const key = row.creator.key;
+      if (isIgnored(row.creator)) continue;
+      if (store.openFor(key, 'activation') || store.suppressedFor(key, 'activation', asOf)) continue;
+      const coach = row.creator.manager ?? 'unassigned';
+      const limit = row.stage === ACTIVATION_STAGE.DORMANT
+        ? actCfg.dormantMaxPerCoach : actCfg.maxOpenPerCoach;
+      const used = openAct.get(coach) ?? 0;
+      if (used >= (actCfg.maxOpenPerCoach + actCfg.dormantMaxPerCoach)) {
+        deferred.push({ username: row.creator.username, coach, valueAtRisk: 0, kind: 'activation' });
+        continue;
+      }
+      const sameStage = store.all().filter((c) => c.coach === coach && c.kind === 'activation'
+        && isOpen(c) && c.stage === row.stage).length;
+      if (sameStage >= limit) continue;
+
+      const book = ACTIVATION_PLAYBOOK[row.stage];
+      const c = {
+        id: newCaseId('activation', asOf),
+        kind: 'activation',
+        stage: row.stage,
+        creatorKey: key,
+        username: row.creator.username,
+        creatorId: row.creator.creatorId,
+        group: row.creator.group,
+        coach,
+        openedOn: asOf,
+        severity: 'watch',
+        signals: [row.stage],
+        playbookId: `ACTIVATION_${row.stage}`,
+        baseline: captureBaseline(row.metrics),
+        context: {
+          day: row.day, everLive: row.everLive, thisMonth: row.thisMonth,
+          lastMonth: row.lastMonth, bestMonth: row.bestMonth, title: book.title,
+        },
+        valueAtRisk: 0,
+        status: STATUS.OPEN,
+        followUpOn: null, snoozedUntil: null, escalatedOn: null,
+        outcome: null, discord: null, history: [],
+      };
+      store.log(c, 'opened', { note: `${row.stage}, day ${row.day ?? '—'}` });
+      store.data.cases[c.id] = c;
+      openAct.set(coach, used + 1);
+      opened.push(c);
+    }
+  }
+
   // --- walk the open caseload ----------------------------------------------
   for (const c of store.all()) {
     if (!isOpen(c)) continue;
@@ -276,6 +337,20 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
       c.status = STATUS.LOST;
       c.outcome = { on: asOf, verdict: 'quit' };
       store.log(c, 'lost', { note: `creator quit on ${creator.quitOn}` });
+      continue;
+    }
+
+    // An activation case is answered by the creator, not by the clock: any real
+    // earnings means they started, which is the whole point of the case.
+    if (c.kind === 'activation') {
+      const m = metricsByKey.get(c.creatorKey);
+      const earned = m?.monthOnMonth?.diamonds?.monthToDate ?? 0;
+      if (earned > (config.activation?.minDiamonds ?? 100)) {
+        c.status = STATUS.RESOLVED;
+        c.outcome = { on: asOf, verdict: 'recovered', activated: true, earned: Math.round(earned) };
+        store.log(c, 'activated', { note: `earning again: ${Math.round(earned)}` });
+        autoResolved.push(c);
+      }
       continue;
     }
 

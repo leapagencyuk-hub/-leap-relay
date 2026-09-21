@@ -92,7 +92,8 @@
     "interactive": false,
     "escalateNoChangeAfterDays": 7,
     "maxOpenDays": 21,
-    "reopenCooldownDays": 7
+    "reopenCooldownDays": 7,
+    "openActivationCases": true
   },
   "monitoring": {
     "_ignoreGroups": "Teams nobody is coaching. Their data still accrues, but no case is opened and nothing is posted. Matching ignores case and spacing.",
@@ -102,5 +103,36 @@
       "Stay Social",
       "Team Ratty"
     ]
+  },
+  "activation": {
+    "_note": "Creators who never started. Excluded from decline rules by design, which otherwise leaves a third of the network invisible.",
+    "enabled": true,
+    "newWindowDays": 90,
+    "minDiamonds": 100,
+    "dormantWasEarning": 5000,
+    "stages": {
+      "noStart": 7,
+      "decide": 30
+    },
+    "maxOpenPerCoach": 3,
+    "dormantMaxPerCoach": 1
+  },
+  "programmes": {
+    "_note": "Network-level findings posted weekly to the management channel. A programme decision, not 400 conversations.",
+    "enabled": true,
+    "weekday": 1,
+    "listSize": 12,
+    "campaign": {
+      "minDiamonds28": 5000,
+      "minHours28": 8
+    },
+    "concentration": {
+      "minShare": 0.9,
+      "minDiamonds28": 20000
+    }
+  },
+  "uploads": {
+    "warnAfterDays": 2,
+    "urgentAfterDays": 4
   }
 }

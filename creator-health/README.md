@@ -320,6 +320,59 @@ left in the month to act, and the rate and unused hours to actually land it.
 A creator with three days left in the month is not on it — there is nothing a
 coach can do by then that the numbers would show.
 
+## Creators who never started
+
+The decline rules ignore these by design: a creator with no pattern cannot
+deviate from one, so alerting on them would bury the real signal. The side
+effect is that a third of the network is invisible.
+
+On LEAP's own data that is **280 of 783 monitored creators earning nothing this
+month, 176 of them signed within the last 90 days**. That is not a coaching
+problem and it is not a decline. It is onboarding — and it is probably worth
+more than the decline caseload, because a saved creator returns to their old
+level while an activated one is income that did not exist.
+
+Four stages, each with its own questions:
+
+| Stage | Who | What it is |
+|---|---|---|
+| Settling | First week | Left alone — chasing on day three is noise |
+| Never gone live | Past day 7, no stream at all | Usually practical or nerves, and nobody has asked |
+| Streaming, earning nothing | Live but no money | The point most people quit |
+| Needs a decision | Past day 30 | Either something changes now or the slot is better used |
+| Gone quiet | Established, earning nothing | A full stop, not a slide — different conversation |
+
+Activation has its **own per-coach budget**, separate from declines, because
+chasing a first stream and saving a slipping creator are different work and
+should not crowd each other out. Newest first, since they are the most likely
+to convert. A case closes the moment the creator earns anything.
+
+## Network programmes
+
+Some numbers only mean something in aggregate. Posted weekly to the management
+channel, not daily to team channels:
+
+**Never campaigned.** 215 of 729 earning creators have never done a match.
+As a per-creator nudge that is 215 conversations nobody will have; as a network
+figure it is one decision about how campaigns are run. The list is ranked by
+what they already produce — the top entry does 1.36M diamonds in 28 days at
+10,359 an hour and has never been put in front of another room.
+
+**Income resting on a handful of people.** 125 creators earn 90%+ of their
+diamonds from their fan club, several from fewer than 100 members. One member
+leaving is a visible drop. The fix is reach rather than retention.
+
+## When uploads stop
+
+The whole system rests on somebody uploading a file each morning, and nothing
+else in it notices when that stops — a quiet week degrades every comparison
+without producing a single error.
+
+The overview now leads with it: a warning at two days, and at four days an
+explicit note that week-on-week is degrading and the 200k month is being
+tracked blind. One day behind is normal, because the export always covers the
+day before it is produced.
+
 ## The support system
 
 An alert is an event: it fires, it is gone, and a week later nobody remembers
@@ -1033,6 +1086,13 @@ Everything lives in `config.json` — no code changes needed.
 | `cases.autoResolveClearDays` | Clear days before a case closes itself |
 | `cases.openCasesForEarlySigns` | Whether single-signal warnings become cases (off by default) |
 | `monitoring.ignoreGroups` | Teams to skip entirely — no cases, no cards, data still accrues |
+| `activation.stages` | Days at which "never started" and "needs a decision" begin |
+| `activation.maxOpenPerCoach` | Activation budget, separate from the decline caseload |
+| `activation.dormantWasEarning` | What an established creator must have earned to count as gone quiet |
+| `programmes.weekday` | Day of the week the network post goes out (1 = Monday) |
+| `programmes.campaign` | Minimum size before a creator belongs on the campaign list |
+| `programmes.concentration` | Fan-club share and earnings that count as exposure |
+| `uploads.warnAfterDays` | Days without an export before the overview says so |
 | `discord.interactionsReady` | `false` posts cards without buttons, until the endpoint is live |
 | `cases.interactive` | `false` when nobody can click: changes escalation and closing |
 | `cases.escalateNoChangeAfterDays` | Days open and still declining before the managers hear |
