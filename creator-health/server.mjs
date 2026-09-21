@@ -13,6 +13,7 @@
 //   POST /discord/interactions  Discord's interactions endpoint (button clicks)
 //   GET  /cases             the open caseload
 //   GET  /effectiveness     which interventions are working
+//   GET  /selftest           what this service can reach (?post=1 sends a test line)
 //   GET  /health
 //
 // Uploads and /notify require UPLOAD_TOKEN if it is set: send it as
@@ -31,6 +32,8 @@ import { Store } from './lib/store.mjs';
 import { computeMetrics } from './lib/metrics.mjs';
 import { isOpen } from './lib/cases.mjs';
 import { verifySignature, handleInteraction } from './lib/interactions.mjs';
+import { preflight } from './lib/dispatch.mjs';
+import { Discord } from './lib/discord.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -220,6 +223,65 @@ async function handleDiscordInteractions(req, res) {
   }
 }
 
+/**
+ * Say exactly what this running service can and cannot reach.
+ *
+ * When nothing arrives in Discord the question is always the same: is it the
+ * config, the network, or did the pipeline simply have nothing to send? Reading
+ * that off a deploy log is guesswork, so this answers it directly — and with
+ * `?post=1` proves the last hop by actually sending a line.
+ *
+ * Webhook URLs are never echoed: a URL is a credential, and this endpoint
+ * exists to be pasted into a chat when something is wrong.
+ */
+async function handleSelfTest(req, res, url) {
+  if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+  const { discord } = loadRoutes(path.dirname(configPath));
+  const check = preflight(discord);
+  const store = new Store(config.dataDir);
+  const series = store.readSeries();
+
+  const teams = Object.values(discord.groups ?? {}).map((g) => ({
+    team: g.label,
+    destination: g.webhook ? 'webhook' : g.channelId ? 'channel' : 'NONE',
+  }));
+
+  const result = {
+    config: {
+      source: fs.existsSync(path.join(path.dirname(configPath), 'routes.json'))
+        ? 'routes.json' : 'routes.deploy.json',
+      enabled: discord.enabled,
+      mode: discord.mode,
+      routeBy: discord.routeBy,
+      overview: discord.summaryWebhook ? 'set' : 'MISSING',
+      escalation: discord.escalationWebhook || discord.escalationChannelId ? 'set' : 'not configured',
+      teamsResolved: teams.filter((t) => t.destination !== 'NONE').length,
+      teamsMissing: teams.filter((t) => t.destination === 'NONE').map((t) => t.team),
+    },
+    preflight: check,
+    data: {
+      snapshots: store.listSnapshotDates().length,
+      lastAsOf: series.lastAsOf,
+      openCases: new CaseStore(config.dataDir).all().filter(isOpen).length,
+      lastOverviewOn: new CaseStore(config.dataDir).data.lastOverviewOn ?? null,
+    },
+  };
+
+  if (url.searchParams.get('post') === '1') {
+    if (!discord.summaryWebhook) {
+      result.testPost = { ok: false, error: 'no overview webhook configured' };
+    } else {
+      const client = new Discord({ token: discord.botToken });
+      const sent = await client.postToWebhook(discord.summaryWebhook, {
+        content: `Self-test from the monitoring service at ${new Date().toISOString()}. `
+          + `${result.data.snapshots} export(s) held, ${result.data.openCases} open case(s).`,
+      });
+      result.testPost = { ok: sent.ok, status: sent.status ?? null, error: sent.error ?? null };
+    }
+  }
+  return json(res, 200, result);
+}
+
 async function handleRun(req, res, url) {
   if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
   const dryRun = url.searchParams.get('dry') === '1';
@@ -247,6 +309,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && route === '/upload') return await handleUpload(req, res, url);
     if (req.method === 'POST' && route === '/notify') return await handleNotify(req, res, url);
     if (req.method === 'POST' && route === '/run') return await handleRun(req, res, url);
+    if (route === '/selftest') return await handleSelfTest(req, res, url);
     if (req.method === 'POST' && route === '/discord/interactions') {
       return await handleDiscordInteractions(req, res);
     }
