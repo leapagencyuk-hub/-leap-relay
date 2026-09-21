@@ -11,7 +11,8 @@
 import { PLAYBOOK, VERDICT_LABEL } from './playbook.mjs';
 import { CONFIDENCE_LABEL, KIND } from './causes.mjs';
 import { ACTIVATION_PLAYBOOK } from './activation.mjs';
-import { profileUrl } from './profile.mjs';
+import { profileUrl, avatarUrl } from './profile.mjs';
+import { sparkline, progressBar, monthlyTrend } from './spark.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -230,11 +231,12 @@ function causeFields(caseRecord) {
  * to their profile — which is where a coach goes to see the thing the export
  * cannot show them, namely what the creator has actually been posting.
  */
-function authorBlock(caseRecord, avatar) {
+function authorBlock(caseRecord, avatarConfig) {
+  const icon = avatarUrl(caseRecord.username, avatarConfig ?? {});
   return {
     name: `@${caseRecord.username}${caseRecord.group ? `  ·  ${caseRecord.group}` : ''}`,
     url: profileUrl(caseRecord.username),
-    ...(avatar ? { icon_url: avatar } : {}),
+    ...(icon ? { icon_url: icon } : {}),
   };
 }
 
@@ -249,16 +251,13 @@ function authorBlock(caseRecord, avatar) {
 function trafficField(m) {
   const now = Math.round(m.curr7?.newFollowers ?? 0);
   const before = Math.round(m.prev7?.newFollowers ?? 0);
-  const monthly = m.monthOnMonth?.newFollowers;
-  if (!now && !before && !monthly) return null;
-  // A percentage off a tiny base is noise: 1 follower to 8 is "+700%", which
-  // tells a coach nothing and makes the card look unserious.
-  const trend = before >= 10
-    ? `${pct((now - before) / before)} on last week`
-    : before > 0 ? `${n(before)} last week` : null;
+  // "1 this week, 1 last week" is a field taking up space to say nothing. Only
+  // show this when there is enough movement for it to carry information.
+  if (Math.max(now, before) < 20) return null;
+  const trend = before >= 10 ? ` (${pct((now - before) / before)})` : '';
   return {
     name: 'New followers',
-    value: `${n(now)} this week${trend ? `\n${trend}` : ''}\n_proxy for short form_`,
+    value: `**${n(now)}**${trend}\nthis week · proxy for short form`,
     inline: true,
   };
 }
@@ -282,7 +281,11 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
     embeds: [{
       author: authorBlock(caseRecord, avatar),
       title: `${SEVERITY_LABEL[caseRecord.severity] ?? 'Notice'} — ${book.title}`,
-      description: alert.signals.map((s) => `• **${s.label}** — ${s.detail}`).join('\n').slice(0, 3800),
+      description: (() => {
+        const trend = monthlyTrend(m, 6);
+        const signals = alert.signals.map((s) => `• **${s.label}** — ${s.detail}`).join('\n');
+        return `${trend ? `\`${trend.spark}\`  ${trend.label}\n\n` : ''}${signals}`.slice(0, 3800);
+      })(),
       color: COLOR[caseRecord.severity] ?? COLOR.neutral,
       fields: [
         // A case raised on monthly evidence shows monthly figures. Showing a
@@ -340,7 +343,8 @@ export function opportunityEmbed(caseRecord, row, { mention = null, buttons = tr
     embeds: [{
       author: authorBlock(caseRecord, avatar),
       title: `Can still hit 200k in ${monthName}`,
-      description: `**${n(row.monthToDate)} / 200,000** this month, with `
+      description: `\`${progressBar(row.monthToDate, 200000)}\`\n`
+        + `**${n(row.monthToDate)} / 200,000** this month, with `
         + `**${row.daysLeftInMonth} day${row.daysLeftInMonth === 1 ? '' : 's'}** left.\n`
         + `At this week's rate they finish on ${n(row.projected)}`
         + (short > 0 ? ` — **${n(short)} short**.` : ' — **clears it**.')
@@ -369,36 +373,28 @@ export function activationEmbed(caseRecord, { mention = null, buttons = true, av
   const book = ACTIVATION_PLAYBOOK[caseRecord.stage] ?? {};
   const ctx = caseRecord.context ?? {};
 
-  const stats = [
-    ctx.day != null
-      ? { name: 'Day', value: `**${ctx.day}**\nsince joining`, inline: true }
-      : null,
-    {
-      name: 'Gone live?',
-      value: ctx.everLive ? 'Yes\nbut not earning' : '**Never**\nnot once',
-      inline: true,
-    },
-    {
-      name: 'Best month',
-      value: ctx.bestMonth > 0 ? `${n(ctx.bestMonth)}\ndiamonds` : 'None\non record',
-      inline: true,
-    },
-  ].filter(Boolean);
+  const trend = metrics ? monthlyTrend(metrics, 6) : null;
+  const headline = [
+    ctx.day != null ? `**Day ${ctx.day}** of their first 90` : null,
+    ctx.everLive ? 'has gone live' : '**never gone live**',
+    ctx.bestMonth > 0 ? `best month ${n(ctx.bestMonth)}` : 'nothing earned yet',
+  ].filter(Boolean).join('  ·  ');
 
   return {
     content: mention ?? undefined,
     embeds: [{
       author: authorBlock(caseRecord, avatar),
       title: book.title ?? caseRecord.stage,
-      description: book.concern ?? '',
+      description: `${book.concern ?? ''}\n${headline}`
+        + (trend ? `\n\n\`${trend.spark}\`  ${trend.label}` : ''),
       color: caseRecord.stage === 'DECIDE' ? COLOR.warn : COLOR.watch,
       fields: [
-        ...stats,
+        { name: 'Start here', value: book.first ?? book.concern ?? '' },
+        { name: 'Then ask', value: (book.ask ?? []).map((a) => `• ${a}`).join('\n').slice(0, 1024) },
         ...(metrics ? [trafficField(metrics)].filter(Boolean) : []),
-        { name: 'Ask them', value: (book.ask ?? []).map((a) => `• ${a}`).join('\n').slice(0, 1024) },
-        ...(book.check?.length ? [{ name: 'Before you call', value: book.check.join('; ').slice(0, 1024) }] : []),
-        { name: 'What good looks like', value: book.success ?? 'Any activity.' },
-      ],
+        ...(book.check ? [{ name: 'Worth knowing', value: String(book.check).slice(0, 1024), inline: true }] : []),
+        { name: 'Done when', value: book.success ?? 'Any activity.', inline: true },
+      ].filter(Boolean),
       footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],

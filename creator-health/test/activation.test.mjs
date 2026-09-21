@@ -127,3 +127,62 @@ test('a stale upload escalates rather than going unnoticed', () => {
   assert.match(uploadStaleness('2026-09-20', config, on('2026-09-25')).message, /200k month is being tracked blind/);
   assert.equal(uploadStaleness(null, config, on('2026-09-21')).level, 'none');
 });
+
+// --- card visuals ------------------------------------------------------------
+
+import { sparkline, progressBar, monthlyTrend } from '../lib/spark.mjs';
+import { avatarUrl, profileUrl } from '../lib/profile.mjs';
+
+test('a sparkline scales from zero, so flat looks flat', () => {
+  // Scaling from the minimum would draw four near-identical months as a
+  // dramatic staircase.
+  assert.equal(sparkline([100, 102, 99, 101]), '████');
+  // 100k is an eighth of 800k, not nothing, and the bar says so.
+  assert.equal(sparkline([800000, 100000]), '█▂');
+  assert.equal(sparkline([800000, 0]), '█▁', 'nothing does read as nothing');
+  assert.equal(sparkline([0, 0, 0]), '▁▁▁');
+  assert.equal(sparkline([5]), null, 'one point is not a trend');
+});
+
+test('the progress bar caps at full rather than overflowing', () => {
+  assert.match(progressBar(100000, 200000, 10), /^█████░░░░░ {2}50%$/);
+  assert.match(progressBar(300000, 200000, 10), /100%$/);
+  assert.match(progressBar(0, 200000, 10), /^░{10} {2}0%$/);
+});
+
+test('the trend never draws a part-finished month beside complete ones', () => {
+  // A month-to-date bar on the 20th is short because the month is short. Drawn
+  // beside finished months it makes every creator look like they are collapsing.
+  const partial = monthlyTrend({
+    monthlyDiamonds: { '2026-07': 500000, '2026-08': 480000, '2026-09': 120000 },
+    monthlyCoverage: { '2026-07': 31, '2026-08': 31, '2026-09': 20 },
+    endDate: '2026-09-20',
+  });
+  assert.equal(partial, null, 'two complete months is a comparison, not a trend');
+
+  const full = monthlyTrend({
+    monthlyDiamonds: { '2026-06': 300000, '2026-07': 500000, '2026-08': 480000, '2026-09': 120000 },
+    monthlyCoverage: { '2026-06': 30, '2026-07': 31, '2026-08': 31, '2026-09': 20 },
+    endDate: '2026-09-20',
+  });
+  assert.deepEqual(full.keys, ['2026-06', '2026-07', '2026-08'], 'September is left out');
+  assert.equal(full.spark.length, 3);
+});
+
+test('a month we barely watched is not drawn as a bad month', () => {
+  const out = monthlyTrend({
+    monthlyDiamonds: { '2026-06': 300000, '2026-07': 4000, '2026-08': 480000, '2026-09': 1 },
+    monthlyCoverage: { '2026-06': 30, '2026-07': 3, '2026-08': 31, '2026-09': 20 },
+    endDate: '2026-09-20',
+  });
+  assert.equal(out, null, 'July had three days of coverage, leaving too few real months');
+});
+
+test('profile and avatar urls are built from the handle', () => {
+  assert.equal(profileUrl('@someone'), 'https://www.tiktok.com/@someone');
+  assert.equal(avatarUrl('someone', {}), 'https://unavatar.io/tiktok/someone');
+  assert.equal(avatarUrl('someone', { enabled: false }), null, 'pictures can be turned off');
+  assert.equal(avatarUrl('someone', { manual: { someone: 'https://cdn/x.png' } }), 'https://cdn/x.png',
+    'a hand-set url wins over the resolver');
+  assert.equal(avatarUrl('', {}), null);
+});

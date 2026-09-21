@@ -11,8 +11,29 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+const handle = (username) => String(username ?? '').replace(/^@/, '').trim();
+
 export const profileUrl = (username) =>
-  `https://www.tiktok.com/@${encodeURIComponent(String(username ?? '').replace(/^@/, ''))}`;
+  `https://www.tiktok.com/@${encodeURIComponent(handle(username))}`;
+
+/**
+ * An avatar URL that Discord resolves itself.
+ *
+ * The first attempt fetched TikTok's oEmbed endpoint from our side, cached the
+ * result, and produced no picture at all in production. Handing Discord a URL
+ * that resolves the handle on request removes our network from the path
+ * entirely: no lookup, no cache, no rate limit, and a failure is just a card
+ * without a picture.
+ */
+export const avatarUrl = (username, config = {}) => {
+  const h = handle(username);
+  if (!h) return null;
+  const manual = config.manual?.[h.toLowerCase()];
+  if (manual) return manual;
+  if (config.enabled === false) return null;
+  const template = config.urlTemplate ?? 'https://unavatar.io/tiktok/{handle}';
+  return template.replace('{handle}', encodeURIComponent(h));
+};
 
 const DAY = 86400000;
 

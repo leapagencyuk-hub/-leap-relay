@@ -136,12 +136,9 @@
     "urgentAfterDays": 4
   },
   "avatars": {
-    "_note": "Best effort via TikTok oEmbed. Cached, capped per run, and a failure just means a card without a picture. Add manual entries as {\"username\": \"https://...\"} if the lookup does not work.",
+    "_note": "Discord resolves the URL itself, so nothing is fetched from our side. Set enabled false to drop pictures, or add manual entries as {\"username\":\"https://...\"}.",
     "enabled": true,
-    "ttlDays": 30,
-    "retryFailedAfterDays": 7,
-    "maxLookupsPerRun": 25,
-    "timeoutMs": 5000,
+    "urlTemplate": "https://unavatar.io/tiktok/{handle}",
     "manual": {}
   }
 }

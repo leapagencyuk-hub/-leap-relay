@@ -380,11 +380,27 @@ Every card carries an author line: the creator's handle, their team, and a
 looks — it is where a coach goes to see the one thing the export cannot show
 them, namely what the creator has actually been posting.
 
-Avatars are best effort. The export has no picture, so they come from TikTok's
-public oEmbed endpoint: cached for 30 days, capped per run, failures cached too
-so a run never retries in a loop. A miss costs a picture and nothing else. If
-the lookup does not work for your network, `avatars.manual` takes
-`{"username": "https://..."}` entries and wins over the lookup.
+Avatars are resolved by Discord, not by us. The first attempt fetched TikTok's
+oEmbed endpoint from our side, cached the result, and produced no picture at
+all in production. Handing Discord a URL that resolves the handle on request
+takes our network out of the path entirely: no lookup, no cache, no rate limit,
+and a failure is a card without a picture rather than a stalled run.
+
+It uses a third-party resolver (`unavatar.io` by default). Point
+`avatars.urlTemplate` elsewhere, set `avatars.enabled` to false to drop pictures
+entirely, or add `avatars.manual` entries which win over the resolver.
+
+### Reading a card at a glance
+
+Where there is enough history, cards carry a sparkline of **complete** calendar
+months — `▆█▇▃` — and opportunity cards carry a progress bar towards the
+month's 200k.
+
+The running month is deliberately excluded from the trend. A month-to-date bar
+drawn beside finished months makes every creator look like they are collapsing
+on the 20th: the bar is short because the month is short. Trends need three
+complete months before they appear at all, because two bars is a comparison the
+card already makes in words.
 
 ### There is no short-form data in the export
 

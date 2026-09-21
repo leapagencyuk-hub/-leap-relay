@@ -35,7 +35,6 @@ import { isOpen } from './lib/cases.mjs';
 import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 import { preflight } from './lib/dispatch.mjs';
 import { Discord, declineEmbed, activationEmbed } from './lib/discord.mjs';
-import { Avatars } from './lib/profile.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -286,22 +285,20 @@ async function handleSelfTest(req, res, url) {
       const route = discord.summaryWebhook
         ? { webhook: discord.summaryWebhook }
         : { channelId: discord.summaryChannelId };
-      const avatars = new Avatars(config.dataDir, config.avatars);
-      await avatars.warm([decline?.username, activation?.username].filter(Boolean));
 
       const posts = [];
       if (decline) {
         const alert = analysis.alerts.find((a) => a.creator.key === decline.creatorKey);
         if (alert) {
           posts.push(['decline', declineEmbed(decline, alert, {
-            avatar: avatars.get(decline.username),
+            avatar: config.avatars,
             buttons: discord.mode === 'bot' && discord.interactionsReady !== false,
           })]);
         }
       }
       if (activation) {
         posts.push(['activation', activationEmbed(activation, {
-          avatar: avatars.get(activation.username),
+          avatar: config.avatars,
           metrics: analysis.metricsByKey.get(activation.creatorKey),
           buttons: discord.mode === 'bot' && discord.interactionsReady !== false,
         })]);
@@ -317,7 +314,9 @@ async function handleSelfTest(req, res, url) {
           kind,
           creator: kind === 'decline' ? decline.username : activation.username,
           ok: sent.ok,
-          avatar: Boolean(avatars.get(kind === 'decline' ? decline.username : activation.username)),
+          // Discord resolves the avatar when it renders, so all we can report
+          // is whether we asked for one.
+          avatar: Boolean(payload.embeds[0].author?.icon_url),
           error: sent.error ?? null,
         });
       }

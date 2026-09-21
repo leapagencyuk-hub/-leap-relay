@@ -18,51 +18,55 @@ const STAGE = {
   DORMANT: 'DORMANT',       // established creator who has gone quiet entirely
 };
 
+// Each stage leads with one thing to do. Four questions and no instruction
+// reads as homework; one action and three prompts reads as a job.
 export const ACTIVATION_PLAYBOOK = {
   [STAGE.NO_START]: {
     title: 'Signed but never went live',
-    concern: 'They joined and have not streamed once. Every day here makes the first stream harder.',
+    concern: 'Every day here makes the first stream harder.',
+    first: 'Call them and put a date and a time for their first stream in the diary before you hang up.',
     ask: [
-      'Do they know how to go live and what the requirements are?',
-      'Is anything practical in the way — phone, wifi, lighting, a private space?',
-      'Are they nervous about the first one? Most are, and nobody tells them that.',
-      'Can we put a date and a time in the diary right now, on this call?',
+      'Do they know how to go live, and what the requirements are?',
+      'Anything practical in the way — phone, wifi, a private space?',
+      'Are they nervous? Most are, and nobody tells them that.',
     ],
-    check: ['Whether anyone has actually spoken to them since they signed'],
+    check: 'Has anyone actually spoken to them since they signed?',
     success: 'One valid LIVE day.',
   },
   [STAGE.STALLED]: {
     title: 'Streaming but earning nothing',
-    concern: 'They are going live and no money is coming in. That is the point most people quit.',
+    concern: 'This is the point most people quit.',
+    first: 'Watch ten minutes of a recent stream before you call, then ask how many people are actually in the room.',
     ask: [
-      'How many people are in the room? Zero viewers and zero gifters are different problems.',
-      'Are they telling anyone they are going live — short form, story, group chat?',
-      'Do they know to ask? A lot of new creators never make a single gift callout.',
-      'What time are they streaming, and is anyone else from the team live then to match with?',
+      'Zero viewers or zero gifters? Different problems.',
+      'Do they tell anyone they are going live?',
+      'Do they ever ask, by name? Many never make a single callout.',
     ],
-    check: ['Watch ten minutes of one of their streams before the call'],
-    success: 'Any meaningful earnings in a week.',
+    check: 'What time they stream, and whether anyone else is live then to match with',
+    success: 'Any meaningful earnings within a week.',
   },
   [STAGE.DECIDE]: {
     title: 'Needs a decision',
-    concern: 'Weeks in with nothing to show. Either something changes now or the slot is better used on someone else.',
+    concern: 'Weeks in with nothing to show. Either something changes now or the slot is better used.',
+    first: 'Ask plainly whether they still want this. It is kinder than chasing quietly for another month.',
     ask: [
-      'Do they still want this? Asking plainly is kinder than chasing quietly.',
-      'If yes: what is the one thing that has stopped them, and can we fix it this week?',
-      'If no: close it off properly so the roster reflects reality.',
+      'If yes: what is the one thing stopping them, and can we fix it this week?',
+      'If no: close it off so the roster reflects reality.',
+      'Either way, agree it today rather than leaving it open.',
     ],
-    check: ['Everything tried so far, so this is not the same conversation again'],
+    check: 'Everything tried so far, so this is not the same conversation again',
     success: 'Either activity, or an honest close.',
   },
   [STAGE.DORMANT]: {
     title: 'Established creator gone quiet',
-    concern: 'They used to earn and now earn nothing at all. Different from a decline — this is a full stop.',
+    concern: 'They used to earn and now earn nothing. This is a full stop, not a slide.',
+    first: 'Find out whether they are still with us at all. Often they left and nobody updated the roster.',
     ask: [
-      'Are they still with us? Sometimes the answer is that they left and nobody updated the roster.',
       'What changed? A full stop usually has one cause and they will tell you it.',
       'Is there a route back, or should we close this properly?',
+      'If there is: what would week one look like?',
     ],
-    check: ['Their best month, so the conversation starts from what they are capable of'],
+    check: 'Their best month, so the conversation starts from what they can do',
     success: 'Back to any regular streaming.',
   },
 };
