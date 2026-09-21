@@ -14,25 +14,54 @@
 //     leaves yesterday's working index in place.
 import fs from 'node:fs';
 import { Corpus } from './store.mjs';
-import { Drive } from './drive.mjs';
+import { Drive, driveSource } from './drive.mjs';
+import { LocalSource } from './local.mjs';
+import { isSupported, kindOf } from './formats.mjs';
 import { extractFile } from './extract.mjs';
 import { chunkDocument } from './chunk.mjs';
 import { Embedder } from './embed.mjs';
 import { quantise, pack } from './vectors.mjs';
 import { KeywordIndex } from './keyword.mjs';
 
-export async function sync(config, { drive = null, onProgress = () => {}, force = false } = {}) {
-  const corpus = new Corpus(config.dataDir);
+/**
+ * Pick where the files come from.
+ *
+ * Three sources, one pipeline. Drive is the default because that is where the
+ * library lives, but a local folder needs no Google Cloud project at all, and
+ * the uploads folder is what the admin page's drag-and-drop writes into. Once
+ * a source is chosen, nothing downstream knows the difference.
+ */
+export function sourceFor(config, { folder = null } = {}) {
+  if (folder) return new LocalSource(folder);
+
+  const localRoot = config.knowledge?.localFolder;
+  if (localRoot) return new LocalSource(localRoot);
+
+  // Anything dragged onto the admin page wins over Drive. Someone who has just
+  // uploaded files expects to be answered from them, not from a Drive folder
+  // that may not even be connected yet.
+  if (config.uploadDir && fs.existsSync(config.uploadDir) && fs.readdirSync(config.uploadDir).length) {
+    return new LocalSource(config.uploadDir);
+  }
+
   const folderId = config.knowledge?.driveFolderId;
-  if (!folderId) throw new Error('ANDY_DRIVE_FOLDER_ID is not set — there is no folder to read');
+  const drive = Drive.fromEnv();
+  if (drive && folderId) return driveSource(drive, folderId);
 
-  drive ??= Drive.fromEnv();
-  if (!drive) throw new Error('no Drive service account — set GOOGLE_SERVICE_ACCOUNT_JSON');
+  if (folderId && !drive) {
+    throw new Error('no Drive service account — set GOOGLE_SERVICE_ACCOUNT_JSON, or point Andy at a local folder with `cli.mjs ingest <path>`');
+  }
+  throw new Error('nothing to read — configure a Drive folder or pass a local one');
+}
 
-  onProgress({ phase: 'listing', message: 'reading the Drive folder' });
-  const files = await drive.listFolder(folderId);
-  const usable = files.filter((f) => Drive.isSupported(f.mimeType, f.name));
-  const skipped = files.filter((f) => !Drive.isSupported(f.mimeType, f.name));
+export async function sync(config, { source = null, onProgress = () => {}, force = false, folder = null } = {}) {
+  const corpus = new Corpus(config.dataDir);
+  source ??= sourceFor(config, { folder });
+
+  onProgress({ phase: 'listing', message: `reading ${source.label}` });
+  const files = await source.list();
+  const usable = files.filter((f) => isSupported(f.mimeType, f.name));
+  const skipped = files.filter((f) => !isSupported(f.mimeType, f.name));
 
   const known = corpus.readDocuments();
   const next = {};
@@ -60,7 +89,7 @@ export async function sync(config, { drive = null, onProgress = () => {}, force 
     }
 
     try {
-      const { buffer, mimeType } = await drive.download(file);
+      const { buffer, mimeType } = await source.download(file);
       const { text, pages } = await extractFile({ buffer, mimeType, name: file.name });
       corpus.writeText(file.id, text);
       next[file.id] = { ...describe(file), stamp, pages, chars: text.length, error: null, chunks: 0 };
@@ -80,7 +109,7 @@ export async function sync(config, { drive = null, onProgress = () => {}, force 
 
   corpus.writeDocuments(next);
   const indexReport = await reindex(config, { corpus, onProgress });
-  return { ...report, ...indexReport, skippedFiles: skipped.map((f) => f.name) };
+  return { ...report, ...indexReport, source: source.label, skippedFiles: skipped.map((f) => f.name) };
 }
 
 /**
@@ -170,11 +199,3 @@ const describe = (file) => ({
   kind: kindOf(file),
 });
 
-function kindOf(file) {
-  if (file.mimeType === 'application/pdf' || /\.pdf$/i.test(file.name)) return 'pdf';
-  if (/\.docx$/i.test(file.name) || file.mimeType?.includes('wordprocessingml')) return 'docx';
-  if (file.mimeType?.startsWith('application/vnd.google-apps')) return 'google';
-  if (/\.(csv|tsv)$/i.test(file.name)) return 'sheet';
-  if (/\.(vtt|srt)$/i.test(file.name)) return 'transcript';
-  return 'text';
-}

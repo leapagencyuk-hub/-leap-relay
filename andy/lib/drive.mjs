@@ -9,19 +9,12 @@
 // access token, then two GET endpoints, and node:crypto signs RS256 natively.
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import { GOOGLE_EXPORT, FOLDER_MIME as FOLDER, isSupported } from './formats.mjs';
 
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 const API = 'https://www.googleapis.com/drive/v3';
 const SCOPE = 'https://www.googleapis.com/auth/drive.readonly';
 
-/** Google Docs/Sheets/Slides have no bytes to download — they are exported. */
-const GOOGLE_EXPORT = {
-  'application/vnd.google-apps.document': 'text/plain',
-  'application/vnd.google-apps.presentation': 'text/plain',
-  'application/vnd.google-apps.spreadsheet': 'text/csv',
-};
-
-const FOLDER = 'application/vnd.google-apps.folder';
 
 const b64url = (buf) => Buffer.from(buf).toString('base64url');
 
@@ -221,20 +214,25 @@ export class Drive {
     return { buffer: await this.request(`${API}/files/${file.id}?${params}`, { raw: true }), mimeType: file.mimeType };
   }
 
-  /** Native Google formats report no size until exported; everything else does. */
-  static isSupported(mimeType, name = '') {
-    if (GOOGLE_EXPORT[mimeType]) return true;
-    if (mimeType === 'application/vnd.google-apps.form' || mimeType?.startsWith('application/vnd.google-apps')) return false;
-    return SUPPORTED.test(name) || SUPPORTED_MIME.has(mimeType);
-  }
+  static isSupported(mimeType, name = '') { return isSupported(mimeType, name); }
 }
 
-const SUPPORTED = /\.(pdf|docx|txt|md|markdown|csv|tsv|html?|json|rtf|vtt|srt)$/i;
-const SUPPORTED_MIME = new Set([
-  'application/pdf',
-  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-  'text/plain', 'text/markdown', 'text/csv', 'text/tab-separated-values',
-  'text/html', 'application/json', 'application/rtf', 'text/vtt',
-]);
+/**
+ * A Drive folder, as the source `sync` consumes.
+ *
+ * Wrapping it this way is what lets a local folder and an upload be ingested by
+ * exactly the same pipeline — the difference between where files come from
+ * stops here, and nothing downstream knows about Google at all.
+ */
+export function driveSource(drive, folderId) {
+  return {
+    label: `Google Drive folder ${folderId}`,
+    kind: 'drive',
+    check: () => drive.checkFolder(folderId),
+    list: () => drive.listFolder(folderId),
+    download: (file) => drive.download(file),
+  };
+}
+
 
 export { GOOGLE_EXPORT, FOLDER };

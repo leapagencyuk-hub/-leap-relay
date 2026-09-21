@@ -15,12 +15,13 @@ const tempConfig = () => ({
   retrieval: { candidates: 30, passages: 5, rrfK: 60 },
 });
 
-/** A Drive stand-in: the two methods sync uses, backed by a mutable file list. */
+/** A source stand-in: the interface sync consumes, over a mutable file list. */
 function fakeDrive(files) {
   const state = { files: [...files], downloads: 0 };
   return {
     state,
-    listFolder: async () => state.files.map(({ body, ...rest }) => rest),
+    label: 'test source',
+    list: async () => state.files.map(({ body, ...rest }) => rest),
     download: async (file) => {
       state.downloads++;
       const found = state.files.find((f) => f.id === file.id);
@@ -47,7 +48,7 @@ const SCHEDULE = '# Slippage\n\nFan club members drift away when a creator misse
 test('a first sync reads everything and indexes it', async () => {
   const config = tempConfig();
   const drive = fakeDrive([file('a', 'Gifting.md', GIFTING), file('b', 'Schedules.md', SCHEDULE)]);
-  const report = await sync(config, { drive });
+  const report = await sync(config, { source: drive });
   assert.equal(report.added, 2);
   assert.equal(report.chunks, 2);
   assert.equal(report.retrieval, 'keyword-only');
@@ -57,9 +58,9 @@ test('a first sync reads everything and indexes it', async () => {
 test('an unchanged file is not downloaded again', async () => {
   const config = tempConfig();
   const drive = fakeDrive([file('a', 'Gifting.md', GIFTING)]);
-  await sync(config, { drive });
+  await sync(config, { source: drive });
   const before = drive.state.downloads;
-  const report = await sync(config, { drive });
+  const report = await sync(config, { source: drive });
   assert.equal(report.unchanged, 1);
   assert.equal(report.added, 0);
   assert.equal(drive.state.downloads, before, 'an unchanged file must not be re-downloaded');
@@ -68,19 +69,19 @@ test('an unchanged file is not downloaded again', async () => {
 test('--force re-reads a file whose checksum has not moved', async () => {
   const config = tempConfig();
   const drive = fakeDrive([file('a', 'Gifting.md', GIFTING)]);
-  await sync(config, { drive });
+  await sync(config, { source: drive });
   const before = drive.state.downloads;
-  await sync(config, { drive, force: true });
+  await sync(config, { source: drive, force: true });
   assert.equal(drive.state.downloads, before + 1);
 });
 
 test('a changed checksum re-reads the file and replaces its passages', async () => {
   const config = tempConfig();
   const drive = fakeDrive([file('a', 'Gifting.md', GIFTING)]);
-  await sync(config, { drive });
+  await sync(config, { source: drive });
   drive.state.files[0].body = '# Goals\n\nCompletely different guidance about running campaign matches every week.';
   drive.state.files[0].md5 = 'a-v2';
-  const report = await sync(config, { drive });
+  const report = await sync(config, { source: drive });
   assert.equal(report.updated, 1);
   const hits = await new Knowledge(config).search('campaign matches');
   assert.ok(hits.length, 'the new text should be searchable');
@@ -90,9 +91,9 @@ test('a changed checksum re-reads the file and replaces its passages', async () 
 test('a file deleted from Drive stops being quoted', async () => {
   const config = tempConfig();
   const drive = fakeDrive([file('a', 'Gifting.md', GIFTING), file('b', 'Schedules.md', SCHEDULE)]);
-  await sync(config, { drive });
+  await sync(config, { source: drive });
   drive.state.files = drive.state.files.filter((f) => f.id !== 'b');
-  const report = await sync(config, { drive });
+  const report = await sync(config, { source: drive });
   assert.equal(report.removed, 1);
   const hits = await new Knowledge(config).search('fan club members drift away');
   assert.ok(!hits.some((h) => h.chunk.title === 'Schedules.md'), 'the deleted document must not still be retrievable');
@@ -101,7 +102,7 @@ test('a file deleted from Drive stops being quoted', async () => {
 test('a file that cannot be read is recorded with its reason and kept out of the index', async () => {
   const config = tempConfig();
   const drive = fakeDrive([file('a', 'Gifting.md', GIFTING), file('scan', 'Scan.pdf', null, { mimeType: 'application/pdf' })]);
-  const report = await sync(config, { drive });
+  const report = await sync(config, { source: drive });
   assert.equal(report.failed.length, 1);
   assert.equal(report.failed[0].name, 'Scan.pdf');
   const status = new Knowledge(config).status();
@@ -125,11 +126,11 @@ test('a failed file is retried on the next sync rather than remembered as done',
     },
   };
 
-  const first = await sync(config, { drive: flaky });
+  const first = await sync(config, { source: flaky });
   assert.equal(first.failed.length, 1);
   assert.equal(new Knowledge(config).status().documents, 0);
 
-  const second = await sync(config, { drive: flaky });
+  const second = await sync(config, { source: flaky });
   assert.equal(second.failed.length, 0, 'the retry should have succeeded');
   assert.equal(new Knowledge(config).status().documents, 1);
   assert.ok((await new Knowledge(config).search('visible goal')).length);
@@ -139,14 +140,14 @@ test('a file over the size limit is refused with a readable reason', async () =>
   const config = tempConfig();
   const big = file('big', 'Huge.md', 'x'.repeat(100));
   big.size = 5 * 1024 * 1024;   // over the 1 MB limit this config sets
-  const report = await sync(config, { drive: fakeDrive([big]) });
+  const report = await sync(config, { source: fakeDrive([big]) });
   assert.match(report.failed[0].error, /over the 1 MB limit/);
 });
 
 test('reindex re-chunks from cache without touching Drive', async () => {
   const config = tempConfig();
   const drive = fakeDrive([file('a', 'Gifting.md', `# Goals\n\n${'Long body sentence about gifting goals. '.repeat(40)}`)]);
-  await sync(config, { drive });
+  await sync(config, { source: drive });
   const before = new Knowledge(config).status().chunks;
 
   config.knowledge.chunk.targetChars = 200;
@@ -159,18 +160,18 @@ test('reindex re-chunks from cache without touching Drive', async () => {
 test('an interrupted sync leaves the previous index intact', async () => {
   const config = tempConfig();
   const drive = fakeDrive([file('a', 'Gifting.md', GIFTING)]);
-  await sync(config, { drive });
+  await sync(config, { source: drive });
   const good = new Knowledge(config).status().chunks;
 
-  const broken = { listFolder: async () => { throw new Error('Drive is down'); }, download: async () => {} };
-  await assert.rejects(() => sync(config, { drive: broken }), /Drive is down/);
+  const broken = { label: 'broken', list: async () => { throw new Error('Drive is down'); }, download: async () => {} };
+  await assert.rejects(() => sync(config, { source: broken }), /Drive is down/);
 
   assert.equal(new Knowledge(config).status().chunks, good, 'yesterday\'s index should still be there');
 });
 
 test('a stale vector file is ignored rather than ranked against', async () => {
   const config = tempConfig();
-  await sync(config, { drive: fakeDrive([file('a', 'Gifting.md', GIFTING), file('b', 'Schedules.md', SCHEDULE)]) });
+  await sync(config, { source: fakeDrive([file('a', 'Gifting.md', GIFTING), file('b', 'Schedules.md', SCHEDULE)]) });
   const corpus = new Corpus(config.dataDir);
   // A vector file from a corpus with a different number of chunks.
   corpus.writeVectors(Buffer.concat([

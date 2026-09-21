@@ -75,9 +75,17 @@ Andy:   Their diamonds are down 43% but that's the symptom, not the cause —
 
 ### The library
 
-Everything in one Google Drive folder, including sub-folders. Staff drop files
-in; Andy syncs them nightly and on demand. No upload step, no second place to
-remember.
+Three ways in, one pipeline. Whichever you use, sub-folder names become topic
+labels on every passage, so keep the structure.
+
+| Source | Setup | Use it when |
+|---|---|---|
+| **Drag a folder onto the admin page** | None | Fastest start. The files you have now, in the browser, no Google account. |
+| **A Google Drive folder** | A service account, five minutes | Staff keep adding files and nobody should have to remember a step. |
+| **A folder on disk** — `cli.mjs ingest <path>` | None | The files are already on the machine Andy runs on. |
+
+Uploads win over Drive when both exist: somebody who just watched files upload
+expects to be answered from them.
 
 | Format | Read as |
 |---|---|
@@ -219,11 +227,29 @@ node cli.mjs sync
 
 Hundreds of PDFs take a few minutes the first time and seconds after that.
 
+### Or skip all of that
+
+Open the admin page and drop the folder on it. That is the whole setup — no
+Google Cloud project, no service account, no sharing. Sub-folder names still
+become topic labels, and a later upload adds to the library rather than
+replacing it. Files land on the service's disk, so they survive restarts.
+
+Locally, the same thing without a browser:
+
+```bash
+node cli.mjs ingest "~/Downloads/Andy's Brain"
+```
+
+The trade is that somebody has to upload again when the library changes,
+whereas a Drive folder keeps itself up to date. Both can be used together: set
+Drive up later and it takes over.
+
 ---
 
 ## Running it
 
 ```bash
+node cli.mjs ingest <folder>   # read a folder on this machine — no Google account needed
 node cli.mjs sync              # pull the Drive folder in and reindex
 node cli.mjs sync --force      # re-read everything, ignoring checksums
 node cli.mjs reindex           # re-chunk and re-embed from cache, no download
@@ -249,7 +275,8 @@ ANDY_TOKEN=... npm start        # :8901
 
 | Route | Purpose |
 |---|---|
-| `GET /` | The admin page — corpus, readiness, sync buttons, an ask box |
+| `GET /` | The admin page — drag-and-drop, corpus, readiness, an ask box |
+| `POST /upload` | Files dragged onto the page; stores and indexes them in one go |
 | `GET /status.json` | Everything the admin page shows, machine-readable |
 | `POST /sync` | Pull Drive in and reindex (`?force=1` re-reads everything) |
 | `POST /reindex` | Re-chunk and re-embed from cache |
@@ -257,7 +284,7 @@ ANDY_TOKEN=... npm start        # :8901
 | `POST /discord/interactions` | Discord's interactions endpoint |
 | `GET /health` | Document and passage counts, Gateway state |
 
-`/sync`, `/reindex` and `/ask` need `ANDY_TOKEN` when it is set.
+`/upload`, `/sync`, `/reindex` and `/ask` need `ANDY_TOKEN` when it is set.
 `/discord/interactions` is protected by Discord's Ed25519 signature instead and
 must stay open for Discord to reach it.
 

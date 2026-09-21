@@ -3,7 +3,8 @@
 //
 //   GET  /                        the admin page — what Andy has read, and an ask box
 //   GET  /status.json             corpus, retrieval mode, readiness, what failed to read
-//   POST /sync                    pull the Drive folder in and reindex (?force=1 re-reads everything)
+//   POST /upload                  files dragged onto the admin page, then ingest them
+//   POST /sync                    pull the library in and reindex (?force=1 re-reads everything)
 //   POST /reindex                 re-chunk and re-embed what is already downloaded
 //   POST /ask                     { question } -> the answer and its sources
 //   POST /discord/interactions    Discord's interactions endpoint (slash commands)
@@ -24,6 +25,7 @@ import { Conversations } from './lib/conversation.mjs';
 import { Gateway } from './lib/gateway.mjs';
 import { createMentionHandler } from './lib/mentions.mjs';
 import { verifySignature } from './lib/discord.mjs';
+import { parseMultipart, storeUploads, uploadStats } from './lib/upload.mjs';
 import { acknowledge, fulfil, INTERACTION } from './lib/interactions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -40,6 +42,11 @@ const json = (res, code, body) => { res.writeHead(code, { 'content-type': 'appli
 
 const authorised = (req, url) =>
   !TOKEN || req.headers.authorization === `Bearer ${TOKEN}` || url.searchParams.get('token') === TOKEN;
+
+// Generous, because this takes a whole folder of PDFs in one go. The browser
+// sends them in batches, so this is a per-batch ceiling rather than a limit on
+// how big the library can be.
+const MAX_UPLOAD = 200 * 1024 * 1024;
 
 function readBody(req, limit = 2 * 1024 * 1024) {
   return new Promise((resolve, reject) => {
@@ -82,6 +89,7 @@ const server = http.createServer(async (req, res) => {
         readiness: readiness(config),
         creatorData: andy.data.enabled ? config.creatorHealth.baseUrl : null,
         gateway: gateway ? { enabled: true, ready: gateway.ready } : { enabled: false },
+        uploads: uploadStats(config.uploadDir),
         syncing: Boolean(syncing),
         protected: Boolean(TOKEN),
       });
@@ -90,6 +98,24 @@ const server = http.createServer(async (req, res) => {
     if (route === '/' || route === '/index.html') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(fs.readFileSync(path.join(here, 'public', 'admin.html')));
+    }
+
+    if (req.method === 'POST' && route === '/upload') {
+      if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+      const raw = await readBody(req, MAX_UPLOAD);
+      const parts = parseMultipart(raw, req.headers['content-type']);
+      if (!parts.length) return json(res, 400, { error: 'no files in the request' });
+
+      const { written, rejected } = storeUploads(config.uploadDir, parts, {
+        replaceAll: url.searchParams.get('replace') === '1',
+      });
+      log(`upload: ${written.length} file(s) stored${rejected.length ? `, ${rejected.length} rejected` : ''}`);
+
+      // Ingesting on the same request is deliberate. A separate "now index it"
+      // step is a step somebody forgets, and then Andy answers from a library
+      // that does not contain the file they just watched upload.
+      const report = url.searchParams.get('ingest') === '0' ? null : await runSync({});
+      return json(res, 200, { stored: written.length, rejected, ...(report ?? {}) });
     }
 
     if (req.method === 'POST' && (route === '/sync' || route === '/reindex')) {

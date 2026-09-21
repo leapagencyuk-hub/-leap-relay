@@ -55,22 +55,43 @@ export function chunkDocument(text, options = {}) {
 
   for (const section of sections) {
     for (const piece of splitToSize(section.text, targetChars, overlapChars)) {
-      if (piece.text.trim().length < minChars && chunks.length) {
-        // A stub — a stray caption, a page number. Fold it into its neighbour
-        // rather than letting it compete for a slot in the answer.
+      const text = piece.text.trim();
+      if (!text) continue;
+
+      if (text.length < minChars) {
         const previous = chunks[chunks.length - 1];
-        previous.text = `${previous.text}\n${piece.text.trim()}`;
-        continue;
+        // A stub — a stray caption, a page number — folds into its neighbour
+        // rather than competing for a slot in the answer. But ONLY within the
+        // same section: folding across a heading files the text under the
+        // previous section's title, and a citation that sends a coach to the
+        // wrong heading is worse than no citation at all.
+        if (previous && previous.heading === section.heading) {
+          previous.text = `${previous.text}\n${text}`;
+          continue;
+        }
+        // A short section that has a heading of its own still carries meaning
+        // — "Expensive gifts / Pink Drift is worth 3600 diamonds" is a useful
+        // passage. A short fragment under no heading is not.
+        if (!section.heading) continue;
       }
-      if (piece.text.trim().length < minChars) continue;
+
       chunks.push({
-        text: piece.text.trim(),
+        text,
         heading: section.heading,
         page: section.page + piece.pageOffset,
         index: chunks.length,
       });
     }
   }
+
+  // A document that extracted cleanly but produced no passages is invisible to
+  // Andy, and nothing downstream would say so — it just quietly never appears
+  // in an answer. A short document is still a document; keep it whole.
+  if (!chunks.length) {
+    const whole = String(text ?? '').replaceAll('\u000c', '').trim();
+    if (whole) return [{ text: whole, heading: sections[0]?.heading ?? null, page: 1, index: 0 }];
+  }
+
   return chunks;
 }
 

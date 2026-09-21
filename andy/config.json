@@ -5,6 +5,8 @@
     "_source": "Everything Andy has read. Staff drop files into the Google Drive folder; sync pulls them in.",
     "_driveFolderId": "LEAP's brain folder. ANDY_DRIVE_FOLDER_ID overrides it, so a second environment can point somewhere else without editing this file.",
     "driveFolderId": "1wI02oc8n8ZrYxxpPVwfCvSVIHAZoMeVN",
+    "_localFolder": "A folder on disk to read instead of Drive. Set by ANDY_LOCAL_FOLDER, or left null. Files dragged onto the admin page land in data/uploads, which is used automatically once anything is there — that path needs no Google Cloud project at all.",
+    "localFolder": null,
     "_syncEveryHours": "How often to re-read the folder. Files are added to it constantly, and a listing is one cheap API call — only files whose checksum moved are downloaded — so this is deliberately frequent rather than nightly. Null leaves syncing to the button.",
     "syncEveryHours": 3,
     "maxFileMB": 60,

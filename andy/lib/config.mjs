@@ -43,6 +43,13 @@ export function loadConfig(configPath = process.env.ANDY_CONFIG || path.join(ROO
   if (process.env.ANDY_DRIVE_FOLDER_ID) {
     config.knowledge = { ...config.knowledge, driveFolderId: process.env.ANDY_DRIVE_FOLDER_ID };
   }
+  if (process.env.ANDY_LOCAL_FOLDER) {
+    config.knowledge = { ...config.knowledge, localFolder: process.env.ANDY_LOCAL_FOLDER };
+  }
+  // Files dragged onto the admin page land here. Its presence is what makes
+  // the upload route work with no Drive setup at all, so it is derived rather
+  // than configured — there is nothing useful to point it somewhere else.
+  config.uploadDir = path.join(config.dataDir, 'uploads');
   config.dataDir = path.resolve(path.dirname(configPath), config.dataDir ?? './data');
   fs.mkdirSync(config.dataDir, { recursive: true });
   return config;
@@ -77,10 +84,19 @@ export function readiness(config) {
     config.knowledge?.driveFolderId ?? 'no folder configured — nothing to sync');
 
   const account = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
-  add('Drive service account', Boolean(account),
-    account
-      ? 'set — run `cli.mjs doctor` to confirm the folder is actually shared with it'
-      : 'GOOGLE_SERVICE_ACCOUNT_JSON is not set — Andy has no way to read the folder');
+  const uploaded = fs.existsSync(config.uploadDir) && fs.readdirSync(config.uploadDir).length > 0;
+  const local = config.knowledge?.localFolder;
+
+  if (local) {
+    add('Library source', true, `local folder ${local}`);
+  } else if (uploaded) {
+    add('Library source', true, 'files uploaded through the admin page — no Drive account needed');
+  } else {
+    add('Drive service account', Boolean(account),
+      account
+        ? 'set — run `cli.mjs doctor` to confirm the folder is actually shared with it'
+        : 'not set — either share the Drive folder with a service account, or drag files onto the admin page instead');
+  }
 
   add('Discord bot token', Boolean(config.discord?.botToken),
     config.discord?.botToken ? 'set' : 'DISCORD_BOT_TOKEN is not set — Andy cannot post or answer in Discord');

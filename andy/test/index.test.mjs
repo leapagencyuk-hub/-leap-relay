@@ -42,11 +42,16 @@ test('an over-long section splits with overlap, and nothing is lost', () => {
   assert.ok(overlapping, 'consecutive chunks should share an overlap');
 });
 
-test('a stray fragment is folded into its neighbour rather than competing as a chunk', () => {
-  const doc = '# Real\n\nThis is a genuine paragraph with enough substance to stand on its own as a passage.\n\n# H\n\n7';
+test('a short section keeps its own heading instead of joining the one above', () => {
+  // "## Cost / £5" is a real passage. Folding it upward would file it under the
+  // previous section's title, which is how a citation ends up pointing at the
+  // wrong page — so a short section with a heading of its own is kept.
+  const doc = '# Real\n\nThis is a genuine paragraph with enough substance to stand on its own as a passage.\n\n# Cost\n\n5 pounds';
   const chunks = chunkDocument(doc, { minChars: 40 });
-  assert.equal(chunks.length, 1);
-  assert.ok(chunks[0].text.endsWith('7'));
+  assert.equal(chunks.length, 2);
+  assert.equal(chunks[1].heading, 'Cost');
+  assert.equal(chunks[1].text, '5 pounds');
+  assert.ok(!chunks[0].text.includes('5 pounds'));
 });
 
 test('an empty document produces no chunks rather than one empty one', () => {
@@ -152,4 +157,45 @@ test('a vector of all zeros does not produce NaN scores', () => {
   const rows = [normalise(new Float32Array(16)), ...randomVectors(3, 16)];
   const index = new VectorIndex(pack(quantise(rows, 16)));
   for (const hit of index.search(rows[1], 4)) assert.ok(Number.isFinite(hit.score), 'a score was not finite');
+});
+
+// --- regressions found by ingesting real files -------------------------------
+
+test('a short section is never filed under the previous section\'s heading', () => {
+  // Found on the first real folder: three short sections collapsed into one
+  // chunk that kept the first heading, so "Pink Drift is worth 3600 diamonds"
+  // was filed under "Goals". A citation that sends a coach to the wrong
+  // heading is worse than no citation, so folding may not cross a heading.
+  const doc = [
+    '# Goals and revenue boosting',
+    'Set a visible goal at the top of every stream.',
+    '# Expensive gifts',
+    'Pink Drift is worth 3600 diamonds.',
+  ].join('\n\n');
+  const chunks = chunkDocument(doc, { minChars: 120 });
+
+  const pinkDrift = chunks.find((c) => c.text.includes('Pink Drift'));
+  assert.ok(pinkDrift, 'the text must survive');
+  assert.equal(pinkDrift.heading, 'Expensive gifts', 'it must carry its own heading');
+  assert.ok(!pinkDrift.text.includes('visible goal'), 'it must not be merged with the previous section');
+});
+
+test('a fragment with no heading of its own still folds into its neighbour', () => {
+  const doc = '# One\n\nA paragraph long enough to stand on its own as a real passage of text here.\n\n7';
+  const chunks = chunkDocument(doc, { minChars: 60 });
+  assert.equal(chunks.length, 1, 'a stray page number should not become a passage');
+  assert.ok(chunks[0].text.endsWith('7'));
+});
+
+test('a document too short to make a chunk is kept whole rather than vanishing', () => {
+  // Also found on real files: a two-line PDF produced zero passages, was
+  // reported as a success, and silently never appeared in an answer.
+  const chunks = chunkDocument('Gifting Playbook\nSet a visible goal.', { minChars: 500 });
+  assert.equal(chunks.length, 1);
+  assert.match(chunks[0].text, /Set a visible goal/);
+  assert.equal(chunks[0].page, 1);
+});
+
+test('genuinely empty input still produces nothing', () => {
+  assert.deepEqual(chunkDocument('\u000c \n\n '), []);
 });

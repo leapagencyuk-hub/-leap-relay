@@ -38,6 +38,18 @@
   }
   button.ghost { background: transparent; color: var(--ink); border: 1px solid var(--line); }
   button:disabled { opacity: 0.5; cursor: default; }
+  button.link { background: none; border: 0; padding: 0; color: var(--accent); font-weight: 550; text-decoration: underline; }
+  .drop {
+    border: 1.5px dashed var(--line); border-radius: 10px; padding: 26px 18px;
+    text-align: center; display: flex; flex-direction: column; gap: 6px;
+    transition: border-color .12s, background .12s;
+  }
+  .drop.over { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 9%, transparent); }
+  .drop b { font-size: 15px; }
+  .drop span { color: var(--dim); font-size: 13px; }
+  .drop .hint { font-size: 12px; }
+  .bar { height: 5px; border-radius: 3px; background: var(--line); overflow: hidden; margin-top: 10px; }
+  .bar i { display: block; height: 100%; background: var(--accent); width: 0; transition: width .18s; }
   .actions { display: flex; gap: 9px; flex-wrap: wrap; }
   textarea, input[type=password] {
     width: 100%; font: inherit; color: var(--ink); background: var(--bg);
@@ -56,6 +68,18 @@
 <main>
   <h1>Andy</h1>
   <p class="sub">The coaching brain. Reads LEAP's library and the live creator data, and answers in Discord.</p>
+
+  <div class="panel">
+    <h2>Add to Andy's brain</h2>
+    <div id="drop" class="drop">
+      <b>Drop a folder here</b>
+      <span>or <button type="button" class="link" id="pickFolder">choose a folder</button> · <button type="button" class="link" id="pickFiles">choose files</button></span>
+      <span class="hint">PDFs, Word documents, decks, transcripts, spreadsheets, notes. Sub-folder names become topic labels, so keep the structure.</span>
+    </div>
+    <input type="file" id="folderInput" webkitdirectory directory multiple hidden />
+    <input type="file" id="filesInput" multiple hidden />
+    <div class="note" id="uploadNote"></div>
+  </div>
 
   <div class="panel">
     <h2>What Andy has read</h2>
@@ -161,7 +185,110 @@ async function runSync(path, label) {
   }
 }
 
-$('sync').onclick = () => runSync('/sync', 'Reading the Drive folder');
+// --- uploading ---------------------------------------------------------------
+//
+// Sent in batches rather than one request: a folder of several hundred PDFs is
+// far too large for a single body, and batching gives the page something
+// honest to show while it works.
+const BATCH_BYTES = 40 * 1024 * 1024;
+const READABLE = /\.(pdf|docx|txt|md|markdown|csv|tsv|html?|json|rtf|vtt|srt)$/i;
+
+function batch(files) {
+  const batches = [];
+  let current = [];
+  let bytes = 0;
+  for (const file of files) {
+    // One file bigger than a whole batch still goes, on its own.
+    if (current.length && bytes + file.size > BATCH_BYTES) { batches.push(current); current = []; bytes = 0; }
+    current.push(file);
+    bytes += file.size;
+  }
+  if (current.length) batches.push(current);
+  return batches;
+}
+
+async function upload(fileList) {
+  const all = [...fileList];
+  const files = all.filter((f) => READABLE.test(f.name));
+  const ignored = all.length - files.length;
+  if (!files.length) {
+    $('uploadNote').innerHTML = '<span class="bad">Nothing Andy can read in there — it needs PDFs, Word documents, text, spreadsheets or transcripts.</span>';
+    return;
+  }
+
+  const batches = batch(files);
+  $('uploadNote').innerHTML = 'Uploading ' + files.length + ' file(s)…<div class="bar"><i id="bar"></i></div>';
+  let sent = 0;
+
+  try {
+    for (const [i, group] of batches.entries()) {
+      const form = new FormData();
+      // The path inside the dropped folder is sent as the filename, so the
+      // folder structure survives and becomes topic labels on every passage.
+      for (const file of group) form.append('file', file, file.webkitRelativePath || file.name);
+      // Only the last batch triggers indexing, so a big folder is indexed once.
+      const last = i === batches.length - 1;
+      const result = await api('/upload?ingest=' + (last ? '1' : '0'), { method: 'POST', body: form });
+      sent += result.stored;
+      $('bar').style.width = Math.round(((i + 1) / batches.length) * 100) + '%';
+      if (last) {
+        $('uploadNote').textContent = 'Done — ' + sent + ' file(s) in, '
+          + Number(result.chunks ?? 0).toLocaleString('en-GB') + ' passages'
+          + (result.failed?.length ? ', ' + result.failed.length + ' could not be read' : '')
+          + (ignored ? ' · ' + ignored + ' ignored (nothing to read in them)' : '');
+      }
+    }
+  } catch (err) {
+    $('uploadNote').innerHTML = '<span class="bad">' + esc(err.message) + '</span>';
+  } finally {
+    refresh();
+  }
+}
+
+const drop = $('drop');
+for (const type of ['dragenter', 'dragover']) {
+  drop.addEventListener(type, (e) => { e.preventDefault(); drop.classList.add('over'); });
+}
+for (const type of ['dragleave', 'drop']) {
+  drop.addEventListener(type, () => drop.classList.remove('over'));
+}
+drop.addEventListener('drop', async (e) => {
+  e.preventDefault();
+  // A dropped folder arrives as directory entries, not files, so the tree has
+  // to be walked before anything can be sent.
+  const entries = [...e.dataTransfer.items].map((item) => item.webkitGetAsEntry?.()).filter(Boolean);
+  if (entries.length) return upload(await walkEntries(entries));
+  upload(e.dataTransfer.files);
+});
+
+async function walkEntries(entries, trail = []) {
+  const out = [];
+  for (const entry of entries) {
+    if (entry.isFile) {
+      const file = await new Promise((resolve, reject) => entry.file(resolve, reject));
+      // webkitRelativePath is empty for dropped files, so the path walked to
+      // get here is attached instead.
+      Object.defineProperty(file, 'webkitRelativePath', { value: [...trail, entry.name].join('/') });
+      out.push(file);
+    } else if (entry.isDirectory) {
+      const reader = entry.createReader();
+      // readEntries returns at most 100 at a time and must be called until empty.
+      let batchOfEntries;
+      do {
+        batchOfEntries = await new Promise((resolve, reject) => reader.readEntries(resolve, reject));
+        out.push(...await walkEntries(batchOfEntries, [...trail, entry.name]));
+      } while (batchOfEntries.length);
+    }
+  }
+  return out;
+}
+
+$('pickFolder').onclick = () => $('folderInput').click();
+$('pickFiles').onclick = () => $('filesInput').click();
+$('folderInput').onchange = (e) => upload(e.target.files);
+$('filesInput').onchange = (e) => upload(e.target.files);
+
+$('sync').onclick = () => runSync('/sync', 'Reading the library');
 $('reindex').onclick = () => runSync('/reindex', 'Reindexing');
 $('refresh').onclick = refresh;
 
