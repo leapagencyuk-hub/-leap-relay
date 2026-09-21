@@ -37,6 +37,12 @@ export function loadConfig(configPath = process.env.ANDY_CONFIG || path.join(ROO
   const raw = JSON.parse(fs.readFileSync(configPath, 'utf8'));
   const config = resolveTree(raw);
   config.configPath = configPath;
+  // The folder id is committed so the service works out of the box, but an
+  // environment variable still wins — a staging deploy has to be able to point
+  // at a different folder without a code change.
+  if (process.env.ANDY_DRIVE_FOLDER_ID) {
+    config.knowledge = { ...config.knowledge, driveFolderId: process.env.ANDY_DRIVE_FOLDER_ID };
+  }
   config.dataDir = path.resolve(path.dirname(configPath), config.dataDir ?? './data');
   fs.mkdirSync(config.dataDir, { recursive: true });
   return config;
@@ -68,10 +74,13 @@ export function readiness(config) {
   }
 
   add('Google Drive folder', Boolean(config.knowledge?.driveFolderId),
-    config.knowledge?.driveFolderId ? 'set' : 'ANDY_DRIVE_FOLDER_ID is not set — nothing to sync');
+    config.knowledge?.driveFolderId ?? 'no folder configured — nothing to sync');
 
-  add('Drive service account', Boolean(process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_FILE),
-    'share the Drive folder with the service account email, as Viewer');
+  const account = process.env.GOOGLE_SERVICE_ACCOUNT_JSON || process.env.GOOGLE_SERVICE_ACCOUNT_FILE;
+  add('Drive service account', Boolean(account),
+    account
+      ? 'set — run `cli.mjs doctor` to confirm the folder is actually shared with it'
+      : 'GOOGLE_SERVICE_ACCOUNT_JSON is not set — Andy has no way to read the folder');
 
   add('Discord bot token', Boolean(config.discord?.botToken),
     config.discord?.botToken ? 'set' : 'DISCORD_BOT_TOKEN is not set — Andy cannot post or answer in Discord');

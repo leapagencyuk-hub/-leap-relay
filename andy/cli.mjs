@@ -6,6 +6,7 @@
 //   node cli.mjs ask "question"     ask Andy, print the answer and its sources
 //   node cli.mjs search "query"     just the passages, no model call — for checking retrieval
 //   node cli.mjs status             what Andy has read, and what it is missing
+//   node cli.mjs doctor             live-check every connection and say how to fix each one
 //   node cli.mjs docs               every document, with its chunk count and any error
 //   node cli.mjs register [guildId] publish the slash commands
 //   node cli.mjs whoami             check the bot token reaches Discord
@@ -15,6 +16,7 @@ import { Andy } from './lib/answer.mjs';
 import { sync, reindex } from './lib/sync.mjs';
 import { Discord } from './lib/discord.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
+import { doctor } from './lib/doctor.mjs';
 
 const [, , command, ...rest] = process.argv;
 const flags = new Set(rest.filter((a) => a.startsWith('--')));
@@ -102,6 +104,22 @@ async function main() {
       return;
     }
 
+    case 'doctor': {
+      console.log('Checking everything Andy depends on…\n');
+      const checks = await doctor(config);
+      for (const check of checks) {
+        const mark = check.ok === true ? ' ok ' : check.ok === false ? 'FAIL' : ' -- ';
+        console.log(`${mark}  ${check.name.padEnd(22)} ${check.detail}`);
+        if (check.fix) console.log(`        ${' '.repeat(22)} → ${check.fix}`);
+      }
+      const failed = checks.filter((c) => c.ok === false);
+      console.log(failed.length
+        ? `\n${failed.length} thing(s) need fixing before Andy works properly.`
+        : '\nEverything Andy needs is connected.');
+      if (failed.length) process.exitCode = 1;
+      return;
+    }
+
     case 'register': {
       const discord = new Discord({ token: config.discord?.botToken, applicationId: config.discord?.applicationId });
       if (!discord.token || !discord.applicationId) return fail('DISCORD_BOT_TOKEN and ANDY_DISCORD_APP_ID must both be set');
@@ -132,6 +150,7 @@ async function main() {
   ask "question"      ask Andy, with sources
   search "query"      just the passages, no model call
   status              what Andy has read, and what it is missing
+  doctor              live-check every connection: Drive, Anthropic, Discord, creator data
   docs                every document, with its chunk count
   register [guildId]  publish the slash commands
   whoami              check the bot token reaches Discord`);

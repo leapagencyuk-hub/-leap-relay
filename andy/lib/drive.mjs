@@ -94,6 +94,7 @@ export class Drive {
 
   async request(url, { raw = false, retries = 3 } = {}) {
     let lastError = null;
+    let lastStatus = null;
     for (let attempt = 0; attempt <= retries; attempt++) {
       try {
         const res = await fetch(url, {
@@ -103,18 +104,61 @@ export class Drive {
         // Drive rate-limits with 403 as well as 429, so back off on both.
         if (res.status === 429 || res.status === 403 || res.status >= 500) {
           lastError = `HTTP ${res.status}`;
+          lastStatus = res.status;
           await new Promise((r) => setTimeout(r, Math.min(1000 * 2 ** attempt, 15000)));
           continue;
         }
-        if (!res.ok) throw new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+        if (!res.ok) {
+          const error = new Error(`HTTP ${res.status}: ${(await res.text()).slice(0, 200)}`);
+          error.status = res.status;
+          throw error;
+        }
         return raw ? Buffer.from(await res.arrayBuffer()) : await res.json();
       } catch (err) {
+        // A 4xx will not fix itself, and retrying it four times turns a
+        // misconfiguration into a slow one.
+        if (err.status && err.status < 500 && err.status !== 429) throw err;
         lastError = err.message;
         if (attempt === retries) break;
         await new Promise((r) => setTimeout(r, 1000 * 2 ** attempt));
       }
     }
-    throw new Error(`Drive request failed: ${lastError}`);
+    const failure = new Error(`Drive request failed: ${lastError}`);
+    failure.status = lastStatus;
+    throw failure;
+  }
+
+  /**
+   * Check that the folder is reachable, and say precisely what is wrong if not.
+   *
+   * Google reports a folder that exists but has not been shared with this
+   * service account as a plain 404 — indistinguishable from a typo in the id.
+   * That single ambiguity is the most common way this setup fails, so it is
+   * named here rather than left for somebody to guess at.
+   */
+  async checkFolder(folderId) {
+    try {
+      const params = new URLSearchParams({ fields: 'id, name, mimeType', supportsAllDrives: 'true' });
+      const folder = await this.request(`${API}/files/${folderId}?${params}`);
+      if (folder.mimeType !== FOLDER) {
+        return { ok: false, reason: `that id is a ${folder.mimeType}, not a folder` };
+      }
+      return { ok: true, name: folder.name, account: this.account.client_email };
+    } catch (err) {
+      if (err.status === 404) {
+        return {
+          ok: false,
+          reason: `Drive says that folder does not exist — which is also what it says when the folder has not been shared with ${this.account.client_email}. Share it with that address as Viewer, or check the id.`,
+        };
+      }
+      if (err.status === 403) {
+        return {
+          ok: false,
+          reason: 'Drive refused the request. Usually the Drive API is not enabled on the service account\'s Google Cloud project — enable it under APIs & Services → Library → Google Drive API.',
+        };
+      }
+      return { ok: false, reason: err.message };
+    }
   }
 
   /**

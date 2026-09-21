@@ -230,6 +230,7 @@ node cli.mjs reindex           # re-chunk and re-embed from cache, no download
 node cli.mjs ask "why do fan clubs stop spending?"
 node cli.mjs search "fan club"  # the raw passages, no model call — for checking retrieval
 node cli.mjs status            # what Andy has read, and what it is missing
+node cli.mjs doctor            # live-check every connection, with the fix for each failure
 node cli.mjs docs              # every document with its chunk count and any error
 node cli.mjs register <guild>  # publish the slash commands
 node cli.mjs whoami            # check the bot token reaches Discord
@@ -260,8 +261,11 @@ ANDY_TOKEN=... npm start        # :8901
 `/discord/interactions` is protected by Discord's Ed25519 signature instead and
 must stay open for Discord to reach it.
 
-A nightly sync runs at 04:00 UTC (`knowledge.syncHour`, or `null` to turn it
-off), so a file dropped in Drive during the day is in the brain by morning.
+Andy re-reads the folder every three hours (`knowledge.syncEveryHours`, or
+`null` to leave it to the button), and once on startup if the last sync is
+older than that. Files go into Drive constantly, and a cycle that finds nothing
+new costs a single API call — only a file whose checksum moved is downloaded or
+re-embedded — so this is deliberately frequent rather than nightly.
 
 ---
 

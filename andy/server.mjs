@@ -161,23 +161,37 @@ if (config.discord?.gateway && config.discord?.botToken) {
     : 'no DISCORD_BOT_TOKEN — Andy will not connect to Discord');
 }
 
-// --- the nightly sync --------------------------------------------------------
+// --- keeping up with the folder ----------------------------------------------
 //
-// Staff drop files into Drive whenever they find them, and nobody wants to
-// remember to press a button afterwards. Checked hourly rather than scheduled,
-// because a service that restarts twice a day would otherwise skip its slot.
-const syncHour = config.knowledge?.syncHour;
-if (syncHour != null) {
-  let lastSyncDay = null;
-  const timer = setInterval(() => {
-    const now = new Date();
-    const day = now.toISOString().slice(0, 10);
-    if (now.getUTCHours() !== syncHour || lastSyncDay === day) return;
-    lastSyncDay = day;
-    log('nightly sync starting');
-    runSync({}).catch((err) => log(`nightly sync failed: ${err.message}`));
-  }, 5 * 60 * 1000);
+// Files go into Drive constantly and nobody wants to remember a button
+// afterwards, so Andy re-reads the folder on a short cycle. That is cheap on
+// purpose: listing is one API call per thousand files, and only a file whose
+// checksum moved is downloaded or re-embedded. A cycle that finds nothing new
+// costs a single request.
+//
+// Driven off the last sync's timestamp rather than a wall-clock slot, because
+// this service restarts on every deploy and a fixed slot would be skipped by
+// any restart that happened to straddle it.
+const syncEveryHours = config.knowledge?.syncEveryHours;
+if (syncEveryHours != null) {
+  const intervalMs = syncEveryHours * 3600 * 1000;
+  const dueSince = () => {
+    const last = knowledge.status().lastSync;
+    return last ? Date.now() - Date.parse(last) : Infinity;
+  };
+  const maybeSync = (reason) => {
+    const elapsed = dueSince();
+    if (elapsed < intervalMs) return;
+    log(`${reason} sync starting (last was ${elapsed === Infinity ? 'never' : `${Math.round(elapsed / 3600000)}h ago`})`);
+    runSync({}).catch((err) => log(`${reason} sync failed: ${err.message}`));
+  };
+
+  // On boot too: a deploy should not leave the brain a cycle behind. The
+  // elapsed-time check means a burst of redeploys does not re-sync each time.
+  setTimeout(() => maybeSync('startup'), 10000).unref?.();
+  const timer = setInterval(() => maybeSync('scheduled'), 10 * 60 * 1000);
   timer.unref?.();
+  log(`watching the Drive folder every ${syncEveryHours}h`);
 }
 
 for (const check of readiness(config)) {

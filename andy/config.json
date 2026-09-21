@@ -3,9 +3,10 @@
 
   "knowledge": {
     "_source": "Everything Andy has read. Staff drop files into the Google Drive folder; sync pulls them in.",
-    "driveFolderId": "env:ANDY_DRIVE_FOLDER_ID",
-    "_syncHour": "UTC hour for the nightly Drive sync. Null disables it and leaves sync to the button.",
-    "syncHour": 4,
+    "_driveFolderId": "LEAP's brain folder. ANDY_DRIVE_FOLDER_ID overrides it, so a second environment can point somewhere else without editing this file.",
+    "driveFolderId": "1wI02oc8n8ZrYxxpPVwfCvSVIHAZoMeVN",
+    "_syncEveryHours": "How often to re-read the folder. Files are added to it constantly, and a listing is one cheap API call — only files whose checksum moved are downloaded — so this is deliberately frequent rather than nightly. Null leaves syncing to the button.",
+    "syncEveryHours": 3,
     "maxFileMB": 60,
     "chunk": {
       "_targetChars": "Chunks are sized for retrieval, not for reading: big enough to carry a whole idea, small enough that twenty of them fit in one answer.",
