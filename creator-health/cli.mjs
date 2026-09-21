@@ -199,7 +199,12 @@ async function cmdRun() {
   } else {
     if (delivery.warning) console.log(`\n  Discord: ${delivery.warning}`);
     const failed = delivery.sent.filter((x) => !x.ok);
-    console.log(`\n  Discord: ${delivery.sent.length} message(s)${dry ? ' previewed' : ' sent'}${failed.length ? `, ${failed.length} failed` : ''}`);
+    // A skipped overview is not a delivery, and counting it as one makes a
+    // quiet second run look like it posted something.
+    const skipped = delivery.sent.filter((x) => x.ok && x.skipped);
+    const delivered = delivery.sent.filter((x) => x.ok && !x.skipped);
+    console.log(`\n  Discord: ${delivered.length} message(s)${dry ? ' previewed' : ' sent'}${failed.length ? `, ${failed.length} failed` : ''}`);
+    for (const x of skipped) console.log(`    · ${x.label} skipped — ${x.skipped}`);
     for (const f of failed.slice(0, 5)) console.log(`    ✗ ${f.label} → ${f.coach}: ${f.error}`);
   }
   if (dry && flag('preview')) {
