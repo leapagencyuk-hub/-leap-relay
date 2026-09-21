@@ -207,6 +207,41 @@ test('a month we barely watched is not recorded as a failed attempt', () => {
     'two days of coverage cannot judge a month');
 });
 
+test('the month rollover falls back to the export when our own history is partial', () => {
+  // LEAP started collecting mid-September, so on 1 October the previous month
+  // is only two thirds observed. Using it as a baseline would understate every
+  // creator's September and make October look like a recovery.
+  const mk = (asOf, periodStart, diamonds, lastMonthDiamonds) => ({
+    asOf, periodStart, quit: [], skipped: 0,
+    active: [{
+      creatorId: '1', username: 'x', periodStart, asOf, group: 'A', manager: 'c@leap',
+      joinDate: '2025-01-01', daysSinceJoining: 600,
+      mtd: { diamonds, liveHours: 50, validLiveDays: 10, liveStreams: 10, newFollowers: 0,
+        newFans: 0, fanClubDiamonds: 0, matches: 0, diamondsFromMatches: 0, diamondsFromMultiGuest: 0 },
+      level: { totalFans: 100, activeFanClubFans: 10, fanContribution: 0.9 },
+      lastMonth: { diamonds: lastMonthDiamonds, liveHours: 100, validLiveDays: 20 },
+      quit: false, graduationStatus: null, tierStatus: null, isNewLiveCreator: false,
+    }],
+  });
+  const series = { creators: {}, lastAsOf: null };
+  applySnapshot(series, mk('2026-08-31', '2026-08-01', 800000, 700000));
+  applySnapshot(series, mk('2026-09-14', '2026-09-01', 300000, 800000));
+  applySnapshot(series, mk('2026-09-20', '2026-09-01', 450000, 800000));
+  applySnapshot(series, mk('2026-10-08', '2026-10-01', 90000, 620000));
+
+  const m = computeMetrics(series.creators['id:1'], '2026-10-08');
+  const d = m.monthOnMonth.diamonds;
+  assert.equal(m.monthOnMonth.previousMonth, '2026-09');
+  assert.equal(d.source, 'export', 'a 20-of-30-day September is not a baseline');
+  assert.equal(d.lastMonthTotal, 620000, "TikTok's own September total is used instead");
+  assert.equal(Math.round(d.lastMonthToSamePoint), 165333, 'prorated to the 8th');
+  assert.ok(d.change < -0.4, 'and the comparison is still honest');
+
+  // A fully observed month is preferred over the export column.
+  const august = computeMetrics(series.creators['id:1'], '2026-09-20').monthOnMonth.diamonds;
+  assert.equal(august.source, 'observed', 'August was watched end to end');
+});
+
 test('quit rows are matched by username because their ID is masked', () => {
   const records = [
     { 'Data period': '2026-09-01 ~ 2026-09-15', 'Creator ID': '1', "Creator's username": 'alive', Diamonds: '100', Status: '' },
