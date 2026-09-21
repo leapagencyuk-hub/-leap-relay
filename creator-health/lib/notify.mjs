@@ -79,6 +79,9 @@ export function loadDiscordConfig(raw) {
     // routes by coach. Group is the default because that is how LEAP's server
     // is laid out.
     routeBy: raw.routeBy ?? 'group',
+    // Set false until the interactions endpoint is deployed and saved in the
+    // Discord portal; cards then post without buttons rather than with dead ones.
+    interactionsReady: raw.interactionsReady !== false,
     groups,
     botToken: fromEnv(raw.botToken),
     publicKey: fromEnv(raw.publicKey),

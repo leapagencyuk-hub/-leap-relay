@@ -112,7 +112,11 @@ export function parseCustomId(raw) {
   return ns === 'ch' && action && caseId ? { action, caseId } : null;
 }
 
-export function caseButtons(caseRecord) {
+export function caseButtons(caseRecord, { enabled = true } = {}) {
+  // Until the interactions endpoint is live, Discord answers every click with
+  // "This interaction failed" — which reads as a broken tool. So buttons are
+  // only attached when something is actually listening for them.
+  if (!enabled) return [];
   const id = caseRecord.id;
   const row = [
     { type: 2, style: BUTTON.PRIMARY, label: 'On it', custom_id: customId('ack', id) },
@@ -194,7 +198,7 @@ function statusLine(c) {
 }
 
 /** The card a coach sees when a creator starts slipping. */
-export function declineEmbed(caseRecord, alert, { mention = null } = {}) {
+export function declineEmbed(caseRecord, alert, { mention = null, buttons = true } = {}) {
   const m = alert.metrics;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
   const icon = { urgent: '🔴', warn: '🟠', watch: '🟡' }[caseRecord.severity] ?? '•';
@@ -231,12 +235,12 @@ export function declineEmbed(caseRecord, alert, { mention = null } = {}) {
       footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],
-    components: caseButtons(caseRecord),
+    components: caseButtons(caseRecord, { enabled: buttons }),
   };
 }
 
 /** The card for a creator inside 90 days who can still reach the target. */
-export function opportunityEmbed(caseRecord, row, { mention = null } = {}) {
+export function opportunityEmbed(caseRecord, row, { mention = null, buttons = true } = {}) {
   const ctx = caseRecord.context;
   const short = Math.max(0, 200000 - row.projected);
   return {
@@ -258,12 +262,12 @@ export function opportunityEmbed(caseRecord, row, { mention = null } = {}) {
       footer: { text: `${caseRecord.id} · ${caseRecord.group ?? 'no group'} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],
-    components: caseButtons(caseRecord),
+    components: caseButtons(caseRecord, { enabled: buttons }),
   };
 }
 
 /** Posted when a follow-up window closes, so the coach learns what their call did. */
-export function followUpEmbed(caseRecord, { mention = null } = {}) {
+export function followUpEmbed(caseRecord, { mention = null, buttons = true } = {}) {
   const o = caseRecord.outcome;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
   const good = o.verdict === 'recovered';
@@ -297,7 +301,7 @@ export function followUpEmbed(caseRecord, { mention = null } = {}) {
       footer: { text: `${caseRecord.id} · ${statusLine(caseRecord)}` },
       timestamp: new Date().toISOString(),
     }],
-    components: good ? [] : caseButtons(caseRecord),
+    components: good ? [] : caseButtons(caseRecord, { enabled: buttons }),
   };
 }
 

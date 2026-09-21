@@ -6,6 +6,8 @@
     "mode": "bot",
     "_routeBy": "'group' posts to a channel per team (LEAP's layout). 'coach' posts to a channel per coach. Either way the @mention is always the creator's own coach.",
     "routeBy": "group",
+    "_interactionsReady": "Set false while the bot can post but its interactions endpoint is not live yet. Cards arrive without buttons instead of with dead ones.",
+    "interactionsReady": false,
     "botToken": "env:DISCORD_BOT_TOKEN",
     "publicKey": "env:DISCORD_PUBLIC_KEY",
     "applicationId": "env:DISCORD_APP_ID",

@@ -628,6 +628,41 @@ unfilled placeholder always means real unfinished work.
 
 Set `routeBy: "coach"` instead if you ever move to one channel per coach.
 
+### Which to choose
+
+**Bot.** Webhooks are marginally quicker to set up and throw away the entire
+feedback loop: no buttons means no "On it", no logged actions, and therefore no
+effectiveness measurement — the part that tells you which coaching works.
+
+The real cost of the bot is a public HTTPS endpoint for button clicks. On
+Render that is a second service alongside the relay, already defined in
+`render.yaml`.
+
+You do not have to wait for it. **Posting needs only the bot token** — the
+interactions endpoint is for receiving clicks, not sending cards. So:
+
+1. Create the bot, set `DISCORD_BOT_TOKEN`, and start posting today with
+   `interactionsReady: false` in `routes.json`. Cards arrive complete, just
+   without buttons.
+2. Deploy the service, set the Interactions Endpoint URL, flip the flag to
+   `true`. Buttons appear on every card from then on.
+
+That ordering matters: a bot token with no endpoint makes Discord answer every
+click with *"This interaction failed"*, which reads as a broken tool. The flag
+exists so that never happens.
+
+### Deploying alongside the relay on Render
+
+`render.yaml` defines `leap-creator-health` as a second web service. The
+**disk is not optional** — "diamonds since joining" and every day-on-day delta
+are accrued from the daily uploads and exist nowhere else, so without it a
+deploy wipes history that cannot be rebuilt from any export.
+
+Set `UPLOAD_TOKEN`, `DISCORD_BOT_TOKEN`, `DISCORD_PUBLIC_KEY` and
+`DISCORD_APP_ID` in the Render dashboard (they are marked `sync: false`, so
+they are never committed). The service must stay on an always-on plan: a
+sleeping service fails Discord's endpoint verification.
+
 ### Bot setup
 
 1. **https://discord.com/developers/applications → New Application.**
@@ -791,6 +826,7 @@ Everything lives in `config.json` — no code changes needed.
 | `cases.autoResolveClearDays` | Clear days before a case closes itself |
 | `cases.openCasesForEarlySigns` | Whether single-signal warnings become cases (off by default) |
 | `monitoring.ignoreGroups` | Teams to skip entirely — no cases, no cards, data still accrues |
+| `discord.interactionsReady` | `false` posts cards without buttons, until the endpoint is live |
 | `decline.eligibility.minExactDaysPerWindow` | Real daily readings needed in each week before week-on-week fires |
 
 **Tune against real data.** The thresholds here are derived from the two sample

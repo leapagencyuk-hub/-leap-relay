@@ -6,3 +6,29 @@ services:
     buildCommand: npm install
     startCommand: node relay.mjs
     healthCheckPath: /health
+
+  # Creator health monitoring: daily export in, Discord cards out.
+  # The disk is not optional — "diamonds since joining" and every day-on-day
+  # delta are accrued here from the daily uploads and exist nowhere else, so
+  # without it a deploy wipes history that cannot be rebuilt.
+  - type: web
+    name: leap-creator-health
+    runtime: node
+    plan: starter          # always-on; a sleeping service fails Discord's endpoint check
+    buildCommand: npm install
+    startCommand: node creator-health/server.mjs
+    healthCheckPath: /health
+    disk:
+      name: creator-data
+      mountPath: /opt/render/project/src/creator-health/data
+      sizeGB: 1
+    envVars:
+      # Render supplies PORT; the server binds to it automatically.
+      - key: UPLOAD_TOKEN
+        sync: false        # set in the Render dashboard, never committed
+      - key: DISCORD_BOT_TOKEN
+        sync: false
+      - key: DISCORD_PUBLIC_KEY
+        sync: false
+      - key: DISCORD_APP_ID
+        sync: false

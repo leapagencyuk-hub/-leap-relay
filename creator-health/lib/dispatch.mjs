@@ -125,6 +125,9 @@ export async function dispatch({
   const check = preflight(discordConfig);
   if (!dryRun && !check.ok) return { sent: [], previews: [], skipped: check.reason };
   const client = new Discord({ token: discordConfig.botToken });
+  // Webhooks cannot carry working buttons at all, and a bot cannot until its
+  // interactions endpoint is reachable.
+  const buttons = discordConfig.mode === 'bot' && discordConfig.interactionsReady !== false;
   const alertByKey = new Map(alerts.map((a) => [a.creator.key, a]));
   const spotlightByKey = new Map(spotlight.map((r) => [r.creator.key, r]));
   const sent = [];
@@ -149,11 +152,11 @@ export async function dispatch({
     if (c.kind === 'decline') {
       const alert = alertByKey.get(c.creatorKey);
       if (!alert) continue;
-      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention }), c);
+      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons }), c);
     } else {
       const row = spotlightByKey.get(c.creatorKey);
       if (!row) continue;
-      await send('opportunity-opened', c.coach, route, opportunityEmbed(c, row, { mention: route.mention }), c);
+      await send('opportunity-opened', c.coach, route, opportunityEmbed(c, row, { mention: route.mention, buttons }), c);
     }
   }
 
@@ -166,7 +169,7 @@ export async function dispatch({
     const alert = alertByKey.get(c.creatorKey);
     if (!alert) continue;
     const route = routeFor(c, discordConfig);
-    const payload = declineEmbed(c, alert, { mention: route.mention });
+    const payload = declineEmbed(c, alert, { mention: route.mention, buttons });
     payload.embeds[0].title = `⏫ ${payload.embeds[0].title} — getting worse`;
     await send('case-worsened', c.coach, route, payload, c);
   }
@@ -174,7 +177,7 @@ export async function dispatch({
   // --- follow-ups that came due --------------------------------------------
   for (const c of changes.dueFollowUps) {
     const route = routeFor(c, discordConfig);
-    await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention }), c);
+    await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention, buttons }), c);
   }
 
   // --- nobody picked these up ----------------------------------------------

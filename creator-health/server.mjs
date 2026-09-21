@@ -34,7 +34,8 @@ import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
 const config = loadConfig(configPath);
-const PORT = Number(process.env.CH_PORT || 8900);
+// Render (and most hosts) assign the port and expect the service to bind to it.
+const PORT = Number(process.env.CH_PORT || process.env.PORT || 8900);
 const TOKEN = process.env.UPLOAD_TOKEN || null;
 const MAX_UPLOAD = 25 * 1024 * 1024;
 
