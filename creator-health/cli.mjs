@@ -27,6 +27,7 @@ import { STATUS, isOpen } from './lib/cases.mjs';
 import { PLAYBOOK, VERDICT_LABEL } from './lib/playbook.mjs';
 import { loadRoutes } from './lib/notify.mjs';
 import { coverage, routeFor } from './lib/dispatch.mjs';
+import { groupKey } from './lib/notify.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -315,9 +316,17 @@ function cmdDiscordScaffold() {
       coaches: {},
     },
   };
+  const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
   for (const g of groups) {
+    // Teams on the ignore list need no channel — say so rather than leaving a
+    // placeholder that looks like unfinished work.
+    if (ignored.has(groupKey(g.label))) continue;
     out.discord.groups[g.label] = prevGroups[g.label]
       ?? { channelId: `PASTE_CHANNEL_ID  (${g.creators} creators)` };
+  }
+  if (ignored.size) {
+    out.discord._ignoredTeams = `Not routed, by choice (config.json monitoring.ignoreGroups): ${
+      groups.filter((g) => ignored.has(groupKey(g.label))).map((g) => `${g.label} (${g.creators})`).join(', ')}`;
   }
   // Coaches carry the @mention only: the channel comes from their team.
   const coaches = new Set(creators.filter((c) => !c.quitOn && c.manager).map((c) => c.manager));
@@ -343,9 +352,18 @@ function cmdDiscordCheck() {
   const creators = Object.values(new Store(config.dataDir).readSeries().creators);
   const report = coverage(creators, discord);
 
+  const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
   console.log(`routing by: ${discord.routeBy ?? 'group'}\n`);
   console.log(`  ${'team'.padEnd(20)} ${'creators'.padStart(8)}  destination`);
+  let ignoredCreators = 0;
+  const live = [];
   for (const g of report.groups) {
+    if (ignored.has(groupKey(g.label))) {
+      ignoredCreators += g.creators;
+      console.log(`  ${g.label.padEnd(20)} ${String(g.creators).padStart(8)}  — not monitored`);
+      continue;
+    }
+    live.push(g);
     const sample = creators.find((c) => !c.quitOn && (c.group ?? '') === (g.label === '(no group)' ? null : g.label));
     const route = routeFor({ coach: sample?.manager, group: g.label }, discord);
     const dest = route.channelId ? `channel ${route.channelId}`
@@ -358,15 +376,23 @@ function cmdDiscordCheck() {
     }
   }
 
-  const noMention = [...new Set(creators.filter((c) => !c.quitOn && c.manager).map((c) => c.manager))]
+  const noMention = [...new Set(creators
+    .filter((c) => !c.quitOn && c.manager && !ignored.has(groupKey(c.group)))
+    .map((c) => c.manager))]
     .filter((e) => !discord.coaches?.[e]?.mention);
+  const missing = report.unrouted.filter((g) => !ignored.has(groupKey(g.label)));
+  const missingCreators = missing.reduce((n, g) => n + g.creators, 0);
   console.log('');
-  if (report.unrouted.length) {
-    console.log(`⚠️  ${report.unrouted.length} team(s) with no channel, covering ${report.unroutedCreators} creators:`);
-    for (const g of report.unrouted) console.log(`     ${g.label} (${g.creators})`);
-    console.log('   They will fall back to the default channel, or go nowhere if there is not one.');
+  if (missing.length) {
+    console.log(`⚠️  ${missing.length} monitored team(s) with no channel, covering ${missingCreators} creators:`);
+    for (const g of missing) console.log(`     ${g.label} (${g.creators})`);
+    console.log('   They fall back to the default channel, or go nowhere if there is not one.');
   } else {
-    console.log('✅ every team has a destination');
+    console.log(`✅ every monitored team has a destination (${live.length} team(s))`);
+  }
+  if (ignoredCreators) {
+    console.log(`\nℹ️  ${ignoredCreators} creator(s) in ${ignored.size} team(s) are not monitored by choice.`);
+    console.log('   Their data still accrues — remove them from monitoring.ignoreGroups to switch them on.');
   }
   if (noMention.length) {
     console.log(`\nℹ️  ${noMention.length} coach(es) with no @mention set — their cards post without a ping:`);

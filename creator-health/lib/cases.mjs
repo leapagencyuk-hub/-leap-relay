@@ -15,6 +15,7 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import { captureBaseline, playbookFor, PLAYBOOK } from './playbook.mjs';
 import { rankCauses } from './causes.mjs';
+import { groupKey } from './notify.mjs';
 
 export const STATUS = {
   OPEN: 'open',                 // raised, nobody has picked it up
@@ -91,6 +92,12 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
   const alertByKey = new Map(alerts.map((a) => [a.creator.key, a]));
   const deferred = [];
 
+  // Teams nobody is coaching. Their data keeps accruing — ignoring a team is a
+  // decision that can be reversed, and the history has to be there when it is —
+  // but no case is opened and nothing is posted about them.
+  const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
+  const isIgnored = (creator) => ignored.has(groupKey(creator?.group));
+
   // Lift expired snoozes first. If this ran after the opening pass, a creator
   // whose snooze ended today would get a second case opened alongside the one
   // being woken up.
@@ -131,6 +138,7 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
 
   for (const alert of declineCandidates) {
     if (alert.severity === 'watch' && !cfg.openCasesForEarlySigns) continue;
+    if (isIgnored(alert.creator)) continue;
     const key = alert.creator.key;
     if (store.suppressedFor(key, 'decline', asOf)) continue;
 
@@ -199,6 +207,7 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
   if (cfg.openOpportunityCases) {
     for (const row of spotlight) {
       const key = row.creator.key;
+      if (isIgnored(row.creator)) continue;
       if (store.openFor(key, 'opportunity') || store.suppressedFor(key, 'opportunity', asOf)) continue;
       const coach = row.creator.manager ?? 'unassigned';
       if (headroom(coach, 'opportunity') <= 0) {
@@ -242,6 +251,17 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
     if (!isOpen(c)) continue;
 
     const creator = byKey.get(c.creatorKey);
+
+    // A team added to the ignore list after the fact still has open cases.
+    // Close them rather than leaving a coach with cards for creators the
+    // network has decided not to monitor.
+    if (isIgnored(creator) || isIgnored(c)) {
+      c.status = STATUS.RESOLVED;
+      c.outcome = { on: asOf, verdict: 'no_change', ignored: true };
+      store.log(c, 'closed', { note: `${c.group ?? 'their team'} is no longer monitored` });
+      continue;
+    }
+
     if (creator?.quitOn) {
       c.status = STATUS.LOST;
       c.outcome = { on: asOf, verdict: 'quit' };
@@ -323,7 +343,11 @@ export function reconcile({ asOf, alerts, spotlight, metricsByKey, creators, sto
   }
 
   store.save();
-  return { opened, worsened, escalated: escalatedNow, dueFollowUps, autoResolved, deferred };
+  const ignoredCreators = creators.filter((c) => !c.quitOn && isIgnored(c)).length;
+  return {
+    opened, worsened, escalated: escalatedNow, dueFollowUps, autoResolved, deferred,
+    ignoredCreators, ignoredGroups: [...ignored],
+  };
 }
 
 const SEVERITY_RANK = { opportunity: 0, watch: 1, warn: 2, urgent: 3 };

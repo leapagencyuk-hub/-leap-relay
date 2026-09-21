@@ -44,10 +44,10 @@ function fakeMetrics({ diamonds = 5000, hours = 10, liveDays = 5, baseline = 200
   };
 }
 
-function fakeAlert(username, coach, { severity = 'warn', codes = ['DIAMONDS_DOWN'], valueAtRisk = 10000, metrics } = {}) {
+function fakeAlert(username, coach, { severity = 'warn', codes = ['DIAMONDS_DOWN'], valueAtRisk = 10000, metrics, group = 'Team Test' } = {}) {
   const m = metrics ?? fakeMetrics();
   return {
-    creator: { key: `id:${username}`, username, creatorId: username, group: 'Team Test', manager: coach },
+    creator: { key: `id:${username}`, username, creatorId: username, group, manager: coach },
     metrics: m,
     severity,
     valueAtRisk,
@@ -394,6 +394,51 @@ test('the effectiveness report counts outcomes per intervention', () => {
   assert.equal(byCoach['josh@leap'].actioned, 1);
   assert.equal(byCoach['josh@leap'].medianPickupDays, 2, 'median of a 1-day and a 3-day pickup');
   assert.equal(byCoach['alex@leap'].acknowledged, 0);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('creators in an unmonitored team never become cases', () => {
+  const dir = tmpDir();
+  const config = { ...baseConfig(dir), monitoring: { ignoreGroups: ['Stay Social', 'TEAM TRUCKERS'] } };
+  const store = new CaseStore(dir);
+  const watched = fakeAlert('watched', 'coach@leap');
+  const ignored = { ...fakeAlert('ignored', 'sol@leap'), creator: { ...fakeAlert('ignored', 'sol@leap').creator, group: 'Stay Social' } };
+
+  const changes = runReconcile(store, config, { asOf: '2026-09-10', alerts: [watched, ignored] });
+  assert.equal(changes.opened.length, 1);
+  assert.equal(changes.opened[0].username, 'watched');
+  assert.equal(changes.ignoredCreators, 1, 'and it is counted, not silently dropped');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the team name is matched however the export spells it', () => {
+  const dir = tmpDir();
+  // config says "TEAM TRUCKERS"; the creator record says "Team Truckers ".
+  const config = { ...baseConfig(dir), monitoring: { ignoreGroups: ['TEAM TRUCKERS'] } };
+  const store = new CaseStore(dir);
+  const base = fakeAlert('trucker', 'sen@leap');
+  const alert = { ...base, creator: { ...base.creator, group: 'Team Truckers ' } };
+  assert.equal(runReconcile(store, config, { asOf: '2026-09-10', alerts: [alert] }).opened.length, 0);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('ignoring a team closes the cases it already had', () => {
+  const dir = tmpDir();
+  const store = new CaseStore(dir);
+  const base = fakeAlert('ratty', 'row@leap');
+  const alert = { ...base, creator: { ...base.creator, group: 'Team Ratty' } };
+
+  // Opened while the team was still monitored.
+  const [c] = runReconcile(store, baseConfig(dir), { asOf: '2026-09-10', alerts: [alert] }).opened;
+  assert.equal(c.status, STATUS.OPEN);
+
+  // The team is then taken off the list.
+  const now = { ...baseConfig(dir), monitoring: { ignoreGroups: ['Team Ratty'] } };
+  runReconcile(store, now, { asOf: '2026-09-11', alerts: [alert] });
+  const after = store.get(c.id);
+  assert.equal(after.status, STATUS.RESOLVED, 'no stale cards for creators nobody is coaching');
+  assert.ok(after.outcome.ignored);
+  assert.ok(after.history.some((h) => h.note?.includes('no longer monitored')));
   fs.rmSync(dir, { recursive: true, force: true });
 });
 

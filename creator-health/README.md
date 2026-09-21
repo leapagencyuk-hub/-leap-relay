@@ -600,6 +600,32 @@ Routing falls back team → coach → default channel, so a team with no channel
 of its own still lands somewhere if a default is set. With no default, the run
 reports the failure by team name rather than dropping it.
 
+Creators with no team of their own come through the export as the literal
+group **"Not in a group"** — 48 of them. They are routed like any other team;
+at LEAP that channel is Team Slow.
+
+### Teams nobody is coaching
+
+Some groups on the export are not LEAP's to coach. List them in
+`config.json` under `monitoring.ignoreGroups` and no case is opened and
+nothing is posted for them:
+
+```json
+"monitoring": {
+  "ignoreGroups": ["Surge Agency", "TEAM TRUCKERS", "Stay Social", "Team Ratty"]
+}
+```
+
+Their **data still accrues**, because ignoring a team is a decision that can be
+reversed and the history has to be there when it is. Removing a name from the
+list switches it back on with its full history intact. Adding one closes any
+cases that team already had, rather than leaving a coach with cards for
+creators nobody is working.
+
+`discord-check` shows them as `— not monitored` rather than as missing
+channels, and `discord-scaffold` leaves them out of the file entirely, so an
+unfilled placeholder always means real unfinished work.
+
 Set `routeBy: "coach"` instead if you ever move to one channel per coach.
 
 ### Bot setup
@@ -764,6 +790,7 @@ Everything lives in `config.json` — no code changes needed.
 | `cases.escalateMaxPerRun` | Cap on names in one escalation post |
 | `cases.autoResolveClearDays` | Clear days before a case closes itself |
 | `cases.openCasesForEarlySigns` | Whether single-signal warnings become cases (off by default) |
+| `monitoring.ignoreGroups` | Teams to skip entirely — no cases, no cards, data still accrues |
 | `decline.eligibility.minExactDaysPerWindow` | Real daily readings needed in each week before week-on-week fires |
 
 **Tune against real data.** The thresholds here are derived from the two sample

@@ -94,5 +94,14 @@
     "maxOpenPerCoach": 8,
     "maxOpenOpportunitiesPerCoach": 3,
     "escalateMaxPerRun": 5
+  },
+  "monitoring": {
+    "_ignoreGroups": "Teams nobody is coaching. Their data still accrues, but no case is opened and nothing is posted. Matching ignores case and spacing.",
+    "ignoreGroups": [
+      "Surge Agency",
+      "TEAM TRUCKERS",
+      "Stay Social",
+      "Team Ratty"
+    ]
   }
 }
