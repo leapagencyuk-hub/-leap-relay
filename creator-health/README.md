@@ -469,6 +469,59 @@ rather than as a coaching failure.
 - **Every intervention gets a verdict**, so the question of what actually helps
   stops being an opinion.
 
+### What "held" means, and why nothing is lost
+
+The overview reports a held count, which on LEAP's first full run was 229. That
+number looks alarming and is not, but it has to be legible or it reads as a
+system quietly dropping things.
+
+Measured on the real caseload:
+
+| | |
+|---|---|
+| Held declines | 18, biggest worth 15,207 at risk |
+| Held activations | 211 |
+| Open declines | 56, biggest worth 679,113 |
+| **Diamonds at risk covered by the open caseload** | **97%** |
+
+Nothing valuable is stuck behind something trivial — slots go to the biggest
+first, every run, and a check across the whole caseload found no case where a
+held creator was worth more than one already open for that coach.
+
+Held cases are re-evaluated on **every run**, so a creator who is queued today
+takes the first slot that frees tomorrow. Nothing expires, nothing is forgotten.
+
+The overview now states the composition rather than a bare number:
+`229 queued (211 activation, 18 decline) · ~165,860 at risk`.
+
+### Everyone the cards did not reach
+
+Individual cards go to the few most winnable creators, because a coach cannot
+work sixty at once. The rest should still be visible, so each team gets a
+**weekly activation roster** — everybody on that team earning nothing, grouped
+by stage, in one message:
+
+```
+Activation list — Team Alpha
+91 creators on this team earning nothing this month.
+
+Signed but never went live — 1
+  @isax_editxss (d27)
+
+Streaming but earning nothing — 18
+  @jesmegaming (d7) · @itsgazplays (d8) · @jasminekincaid15 (d10) · …
+
+Needs a decision — 62
+  @wharty5390 (d31) · @jxshuk (d32) · …
+
+Established creator gone quiet — 10
+  @ttvmoomooxox (was 5,794) · @iamabdulahmed (was 263) · …
+```
+
+A coach gets their whole list weekly and a handful of worked cards daily. That
+is the difference between everything being visible and everything being
+shouted.
+
 ### The work-in-progress limit
 
 This is the part that keeps the system honest. A coach can hold maybe half a
@@ -1144,6 +1197,8 @@ Everything lives in `config.json` — no code changes needed.
 | `activation.stages` | Days at which "never started" and "needs a decision" begin |
 | `activation.maxOpenPerCoach` | Activation budget, separate from the decline caseload |
 | `activation.dormantWasEarning` | What an established creator must have earned to count as gone quiet |
+| `activation.rosterWeekday` | Day the full per-team activation list is posted (1 = Monday) |
+| `activation.rosterPerStage` | Names shown per stage before it says "+N more" |
 | `programmes.weekday` | Day of the week the network post goes out (1 = Monday) |
 | `programmes.campaign` | Minimum size before a creator belongs on the campaign list |
 | `programmes.concentration` | Fan-club share and earnings that count as exposure |

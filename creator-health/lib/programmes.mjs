@@ -75,6 +75,15 @@ export function programmesDue(config, store, asOf) {
   return store.data.lastProgrammesOn !== asOf;
 }
 
+/** Is the weekly per-team activation roster due? */
+export function rosterDue(config, store, asOf) {
+  const cfg = config.activation;
+  if (!cfg?.enabled || cfg.rosterWeekday == null) return false;
+  const day = new Date(`${asOf}T00:00:00Z`).getUTCDay();
+  if (day !== cfg.rosterWeekday) return false;
+  return store.data.lastRosterOn !== asOf;
+}
+
 /**
  * How stale the data is.
  *

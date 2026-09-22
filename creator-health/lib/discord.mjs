@@ -271,6 +271,22 @@ function trafficField(m) {
  * team channel does not say whose creator it is unless the mention is
  * configured — and mentions are optional. The name always is.
  */
+/**
+ * "229 held" on its own reads as a system quietly losing things. It is not:
+ * the breakdown shows what kind, and how much is actually at stake in them.
+ */
+function heldLine(deferred) {
+  const byKind = {};
+  let risk = 0;
+  for (const d of deferred) {
+    const k = d.kind ?? 'decline';
+    byKind[k] = (byKind[k] ?? 0) + 1;
+    risk += d.valueAtRisk ?? 0;
+  }
+  const parts = Object.entries(byKind).sort((a, b) => b[1] - a[1]).map(([k, v]) => `${v} ${k}`);
+  return `${deferred.length} queued (${parts.join(', ')})${risk > 0 ? ` · ~${n(risk)} at risk` : ''}`;
+}
+
 function footerText(c) {
   const coach = c.coach && c.coach !== 'unassigned' ? c.coach.split('@')[0] : null;
   return [c.id, coach, statusLine(c)].filter(Boolean).join(' · ');
@@ -416,6 +432,51 @@ export function activationEmbed(caseRecord, { mention = null, buttons = true, av
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
+  };
+}
+
+/**
+ * The full activation list for one team, posted weekly.
+ *
+ * Individual cards go out for the few most winnable creators, because a coach
+ * cannot work sixty at once. But the rest should not be invisible: this is the
+ * whole list in one compact message, so a coach can see everyone who is not
+ * earning without sixty cards arriving to say it.
+ */
+export function activationRosterEmbed({ team, rows, asOf, config }) {
+  const byStage = {};
+  for (const r of rows) (byStage[r.stage] ??= []).push(r);
+
+  const order = ['NO_START', 'STALLED', 'DECIDE', 'DORMANT'];
+  const perStage = config.activation?.rosterPerStage ?? 30;
+  const fields = [];
+  for (const stage of order) {
+    const list = byStage[stage];
+    if (!list?.length) continue;
+    const book = ACTIVATION_PLAYBOOK[stage] ?? {};
+    const shown = list.slice(0, perStage);
+    const line = shown.map((r) => {
+      const tag = stage === 'DORMANT'
+        ? (r.lastMonth > 0 ? ` (was ${n(r.lastMonth)})` : '')
+        : r.day != null ? ` (d${r.day})` : '';
+      return `@${r.creator.username}${tag}`;
+    }).join(' · ');
+    fields.push({
+      name: `${book.title ?? stage} — ${list.length}`,
+      value: `${line}${list.length > shown.length ? ` … +${list.length - shown.length} more` : ''}`.slice(0, 1024),
+    });
+  }
+
+  return {
+    embeds: [{
+      title: `Activation list — ${team}`,
+      description: `**${rows.length}** creator${rows.length === 1 ? '' : 's'} on this team earning nothing this month. `
+        + 'Cards go out for the most winnable few; this is everyone, so nobody is invisible.',
+      color: COLOR.watch,
+      fields,
+      footer: { text: `as of ${asOf} · posted weekly` },
+      timestamp: new Date().toISOString(),
+    }],
   };
 }
 
@@ -583,7 +644,7 @@ export function overviewEmbed({
         `${caseStats.open + caseStats.acknowledged + caseStats.actioned} open`,
         `${changes.opened?.length ?? 0} new · ${(changes.autoResolved?.length ?? 0)} closed`,
         `${caseStats.snoozed} snoozed`,
-        changes.deferred?.length ? `⏸ ${changes.deferred.length} held — coaches at their limit` : null,
+        changes.deferred?.length ? heldLine(changes.deferred) : null,
       ].filter(Boolean).join('\n'),
       inline: true,
     },

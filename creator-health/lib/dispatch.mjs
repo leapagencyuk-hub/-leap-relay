@@ -5,9 +5,9 @@
 // trains people to ignore the channel.
 import {
   Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
-  escalationEmbed, overviewEmbed, programmesEmbed,
+  escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
 } from './discord.mjs';
-import { campaignGap, concentrationRisk, programmesDue, uploadStaleness } from './programmes.mjs';
+import { campaignGap, concentrationRisk, programmesDue, rosterDue, uploadStaleness } from './programmes.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -201,6 +201,26 @@ export async function dispatch({
   for (const c of changes.dueFollowUps) {
     const route = routeFor(c, discordConfig);
     await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention, buttons, avatar: avatarConfig }), c);
+  }
+
+  // --- the weekly activation roster, per team -------------------------------
+  // Everyone who is not earning, in one message, so the creators who did not
+  // get a card this week are still visible to their coach.
+  if (rosterDue(config, store, asOf) && activation.length) {
+    const byTeam = new Map();
+    for (const row of activation) {
+      const key = row.creator.group ?? 'no team';
+      if (!byTeam.has(key)) byTeam.set(key, []);
+      byTeam.get(key).push(row);
+    }
+    for (const [team, rows] of byTeam) {
+      const sample = rows[0].creator;
+      const route = routeFor({ coach: sample.manager, group: team }, discordConfig);
+      if (!route.webhook && !route.channelId) continue;
+      await send('activation-roster', team, route,
+        activationRosterEmbed({ team, rows, asOf, config }));
+    }
+    if (!dryRun) store.data.lastRosterOn = asOf;
   }
 
   // --- nobody picked these up ----------------------------------------------

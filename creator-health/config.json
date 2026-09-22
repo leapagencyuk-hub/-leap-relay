@@ -115,7 +115,9 @@
       "decide": 30
     },
     "maxOpenPerCoach": 3,
-    "dormantMaxPerCoach": 1
+    "dormantMaxPerCoach": 1,
+    "rosterWeekday": 1,
+    "rosterPerStage": 30
   },
   "programmes": {
     "_note": "Network-level findings posted weekly to the management channel. A programme decision, not 400 conversations.",
