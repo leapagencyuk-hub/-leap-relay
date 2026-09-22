@@ -14,6 +14,8 @@
     "_channels": "Turn on Developer Mode in Discord, then right-click a channel and Copy Channel ID. Anything that is not 17-20 digits is treated as unset.",
     "escalationChannelId": "env:DISCORD_ESCALATION_CHANNEL",
     "summaryChannelId": "env:DISCORD_SUMMARY_CHANNEL",
+    "_inactive": "Optional. One channel for every creator earning nothing, so the team channels stay about creators who are live and slipping. Left unset, they go to the team channels.",
+    "inactiveWebhook": "env:DISCORD_WEBHOOK_INACTIVE",
     "defaultChannelId": "env:DISCORD_FALLBACK_CHANNEL",
     "_groups": "Team names exactly as the export spells them. Matching ignores case and spacing, so 'TEAM GOLF' here matches a channel you call 'Team Golf'.",
     "groups": {

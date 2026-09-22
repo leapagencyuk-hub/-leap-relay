@@ -103,6 +103,11 @@ export function loadDiscordConfig(raw) {
     summaryChannelId: channelOrNull(fromEnv(raw.summaryChannelId)),
     escalationWebhook: webhookOrNull(fromEnv(raw.escalationWebhook)),
     summaryWebhook: webhookOrNull(fromEnv(raw.summaryWebhook)),
+    // One channel for every creator who is not earning, instead of scattering
+    // them through the team channels. Falls back to the team channels when it
+    // is not set, so nothing goes missing if this is left blank.
+    inactiveChannelId: channelOrNull(fromEnv(raw.inactiveChannelId)),
+    inactiveWebhook: webhookOrNull(fromEnv(raw.inactiveWebhook)),
     coaches,
   };
 }

@@ -3,8 +3,11 @@
     "enabled": true,
     "mode": "webhook",
     "routeBy": "group",
-    "_webhooks": "Channel → Edit Channel → Integrations → Webhooks → New Webhook → Copy URL.",
+    "_webhooks": "Channel \u2192 Edit Channel \u2192 Integrations \u2192 Webhooks \u2192 New Webhook \u2192 Copy URL.",
     "summaryWebhook": "env:DISCORD_WEBHOOK_OVERVIEW",
+    "_inactive": "Every creator earning nothing goes to this one channel, not the team channels.",
+    "inactiveWebhook": "env:DISCORD_WEBHOOK_INACTIVE",
+    "inactiveChannelId": "1551857471054946316",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",

@@ -149,6 +149,23 @@ export async function dispatch({
   // Webhooks cannot carry working buttons at all, and a bot cannot until its
   // interactions endpoint is reachable.
   const buttons = discordConfig.mode === 'bot' && discordConfig.interactionsReady !== false;
+  // Creators who are earning nothing are their own kind of work: a long list a
+  // coach triages in one sitting, not a daily interruption about someone who was
+  // fine yesterday. They go to one shared channel so the team channels stay
+  // about creators who are actually live and slipping.
+  // The channel id is only usable with a bot token. Without one, an unset
+  // DISCORD_WEBHOOK_INACTIVE would send every activation card at a channel we
+  // cannot post to — so fall back to the team channels instead of losing them.
+  const inactiveRoute = discordConfig.inactiveWebhook
+    ? { webhook: discordConfig.inactiveWebhook }
+    : (discordConfig.inactiveChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.inactiveChannelId } : null;
+  // The coach is still named and still pinged — only the channel changes.
+  const activationRoute = (c) => {
+    const team = routeFor(c, discordConfig);
+    return inactiveRoute ? { ...inactiveRoute, mention: team.mention } : team;
+  };
+
   const alertByKey = new Map(alerts.map((a) => [a.creator.key, a]));
   const spotlightByKey = new Map(spotlight.map((r) => [r.creator.key, r]));
   const sent = [];
@@ -156,7 +173,7 @@ export async function dispatch({
 
   const send = async (label, coach, route, payload, caseRecord = null) => {
     if (dryRun) {
-      previews.push({ label, coach, payload });
+      previews.push({ label, coach, payload, to: route.webhook ?? route.channelId ?? null });
       sent.push({ label, coach, ok: true, dryRun: true });
       return;
     }
@@ -175,7 +192,8 @@ export async function dispatch({
       if (!alert) continue;
       await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig }), c);
     } else if (c.kind === 'activation') {
-      await send('activation-opened', c.coach, route, activationEmbed(c, { mention: route.mention, buttons, avatar: avatarConfig, metrics: metricsByKey.get(c.creatorKey) }), c);
+      const r = activationRoute(c);
+      await send('activation-opened', c.coach, r, activationEmbed(c, { mention: r.mention, buttons, avatar: avatarConfig, metrics: metricsByKey.get(c.creatorKey) }), c);
     } else {
       const row = spotlightByKey.get(c.creatorKey);
       if (!row) continue;
@@ -199,7 +217,7 @@ export async function dispatch({
 
   // --- follow-ups that came due --------------------------------------------
   for (const c of changes.dueFollowUps) {
-    const route = routeFor(c, discordConfig);
+    const route = c.kind === 'activation' ? activationRoute(c) : routeFor(c, discordConfig);
     await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention, buttons, avatar: avatarConfig }), c);
   }
 
@@ -207,15 +225,20 @@ export async function dispatch({
   // Everyone who is not earning, in one message, so the creators who did not
   // get a card this week are still visible to their coach.
   if (rosterDue(config, store, asOf) && activation.length) {
+    // Teams nobody is coaching never had a channel, so the roster for them used
+    // to fall away on its own. One shared channel would now catch them, so the
+    // same rule cases use has to be applied here too.
+    const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
     const byTeam = new Map();
     for (const row of activation) {
+      if (ignored.has(groupKey(row.creator.group))) continue;
       const key = row.creator.group ?? 'no team';
       if (!byTeam.has(key)) byTeam.set(key, []);
       byTeam.get(key).push(row);
     }
     for (const [team, rows] of byTeam) {
       const sample = rows[0].creator;
-      const route = routeFor({ coach: sample.manager, group: team }, discordConfig);
+      const route = activationRoute({ coach: sample.manager, group: team });
       if (!route.webhook && !route.channelId) continue;
       await send('activation-roster', team, route,
         activationRosterEmbed({ team, rows, asOf, config }));

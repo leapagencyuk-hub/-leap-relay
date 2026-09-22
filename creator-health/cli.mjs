@@ -411,6 +411,7 @@ function cmdDiscordEnv() {
 
   lift(safe.discord, 'summaryWebhook', 'DISCORD_WEBHOOK_OVERVIEW');
   lift(safe.discord, 'escalationWebhook', 'DISCORD_WEBHOOK_ESCALATION');
+  lift(safe.discord, 'inactiveWebhook', 'DISCORD_WEBHOOK_INACTIVE');
   lift(safe.discord, 'botToken', 'DISCORD_BOT_TOKEN');
   for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
     lift(entry, 'webhook', varName(label));
@@ -479,6 +480,9 @@ function cmdDiscordCheck() {
   } else {
     console.log(`every monitored team has a destination (${live.length} team(s))`);
   }
+  console.log(discord.inactiveWebhook
+    ? `\ncreators earning nothing: one shared channel, webhook …${discord.inactiveWebhook.slice(-6)}`
+    : '\ncreators earning nothing: no shared channel set — they go to the team channels');
   if (ignoredCreators) {
     console.log(`\nℹ ${ignoredCreators} creator(s) in ${ignored.size} team(s) are not monitored by choice.`);
     console.log('   Their data still accrues — remove them from monitoring.ignoreGroups to switch them on.');

@@ -171,3 +171,117 @@ test('a webhook wins over a channel id, matching how delivery actually works', (
   assert.ok(route.webhook, 'both are kept so a later switch to a bot needs only a token');
   assert.equal(route.channelId, '123456789012345678');
 });
+
+// --- the inactive channel ----------------------------------------------------
+
+const TEAM_HOOK = 'https://discord.com/api/webhooks/2/team';
+const INACTIVE_HOOK = 'https://discord.com/api/webhooks/3/inactive';
+
+const caseOf = (kind, extra = {}) => ({
+  id: `${kind === 'activation' ? 'A-' : ''}C-1`, kind, status: 'open',
+  creatorKey: 'k1', username: 'creator1', coach: 'josh@leap', group: 'Team Alpha',
+  openedOn: '2026-09-20', stage: 'STALLED', context: { day: 12, everLive: true, bestMonth: 0 },
+  baseline: { weeklyDiamonds: 0, weeklyHours: 0, weeklyLiveDays: 0 },
+  ...extra,
+});
+
+const runWith = (opened, discord) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-inact-'));
+  const store = new CaseStore(dir);
+  return dispatch({
+    asOf: '2026-09-20', store, discordConfig: discord, dryRun: true,
+    changes: { opened, worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+  }).finally(() => fs.rmSync(dir, { recursive: true, force: true }));
+};
+
+test('creators earning nothing go to the inactive channel, not their team channel', async () => {
+  const discord = routesFrom({
+    mode: 'webhook',
+    inactiveWebhook: INACTIVE_HOOK,
+    groups: { 'Team Alpha': { webhook: TEAM_HOOK } },
+    coaches: { 'josh@leap': { mention: '<@1>' } },
+  });
+  const out = await runWith([caseOf('activation')], discord);
+  const card = out.previews.find((p) => p.label === 'activation-opened');
+  assert.equal(card.to, INACTIVE_HOOK);
+  // The coach is still pinged, and the card still says whose team it is,
+  // because one shared channel carries every team's creators.
+  assert.equal(card.payload.content, '<@1>');
+  assert.match(card.payload.embeds[0].author.name, /Team Alpha/);
+});
+
+test('declines still go to the team channel when an inactive channel is set', async () => {
+  const discord = routesFrom({
+    mode: 'webhook',
+    inactiveWebhook: INACTIVE_HOOK,
+    groups: { 'Team Alpha': { webhook: TEAM_HOOK } },
+  });
+  const decline = caseOf('decline', { severity: 'urgent', playbookId: 'DIAMONDS_DOWN', valueAtRisk: 1000 });
+  const window = { diamonds: 1000, liveHours: 10, validLiveDays: 5 };
+  const alert = {
+    creator: { key: 'k1', username: 'creator1', group: 'Team Alpha' },
+    severity: 'urgent', signals: [], causes: [],
+    metrics: {
+      curr7: window, prev7: window, curr28: window,
+      change7: { diamonds: -0.4, liveHours: -0.3 },
+      monthly: {}, monthlyCoverage: {},
+    },
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-inact2-'));
+  const store = new CaseStore(dir);
+  const out = await dispatch({
+    asOf: '2026-09-20', store, discordConfig: discord, dryRun: true,
+    changes: { opened: [decline], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [alert], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+  });
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(out.previews.find((p) => p.label === 'case-opened').to, TEAM_HOOK);
+});
+
+test('without an inactive channel, activation cards fall back to the team', async () => {
+  const discord = routesFrom({ mode: 'webhook', groups: { 'Team Alpha': { webhook: TEAM_HOOK } } });
+  const out = await runWith([caseOf('activation')], discord);
+  const card = out.previews.find((p) => p.label === 'activation-opened');
+  assert.equal(card.to, TEAM_HOOK);
+});
+
+test('a channel id alone is not used without a bot token to post with', async () => {
+  const discord = routesFrom({
+    mode: 'webhook',
+    inactiveChannelId: ID(9),
+    groups: { 'Team Alpha': { webhook: TEAM_HOOK } },
+  });
+  const out = await runWith([caseOf('activation')], discord);
+  assert.equal(out.previews.find((p) => p.label === 'activation-opened').to, TEAM_HOOK);
+});
+
+test('the weekly roster goes to the inactive channel, and skips unmonitored teams', async () => {
+  const discord = routesFrom({
+    mode: 'webhook',
+    inactiveWebhook: INACTIVE_HOOK,
+    groups: { 'Team Alpha': { webhook: TEAM_HOOK } },
+  });
+  const row = (group, username) => ({
+    creator: { key: username, username, group, manager: 'josh@leap' },
+    stage: 'STALLED', day: 12, lastMonth: 0,
+  });
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-roster-'));
+  const store = new CaseStore(dir);
+  const out = await dispatch({
+    // 2026-09-21 is a Monday.
+    asOf: '2026-09-21', store, discordConfig: discord, dryRun: true,
+    changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [], spotlight: [], ramp: [], stats: { tracked: 2, quit: 0 },
+    activation: [row('Team Alpha', 'a'), row('Surge Agency', 'b')],
+    config: {
+      activation: { enabled: true, rosterWeekday: 1 },
+      monitoring: { ignoreGroups: ['Surge Agency'] },
+    },
+  });
+  fs.rmSync(dir, { recursive: true, force: true });
+  const rosters = out.previews.filter((p) => p.label === 'activation-roster');
+  assert.deepEqual(rosters.map((r) => r.coach), ['Team Alpha'],
+    'a team nobody coaches had no channel before, so one shared channel must not adopt it');
+  assert.equal(rosters[0].to, INACTIVE_HOOK);
+});

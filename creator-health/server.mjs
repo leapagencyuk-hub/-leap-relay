@@ -256,6 +256,7 @@ async function handleSelfTest(req, res, url) {
       routeBy: discord.routeBy,
       overview: discord.summaryWebhook ? 'set' : 'MISSING',
       escalation: discord.escalationWebhook || discord.escalationChannelId ? 'set' : 'not configured',
+      inactive: discord.inactiveWebhook ? 'set' : 'not configured — activation cards go to the team channels',
       teamsResolved: teams.filter((t) => t.destination !== 'NONE').length,
       teamsMissing: teams.filter((t) => t.destination === 'NONE').map((t) => t.team),
     },
