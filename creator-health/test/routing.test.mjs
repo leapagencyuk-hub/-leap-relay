@@ -285,3 +285,66 @@ test('the weekly roster goes to the inactive channel, and skips unmonitored team
     'a team nobody coaches had no channel before, so one shared channel must not adopt it');
   assert.equal(rosters[0].to, INACTIVE_HOOK);
 });
+
+test('the daily team summary goes to its own channel, once a day', async () => {
+  const SUMMARY_HOOK = 'https://discord.com/api/webhooks/4/summary';
+  const discord = routesFrom({
+    mode: 'webhook',
+    groups: { 'Team Alpha': { webhook: TEAM_HOOK } },
+    teamSummaries: { 'Team Alpha': { webhook: SUMMARY_HOOK } },
+  });
+  const creator = { key: 'k1', username: 'creator1', group: 'Team Alpha', manager: 'josh@leap', quitOn: null };
+  const metrics = {
+    activeDays28: 20, dailyDiamonds7: 3000, diamondsPerHour28: 400,
+    curr28: { diamonds: 60000 },
+    fanClub: { activeFans: 40, activeFansChange14: 0.2 },
+    monthOnMonth: { previousMonth: '2026-08', diamonds: { monthToDate: 60000, lastMonthToSamePoint: 50000, change: 0.2 } },
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-tsum-'));
+  const store = new CaseStore(dir);
+  const call = () => dispatch({
+    asOf: '2026-09-20', store, discordConfig: discord, dryRun: true,
+    changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+    creators: [creator], metricsByKey: new Map([[creator.key, metrics]]),
+    config: { ramp: { targetDiamonds: 200000 }, growth: { enabled: true } },
+  });
+
+  const first = await call();
+  const posted = first.previews.filter((p) => p.label === 'team-summary');
+  assert.equal(posted.length, 1);
+  assert.equal(posted[0].to, SUMMARY_HOOK, 'the case channel carries the queue, not the picture');
+
+  // The guard is what is under test, so drive the same day through twice.
+  store.data.lastTeamSummaryOn = '2026-09-20';
+  const second = await call();
+  assert.equal(second.previews.filter((p) => p.label === 'team-summary').length, 0);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a team with nobody earning gets no summary', async () => {
+  const discord = routesFrom({
+    mode: 'webhook',
+    groups: { 'Team Alpha': { webhook: TEAM_HOOK } },
+    teamSummaries: { 'Team Alpha': { webhook: 'https://discord.com/api/webhooks/4/summary' } },
+  });
+  const creator = { key: 'k1', username: 'creator1', group: 'Team Alpha', manager: 'josh@leap', quitOn: null };
+  const metrics = {
+    activeDays28: 0, dailyDiamonds7: 0, diamondsPerHour28: null,
+    curr28: { diamonds: 0 },
+    fanClub: { activeFans: 0, activeFansChange14: null },
+    monthOnMonth: { previousMonth: '2026-08', diamonds: { monthToDate: 0, lastMonthToSamePoint: 0, change: null } },
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-tsum2-'));
+  const store = new CaseStore(dir);
+  const out = await dispatch({
+    asOf: '2026-09-20', store, discordConfig: discord, dryRun: true,
+    changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+    creators: [creator], metricsByKey: new Map([[creator.key, metrics]]),
+    config: { ramp: { targetDiamonds: 200000 }, growth: { enabled: true } },
+  });
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(out.previews.filter((p) => p.label === 'team-summary').length, 0,
+    'an empty card every morning is how a channel stops being read');
+});

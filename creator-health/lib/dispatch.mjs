@@ -6,8 +6,10 @@
 import {
   Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
+  teamSummaryEmbed,
 } from './discord.mjs';
 import { campaignGap, concentrationRisk, programmesDue, rosterDue, uploadStaleness } from './programmes.mjs';
+import { teamSummaries, teamSummaryDue } from './teamsummary.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -244,6 +246,25 @@ export async function dispatch({
         activationRosterEmbed({ team, rows, asOf, config }));
     }
     if (!dryRun) store.data.lastRosterOn = asOf;
+  }
+
+  // --- the daily picture of each team ---------------------------------------
+  // Posted before the escalation and the overview, so a coach opening Discord
+  // in the morning reads where their team stands before they read what is
+  // wrong with it.
+  if (Object.keys(discordConfig.teamSummaries ?? {}).length && teamSummaryDue(config, store, asOf)) {
+    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config });
+    for (const [team, summary] of summaries) {
+      const entry = discordConfig.teamSummaries[groupKey(team)];
+      if (!entry?.webhook && !entry?.channelId) continue;
+      // A team with nobody earning has nothing to summarise; the activation
+      // roster already covers it, and an empty card every morning is how a
+      // channel stops being read.
+      if (!summary.roster.earning) continue;
+      await send('team-summary', team, { webhook: entry.webhook, channelId: entry.channelId },
+        teamSummaryEmbed(summary));
+    }
+    if (!dryRun) store.data.lastTeamSummaryOn = asOf;
   }
 
   // --- nobody picked these up ----------------------------------------------

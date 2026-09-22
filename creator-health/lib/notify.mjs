@@ -74,15 +74,23 @@ export function loadDiscordConfig(raw) {
       mention: placeholderOrNull(entry.mention),
     };
   }
-  const groups = {};
-  for (const [name, entry] of Object.entries(raw.groups ?? {})) {
-    groups[groupKey(name)] = {
-      label: name,
-      channelId: channelOrNull(fromEnv(entry.channelId)),
-      webhook: webhookOrNull(fromEnv(entry.webhook)),
-      mention: placeholderOrNull(entry.mention),
-    };
-  }
+  const normaliseGroups = (src) => {
+    const out = {};
+    for (const [name, entry] of Object.entries(src ?? {})) {
+      out[groupKey(name)] = {
+        label: name,
+        channelId: channelOrNull(fromEnv(entry.channelId)),
+        webhook: webhookOrNull(fromEnv(entry.webhook)),
+        mention: placeholderOrNull(entry.mention),
+      };
+    }
+    return out;
+  };
+  const groups = normaliseGroups(raw.groups);
+  // A second channel per team, for the daily summary. Separate from the case
+  // channel on purpose: one is a queue you work through, the other is a picture
+  // you read once. Teams with no summary channel simply do not get one.
+  const summaryGroups = normaliseGroups(raw.teamSummaries);
   return {
     enabled: raw.enabled !== false,
     mode: raw.mode ?? 'webhook',
@@ -108,6 +116,7 @@ export function loadDiscordConfig(raw) {
     // is not set, so nothing goes missing if this is left blank.
     inactiveChannelId: channelOrNull(fromEnv(raw.inactiveChannelId)),
     inactiveWebhook: webhookOrNull(fromEnv(raw.inactiveWebhook)),
+    teamSummaries: summaryGroups,
     coaches,
   };
 }

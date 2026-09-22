@@ -50,6 +50,49 @@
         "channelId": "1551543042626945137"
       }
     },
+    "_teamSummaries": "A second channel per team for the daily summary. The 'groups' channels above carry the cases; these carry the picture.",
+    "teamSummaries": {
+      "Not in a group": {
+        "webhook": "env:DISCORD_SUMMARY_NOT_IN_A_GROUP",
+        "channelId": "1551858156479717477"
+      },
+      "Team Alpha": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_ALPHA",
+        "channelId": "1551858285236461629"
+      },
+      "Team Bravo": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_BRAVO",
+        "channelId": "1551858311064977489"
+      },
+      "Team Charlie": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_CHARLIE",
+        "channelId": "1551858330861834250"
+      },
+      "Team Delta": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_DELTA",
+        "channelId": "1551858366878318592"
+      },
+      "Team Echo": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_ECHO",
+        "channelId": "1551858394149687346"
+      },
+      "Team Foxtrot": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_FOXTROT",
+        "channelId": "1551858438915760158"
+      },
+      "TEAM GOLF": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_GOLF",
+        "channelId": "1551858461552410684"
+      },
+      "Team Hotel": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_HOTEL",
+        "channelId": "1551858487599046716"
+      },
+      "Team Indigo": {
+        "webhook": "env:DISCORD_SUMMARY_TEAM_INDIGO",
+        "channelId": "1551858510743085136"
+      }
+    },
     "coaches": {
       "alex_593@hotmail.co.uk": {
         "mention": "PASTE_DISCORD_USER_MENTION"

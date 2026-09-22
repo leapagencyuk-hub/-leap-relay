@@ -416,6 +416,9 @@ function cmdDiscordEnv() {
   for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
     lift(entry, 'webhook', varName(label));
   }
+  for (const [label, entry] of Object.entries(safe.discord?.teamSummaries ?? {})) {
+    lift(entry, 'webhook', `DISCORD_SUMMARY_${label.toUpperCase().replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '')}`);
+  }
   for (const [email, entry] of Object.entries(safe.discord?.coaches ?? {})) {
     lift(entry, 'webhook', varName(email.split('@')[0]));
   }
@@ -480,6 +483,10 @@ function cmdDiscordCheck() {
   } else {
     console.log(`every monitored team has a destination (${live.length} team(s))`);
   }
+  const sum = Object.values(discord.teamSummaries ?? {}).filter((g) => g.webhook || g.channelId).length;
+  console.log(sum
+    ? `\ndaily team summary: ${sum} of ${live.length} monitored team(s) have a channel`
+    : '\ndaily team summary: no channels set — no summaries are posted');
   console.log(discord.inactiveWebhook
     ? `\ncreators earning nothing: one shared channel, webhook …${discord.inactiveWebhook.slice(-6)}`
     : '\ncreators earning nothing: no shared channel set — they go to the team channels');

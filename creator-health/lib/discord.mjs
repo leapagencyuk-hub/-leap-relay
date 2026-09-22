@@ -481,6 +481,123 @@ export function activationRosterEmbed({ team, rows, asOf, config }) {
 }
 
 /**
+ * The daily state of one team, for the coach who runs it.
+ *
+ * Ordered the way a coach spends their day: what the team is worth this month,
+ * who is closest to 200k, who is worth pushing while the wind is behind them,
+ * then what is slipping. The habit that drives all of it goes last, because it
+ * is the one thing that is true every day and does not need reading twice.
+ */
+export function teamSummaryEmbed(summary, { mention = null } = {}) {
+  const s = summary;
+  const fields = [];
+  const line = (r, tail) => `**@${r.username}** ${tail}`;
+
+  // A list is only as trustworthy as its count. Showing five under a heading
+  // that says nine reads as a bug, so say what was left out.
+  const listOf = (rows, total, render) => {
+    const shown = rows.map(render).join('\n');
+    const rest = (total ?? rows.length) - rows.length;
+    return `${shown}${rest > 0 ? `\n… and ${rest} more` : ''}`.slice(0, 1024);
+  };
+
+  // Movement, quoted on a base that can carry it. Off 40 diamonds a percentage
+  // is noise, so those are said in diamonds instead.
+  const move = (r) => {
+    if (r.change == null) return '';
+    if (r.quotable) return Math.abs(r.change) >= 0.10 ? `  (${pct(r.change)})` : '';
+    return `  (was ${n(r.lastMonthToSamePoint)})`;
+  };
+
+  if (s.top.length) {
+    fields.push({
+      name: `Biggest this month — ${s.roster.earning} earning of ${s.roster.total}`,
+      value: listOf(s.top, s.top.length, (r) => line(r, `${n(r.monthToDate)}${move(r)}`)),
+    });
+  }
+
+  const { chase } = s;
+  if (chase.already.length) {
+    fields.push({
+      name: `Already past 200k — ${chase.already.length}`,
+      value: listOf(chase.already.slice(0, 5), chase.already.length, (r) => line(r, n(r.monthToDate))),
+    });
+  }
+  if (chase.clearing.length) {
+    fields.push({
+      name: `On for 200k — ${chase.clearing.length}`,
+      value: listOf(chase.clearing.slice(0, 5), chase.clearing.length, (r) => line(r,
+        `${n(r.monthToDate)} · finishes on ${n(r.projected)} at this week's rate`)),
+    });
+  }
+  if (chase.short.length) {
+    fields.push({
+      name: `Short of 200k, still reachable — ${chase.short.length}`,
+      value: listOf(chase.short.slice(0, 5), chase.short.length, (r) => line(r,
+        `${n(r.monthToDate)} · needs ${n(r.requiredPerDay)}/day, doing ${n(r.perDay7)}`)),
+    });
+  }
+
+  if (s.readyToPush.length) {
+    fields.push({
+      name: 'Push these now — fan club growing, money has not followed yet',
+      value: listOf(s.readyToPush, s.readyToPush.length, (r) => line(r,
+        `${n(r.monthToDate)} this month · fan club ${pct(r.fanClubChange)} in 14 days`)),
+    });
+  }
+  if (s.rising.length) {
+    fields.push({
+      name: 'Working — protect whatever changed',
+      value: listOf(s.rising, s.rising.length, (r) => line(r,
+        `${n(r.monthToDate)}${move(r)} · fan club ${pct(r.fanClubChange)}`)),
+    });
+  }
+  if (s.slipping.length) {
+    fields.push({
+      name: `Slipping — ${s.slippingTotal} open`,
+      value: listOf(s.slipping, s.slippingTotal, (r) => line(r,
+        `${n(r.monthToDate)}${move(r)} · \`${r.caseId}\``)),
+    });
+  }
+
+  const f = s.frequency;
+  const habit = [
+    `**${f.meeting} of ${s.roster.earning}** earning creators went live ${f.target}+ days in the last 28.`,
+    'Across the network, creators above that line grew 59% of the time last month. Below it, 31%.',
+    'It is how often they go live, not how long — session length barely differs between the two.',
+  ];
+  if (f.closest.length) {
+    habit.push(`\nClosest to the line, biggest first: ${
+      f.closest.map((r) => `@${r.username} (${Math.round(r.liveDays28)}d)`).join(' · ')}`);
+  }
+  fields.push({ name: `The habit that decides the rest`, value: habit.join('\n').slice(0, 1024) });
+
+  const m = s.month;
+  // Both halves of the comparison are the same creators, and the sentence says
+  // so, because a team's total against a subset's last month is not a trend.
+  const headline = m.change != null
+    ? `**${n(m.toDate)}** this month.\n${m.comparable} of these creators were here in ${monthName(m.previousMonth)} too: they are on **${n(m.comparableToDate)}**, against **${n(m.lastToSamePoint)}** by this point then — **${pct(m.change)}**.`
+    : `**${n(m.toDate)}** this month so far.`;
+
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      title: `${s.team} — daily summary`,
+      description: headline,
+      color: m.change == null ? COLOR.neutral : m.change >= 0 ? COLOR.recovered : COLOR.warn,
+      fields,
+      footer: { text: `as of ${s.asOf} · ${chase.daysLeft} day${chase.daysLeft === 1 ? '' : 's'} left in the month` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+function monthName(key) {
+  if (!key) return 'last month';
+  return new Date(`${key}-01T00:00:00Z`).toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
+}
+
+/**
  * The weekly network post: findings that are a programme decision rather than a
  * conversation with one creator.
  */

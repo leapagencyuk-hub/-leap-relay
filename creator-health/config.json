@@ -142,5 +142,16 @@
     "enabled": false,
     "urlTemplate": "https://unavatar.io/tiktok/{handle}",
     "manual": {}
+  },
+  "growth": {
+    "_note": "The daily per-team summary. Thresholds are measured from LEAP's own data, not chosen \u2014 see the header of lib/teamsummary.mjs for the table they came from.",
+    "enabled": true,
+    "_liveDaysTarget": "LIVE days in 28 where the network turns from shrinking to growing. Above it 59% of creators grew last month; below it 31%.",
+    "liveDaysTarget": 15,
+    "_fanClubUp": "Active fan club growth over 14 days that precedes diamond growth. Creators above it grew 66% of the time.",
+    "fanClubUp": 0.1,
+    "_chaseFloor": "A creator projected below this share of 200k is not chasing it, and listing them buries the ones who are.",
+    "chaseFloor": 0.3,
+    "topPerSection": 5
   }
 }
