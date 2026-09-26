@@ -348,3 +348,31 @@ test('a team with nobody earning gets no summary', async () => {
   assert.equal(out.previews.filter((p) => p.label === 'team-summary').length, 0,
     'an empty card every morning is how a channel stops being read');
 });
+
+test('a summary channel id is not used without a bot token to post with', async () => {
+  // The ids are committed; the webhooks come from the environment. An unset
+  // variable must mean no post, not ten failures a day.
+  const discord = routesFrom({
+    mode: 'webhook',
+    groups: { 'Team Alpha': { webhook: TEAM_HOOK } },
+    teamSummaries: { 'Team Alpha': { webhook: 'env:NOT_SET_ANYWHERE', channelId: ID(5) } },
+  });
+  const creator = { key: 'k1', username: 'creator1', group: 'Team Alpha', manager: 'josh@leap', quitOn: null };
+  const metrics = {
+    activeDays28: 20, dailyDiamonds7: 3000, diamondsPerHour28: 400,
+    curr28: { diamonds: 60000 },
+    fanClub: { activeFans: 40, activeFansChange14: 0.2 },
+    monthOnMonth: { previousMonth: '2026-08', diamonds: { monthToDate: 60000, lastMonthToSamePoint: 50000, change: 0.2 } },
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-tsum3-'));
+  const store = new CaseStore(dir);
+  const out = await dispatch({
+    asOf: '2026-09-20', store, discordConfig: discord, dryRun: true,
+    changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+    creators: [creator], metricsByKey: new Map([[creator.key, metrics]]),
+    config: { ramp: { targetDiamonds: 200000 }, growth: { enabled: true } },
+  });
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(out.previews.filter((p) => p.label === 'team-summary').length, 0);
+});

@@ -278,7 +278,11 @@ export async function dispatch({
     const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows });
     for (const [team, summary] of summaries) {
       const entry = discordConfig.teamSummaries[groupKey(team)];
-      if (!entry?.webhook && !entry?.channelId) continue;
+      // The channel id is only usable with a bot token. The ids are committed
+      // but the webhooks come from the environment, so an unset variable would
+      // otherwise mean ten failed posts a day at a channel we cannot reach.
+      const usable = entry?.webhook || (entry?.channelId && discordConfig.botToken);
+      if (!usable) continue;
       // A team with nobody earning has nothing to summarise; the activation
       // roster already covers it, and an empty card every morning is how a
       // channel stops being read.
