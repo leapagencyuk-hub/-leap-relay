@@ -33,6 +33,7 @@
 // grow, so the summary reports participation and makes no claim about it.
 import { groupKey } from './notify.mjs';
 import { isOpen } from './cases.mjs';
+import { graduationLadder } from './graduation.mjs';
 
 const num = (x) => (Number.isFinite(x) ? x : 0);
 
@@ -91,49 +92,11 @@ function rowsFor(creators, metricsByKey, config) {
   return rows;
 }
 
-/**
- * Who can still land 200,000 inside this calendar month.
- *
- * Split in two, because they are different conversations. A creator who clears
- * it at today's rate needs protecting — do not change anything. One who is
- * short needs the gap named in diamonds per day, which is the only form of it
- * a coach can take to the creator.
- */
-function targetChase(rows, asOf, config) {
-  const targetDiamonds = config.ramp?.targetDiamonds ?? 200000;
+/** Days left in the calendar month, which is the clock the 200k target runs on. */
+function daysLeftInMonth(asOf) {
   const dayOfMonth = Number(asOf.slice(8, 10));
   const monthLength = new Date(Date.UTC(Number(asOf.slice(0, 4)), Number(asOf.slice(5, 7)), 0)).getUTCDate();
-  const daysLeft = Math.max(0, monthLength - dayOfMonth);
-  // A creator is "in reach" when the gap is a push, not a transplant.
-  const stretchLimit = config.growth?.chaseStretch ?? 2;
-
-  const chase = rows
-    .filter((r) => r.monthToDate > 0 && r.monthToDate < targetDiamonds)
-    .map((r) => {
-      const projected = r.monthToDate + r.perDay7 * daysLeft;
-      const shortfall = targetDiamonds - r.monthToDate;
-      const requiredPerDay = daysLeft > 0 ? shortfall / daysLeft : null;
-      return {
-        ...r,
-        projected,
-        // With no days left there is no per-day figure to quote, only the gap.
-        requiredPerDay,
-        // How much harder than this week they would have to work. This, not the
-        // projection, is what makes a chase real: needing 14,000 a day while
-        // doing 1,900 is not a stretch, it is a different creator.
-        stretch: requiredPerDay != null && r.perDay7 > 0 ? requiredPerDay / r.perDay7 : null,
-        clears: projected >= targetDiamonds,
-      };
-    })
-    .filter((r) => r.clears || (r.stretch != null && r.stretch <= stretchLimit));
-
-  return {
-    daysLeft,
-    already: rows.filter((r) => r.monthToDate >= targetDiamonds)
-      .sort((a, b) => b.monthToDate - a.monthToDate),
-    clearing: chase.filter((r) => r.clears).sort((a, b) => b.projected - a.projected),
-    short: chase.filter((r) => !r.clears).sort((a, b) => b.projected - a.projected),
-  };
+  return Math.max(0, monthLength - dayOfMonth);
 }
 
 /**
@@ -142,7 +105,7 @@ function targetChase(rows, asOf, config) {
  * Teams the network is not coaching are left out, the same rule the cases and
  * the weekly roster use.
  */
-export function teamSummaries({ creators, metricsByKey, store, asOf, config }) {
+export function teamSummaries({ creators, metricsByKey, store, asOf, config, graduation = [] }) {
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
   const target = config.growth?.liveDaysTarget ?? 15;
   const topN = config.growth?.topPerSection ?? 5;
@@ -173,7 +136,6 @@ export function teamSummaries({ creators, metricsByKey, store, asOf, config }) {
     // that is really just the creators who were not here in August.
     const comparableToDate = comparable.reduce((n, r) => n + r.monthToDate, 0);
 
-    const chase = targetChase(rows, asOf, config);
     const slipping = earning
       .filter((r) => openByKey.has(r.creator.key))
       .map((r) => ({ ...r, caseId: openByKey.get(r.creator.key).id }))
@@ -197,7 +159,7 @@ export function teamSummaries({ creators, metricsByKey, store, asOf, config }) {
         previousMonth: rows.find((r) => r.metrics.monthOnMonth)?.metrics.monthOnMonth.previousMonth ?? null,
       },
       top: [...earning].sort((a, b) => b.monthToDate - a.monthToDate).slice(0, topN),
-      chase,
+      daysLeft: daysLeftInMonth(asOf),
       // The earliest thing a coach can lean into: fan club climbing, and the
       // money already following it. `substantial` keeps a fan club that went
       // from one member to two out of it — a 100% rise that means nothing.
@@ -213,6 +175,9 @@ export function teamSummaries({ creators, metricsByKey, store, asOf, config }) {
         .slice(0, topN),
       slipping: slipping.slice(0, topN),
       slippingTotal: slipping.length,
+      // The 200k chase for creators still inside their 90 days, which is a
+      // different population from the team's earners and has its own clock.
+      graduation: graduationLadder(graduation, team),
       // The habit, not a person: how much of the team is live often enough.
       frequency: {
         target,

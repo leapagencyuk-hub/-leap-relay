@@ -74,6 +74,17 @@
     "minDaysLeftToPush": 7,
     "reachableRatio": 0.6
   },
+  "graduation": {
+    "_note": "The 200k chase. Graduation progress is the CURRENT CALENDAR MONTH's diamonds against 200,000, confirmed against TikTok Backstage \u2014 see the header of lib/graduation.mjs. A creator gets up to three monthly attempts inside their 90 days.",
+    "enabled": true,
+    "_milestones": "Fixed rungs in diamonds still to find: 100k, 50k, 25k, 10k, graduated. Each fires once per creator per month.",
+    "_finalPushDays": "Inside this many days of month end, a creator still in reach is pinged every morning until they land it or the month runs out.",
+    "finalPushDays": 5,
+    "_finalPushReach": "The biggest gap still worth a daily ping in the closing days.",
+    "finalPushReach": 50000,
+    "_finalPushStretch": "And only when the rate needed is within this multiple of the rate they are actually doing, so the ping is never a lie.",
+    "finalPushStretch": 4
+  },
   "digest": {
     "maxAlertsPerCoach": 12,
     "maxRampRowsPerCoach": 10,

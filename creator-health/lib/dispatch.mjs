@@ -6,10 +6,11 @@
 import {
   Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
-  teamSummaryEmbed,
+  teamSummaryEmbed, graduationEmbed,
 } from './discord.mjs';
 import { campaignGap, concentrationRisk, programmesDue, rosterDue, uploadStaleness } from './programmes.mjs';
 import { teamSummaries, teamSummaryDue } from './teamsummary.mjs';
+import { graduationEvents } from './graduation.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -248,12 +249,33 @@ export async function dispatch({
     if (!dryRun) store.data.lastRosterOn = asOf;
   }
 
+  // --- the 200k graduation chase --------------------------------------------
+  // Ahead of the daily summary, because a creator 8,000 short with two days
+  // left is the most time-critical thing a coach will read all day. These go to
+  // the team's own channel, beside the declines: it is one creator, one action.
+  //
+  // A dry run must not spend a milestone. Each rung fires once per creator per
+  // month, so previewing it would silently cost the real card.
+  const grad = graduationEvents({ ramp, store, asOf, config, persist: !dryRun });
+  const ignoredTeams = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
+  for (const p of [...grad.milestones, ...grad.finalPush]) {
+    // Teams nobody coaches are out, explicitly rather than by happening to have
+    // no channel: a default webhook added later would otherwise start posting
+    // about creators the network decided not to monitor.
+    if (ignoredTeams.has(groupKey(p.group))) continue;
+    const isPush = !p.milestone;
+    const route = routeFor({ coach: p.coach, group: p.group }, discordConfig);
+    if (!route.webhook && !route.channelId) continue;
+    await send(isPush ? 'graduation-push' : 'graduation-milestone', p.coach, route,
+      graduationEmbed(p, { mention: route.mention, finalPush: isPush }));
+  }
+
   // --- the daily picture of each team ---------------------------------------
   // Posted before the escalation and the overview, so a coach opening Discord
   // in the morning reads where their team stands before they read what is
   // wrong with it.
   if (Object.keys(discordConfig.teamSummaries ?? {}).length && teamSummaryDue(config, store, asOf)) {
-    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config });
+    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows });
     for (const [team, summary] of summaries) {
       const entry = discordConfig.teamSummaries[groupKey(team)];
       if (!entry?.webhook && !entry?.channelId) continue;
@@ -305,6 +327,13 @@ export async function dispatch({
       openCases: store.all().filter(isOpen),
       staleness: uploadStaleness(asOf, config),
       activation: activationSummary,
+      graduation: grad.rows.length ? {
+        total: grad.rows.length,
+        graduated: grad.rows.filter((r) => r.done).length,
+        within25k: grad.rows.filter((r) => !r.done && r.remaining <= 25000).length,
+        within100k: grad.rows.filter((r) => !r.done && r.remaining <= 100000).length,
+        daysLeft: grad.rows[0]?.daysLeft ?? 0,
+      } : null,
     }));
     if (!dryRun) store.data.lastOverviewOn = asOf;
   } else if (summaryRoute && alreadyPosted) {

@@ -8,6 +8,7 @@
 //   node cli.mjs rebuild                        re-derive the series
 //   node cli.mjs status                         what is stored
 //   node cli.mjs run [--dry] [--force-overview] daily run: cases + Discord
+//   node cli.mjs graduation [--limit N]      the 200k chase as it stands
 //   node cli.mjs cases [--coach E] [--all]      the open caseload
 //   node cli.mjs case <id>                      one case and its history
 //   node cli.mjs effectiveness                  which interventions work
@@ -34,6 +35,7 @@ import { loadRoutes } from './lib/notify.mjs';
 import { coverage, routeFor } from './lib/dispatch.mjs';
 import { groupKey } from './lib/notify.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
+import { graduationEvents } from './lib/graduation.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -500,6 +502,33 @@ function cmdDiscordCheck() {
   }
 }
 
+/** The 200k chase, as it stands, without waiting for a post. */
+function cmdGraduation() {
+  const { ramp, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
+  const store = new CaseStore(config.dataDir);
+  // persist:false so looking never spends a milestone card.
+  const { rows } = graduationEvents({ ramp, store, asOf, config, persist: false });
+  if (!rows.length) return console.log('Nobody inside their 90-day window.');
+
+  const done = rows.filter((r) => r.done);
+  const live = rows.filter((r) => !r.done).sort((a, b) => a.remaining - b.remaining);
+  console.log(`200k graduation as of ${asOf} — ${rows[0].daysLeft} day(s) left in the month\n`);
+  console.log(`  ${done.length} graduated, ${live.length} still chasing, of ${rows.length} inside their 90 days`);
+  const band = (lo, hi) => live.filter((r) => r.remaining > lo && r.remaining <= hi).length;
+  console.log(`  within 10k: ${band(0, 10000)} · 25k: ${band(10000, 25000)} · 50k: ${band(25000, 50000)} · 100k: ${band(50000, 100000)}\n`);
+
+  const limit = Number(option('limit', 20));
+  console.log(`  ${'creator'.padEnd(22)}${'to go'.padStart(10)}${'doing'.padStart(9)}${'needs'.padStart(9)}${'day'.padStart(6)}  team`);
+  for (const r of live.slice(0, limit)) {
+    console.log(`  ${('@' + r.username).padEnd(22)}${r.remaining.toLocaleString().padStart(10)}`
+      + `${r.perDay.toLocaleString().padStart(9)}${(r.requiredPerDay ?? 0).toLocaleString().padStart(9)}`
+      + `${String(r.day).padStart(6)}  ${r.group ?? '—'}`);
+  }
+  if (done.length) {
+    console.log(`\n  graduated this month: ${done.map((r) => `@${r.username} (${r.monthToDate.toLocaleString()})`).join(', ')}`);
+  }
+}
+
 function cmdTeams() {
   const store = new CaseStore(config.dataDir);
   const asOf = new SeriesStore(config.dataDir).readSeries().lastAsOf
@@ -552,7 +581,7 @@ const commands = {
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,
   'discord-env': cmdDiscordEnv,
-  teams: cmdTeams, snooze: cmdSnooze, close: cmdClose,
+  teams: cmdTeams, graduation: cmdGraduation, snooze: cmdSnooze, close: cmdClose,
 };
 
 if (!command || !commands[command]) {

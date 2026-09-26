@@ -13,6 +13,7 @@ import { CONFIDENCE_LABEL, KIND } from './causes.mjs';
 import { ACTIVATION_PLAYBOOK } from './activation.mjs';
 import { profileUrl, avatarUrl } from './profile.mjs';
 import { sparkline, progressBar, monthlyTrend } from './spark.mjs';
+import { MILESTONES } from './graduation.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -481,6 +482,95 @@ export function activationRosterEmbed({ team, rows, asOf, config }) {
 }
 
 /**
+ * A creator crossing a rung on the way to 200,000.
+ *
+ * The whole card is one question: can they still land it, and what has to
+ * change today. So the numbers are the gap, the rate they are on, and the rate
+ * they need — nothing that does not bear on that.
+ */
+export function graduationEmbed(p, { mention = null, finalPush = false } = {}) {
+  const done = p.done;
+  const urgent = finalPush || (p.daysLeft <= 5 && !done);
+
+  // Always the real gap, never the rung. A card headed "100,000 to go" on a
+  // creator who is 70,042 short is a card a coach has to re-read.
+  const title = done
+    ? `Graduated — 200,000 banked in ${monthName(p.month)}`
+    : `${n(p.remaining)} to go, ${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'} left`;
+
+  const description = done
+    ? `\`${progressBar(p.monthToDate, p.target)}\`\n`
+      + `**${n(p.monthToDate)}** in ${monthName(p.month)} — past the 200,000 graduation target`
+      + (p.daysLeft > 0 ? ` with **${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'}** of the month still to run.` : '.')
+      + `\nDay ${p.day} of their 90.`
+    : `\`${progressBar(p.monthToDate, p.target)}\`\n`
+      + `**${n(p.monthToDate)} / ${n(p.target)}** in ${monthName(p.month)}, `
+      + `**${p.daysLeft} day${p.daysLeft === 1 ? '' : 's'}** left.\n`
+      + (p.requiredPerDay != null
+        ? `They need **${n(p.requiredPerDay)}/day** from here. This week they are doing **${n(p.perDay)}/day**`
+          + (p.stretch != null
+            ? p.stretch <= 1 ? ' — **already at the rate**.'
+              : ` — **${p.stretch.toFixed(1)}x** what they are doing now.`
+            : '.')
+        : 'No days left in the month.');
+
+  const fields = [];
+  if (!done && p.milestone) {
+    fields.push({
+      name: 'Why this landed now',
+      value: `They just came inside **${n(p.milestone.remaining)}** of the target`
+        + (p.alsoCrossed?.length ? `, passing ${p.alsoCrossed.map((m) => n(m.remaining)).join(' and ')} on the way` : '')
+        + '. One card per mark, so this is the only time you will hear about this one.',
+    });
+  }
+  if (!done) {
+    fields.push(
+      { name: 'Doing', value: `${n(p.perDay)}/day`, inline: true },
+      { name: 'Needs', value: `${n(p.requiredPerDay)}/day`, inline: true },
+      { name: 'Finishes on', value: n(p.projected), inline: true },
+    );
+    if (p.diamondsPerHour != null) {
+      const hours = p.requiredPerDay != null && p.diamondsPerHour > 0
+        ? p.requiredPerDay / p.diamondsPerHour : null;
+      fields.push({
+        name: 'What that is in LIVE hours',
+        value: `At their ${n(p.diamondsPerHour)} per LIVE hour, ${
+          hours != null ? `**${hours.toFixed(1)} hours a day** for the rest of the month` : 'unknown'}.`,
+      });
+    }
+  }
+
+  // What happens if this month does not land. A creator on their last attempt
+  // is a different conversation from one with two more goes.
+  fields.push({
+    name: done ? 'What now' : 'If this month does not land',
+    value: done
+      ? `The counter resets on the 1st. Graduation is per month, so next month starts at zero — `
+        + `the job now is holding the level, not chasing it again.`
+      : p.attemptsLeft > 0
+        ? `They have **${p.attemptsLeft} more month${p.attemptsLeft === 1 ? '' : 's'}** inside their 90 days to try again.`
+        : '**This is their last month inside the 90-day window.** There is no next attempt.',
+  });
+
+  if (p.bestMonth > 0 && !done) {
+    fields.push({ name: 'Their best month so far', value: n(p.bestMonth), inline: true });
+  }
+
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      author: authorBlock({ username: p.username, group: p.group }, null),
+      title,
+      description,
+      color: done ? COLOR.recovered : urgent ? COLOR.urgent : COLOR.opportunity,
+      fields,
+      footer: { text: `day ${p.day} of 90 · ${p.group ?? 'no team'}${p.coach ? ` · ${p.coach.split('@')[0]}` : ''}` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/**
  * The daily state of one team, for the coach who runs it.
  *
  * Ordered the way a coach spends their day: what the team is worth this month,
@@ -516,28 +606,6 @@ export function teamSummaryEmbed(summary, { mention = null } = {}) {
     });
   }
 
-  const { chase } = s;
-  if (chase.already.length) {
-    fields.push({
-      name: `Already past 200k — ${chase.already.length}`,
-      value: listOf(chase.already.slice(0, 5), chase.already.length, (r) => line(r, n(r.monthToDate))),
-    });
-  }
-  if (chase.clearing.length) {
-    fields.push({
-      name: `On for 200k — ${chase.clearing.length}`,
-      value: listOf(chase.clearing.slice(0, 5), chase.clearing.length, (r) => line(r,
-        `${n(r.monthToDate)} · finishes on ${n(r.projected)} at this week's rate`)),
-    });
-  }
-  if (chase.short.length) {
-    fields.push({
-      name: `Short of 200k, still reachable — ${chase.short.length}`,
-      value: listOf(chase.short.slice(0, 5), chase.short.length, (r) => line(r,
-        `${n(r.monthToDate)} · needs ${n(r.requiredPerDay)}/day, doing ${n(r.perDay7)}`)),
-    });
-  }
-
   if (s.readyToPush.length) {
     fields.push({
       name: 'Push these now — fan club growing, money has not followed yet',
@@ -558,6 +626,32 @@ export function teamSummaryEmbed(summary, { mention = null } = {}) {
       value: listOf(s.slipping, s.slippingTotal, (r) => line(r,
         `${n(r.monthToDate)}${move(r)} · \`${r.caseId}\``)),
     });
+  }
+
+  // The 200k ladder, when this team has anyone inside their 90 days.
+  const g = s.graduation;
+  if (g && g.total) {
+    const band = (rows, label) => rows.length
+      ? `**${label}** — ${rows.map((r) => `@${r.username} (${n(r.remaining)})`).join(' · ')}`
+      : null;
+    const lines = [
+      g.graduated ? `**${g.graduated} graduated this month.**` : null,
+      band(g.within10k, 'Within 10,000'),
+      band(g.within25k, 'Within 25,000'),
+      band(g.within50k, 'Within 50,000'),
+      band(g.within100k, 'Within 100,000'),
+      g.bestPlaced.length
+        ? `**Best placed of the rest** — ${g.bestPlaced.map((r) =>
+          `@${r.username} (${n(r.monthToDate)}, day ${r.day})`).join(' · ')}`
+        : null,
+      g.further ? `${g.further} of the ${g.total} inside their 90 days are more than 100,000 off.` : null,
+    ].filter(Boolean);
+    if (lines.length) {
+      fields.push({
+        name: `200k graduation — ${s.daysLeft} day${s.daysLeft === 1 ? '' : 's'} left to bank it`,
+        value: lines.join('\n').slice(0, 1024),
+      });
+    }
   }
 
   const f = s.frequency;
@@ -586,7 +680,7 @@ export function teamSummaryEmbed(summary, { mention = null } = {}) {
       description: headline,
       color: m.change == null ? COLOR.neutral : m.change >= 0 ? COLOR.recovered : COLOR.warn,
       fields,
-      footer: { text: `as of ${s.asOf} · ${chase.daysLeft} day${chase.daysLeft === 1 ? '' : 's'} left in the month` },
+      footer: { text: `as of ${s.asOf} · ${s.daysLeft} day${s.daysLeft === 1 ? '' : 's'} left in the month` },
       timestamp: new Date().toISOString(),
     }],
   };
@@ -713,7 +807,7 @@ export function escalationEmbed(cases, asOf) {
  */
 export function overviewEmbed({
   asOf, stats, caseStats, alerts, ramp, spotlight, changes = {}, sent = [], teams = [],
-  health = null, openCases = [], staleness = null, activation = null,
+  health = null, openCases = [], staleness = null, activation = null, graduation = null,
 }) {
   const risk = alerts.reduce((s, a) => s + a.valueAtRisk, 0);
   const byStatus = {};
@@ -771,12 +865,19 @@ export function overviewEmbed({
       inline: true,
     },
     {
-      name: '200k monthly target',
-      value: [
-        `${byStatus.ON_TRACK ?? 0} on track · ${(byStatus.AT_RISK ?? 0) + (byStatus.OFF_TRACK ?? 0)} behind`,
-        `${byStatus.ACHIEVED ?? 0} hit the target`,
-        `${spotlight.length} on the boost list`,
-      ].join('\n'),
+      name: '200k graduation',
+      // Scoped to creators inside their 90 days, which is the only population
+      // the target applies to. `ramp` covers a wider net for the report.
+      value: graduation
+        ? [
+          `${graduation.graduated} graduated of ${graduation.total} in window`,
+          `${graduation.within25k} within 25,000 · ${graduation.within100k} within 100,000`,
+          `${graduation.daysLeft} day${graduation.daysLeft === 1 ? '' : 's'} left to bank it`,
+        ].join('\n')
+        : [
+          `${byStatus.ON_TRACK ?? 0} on track · ${(byStatus.AT_RISK ?? 0) + (byStatus.OFF_TRACK ?? 0)} behind`,
+          `${byStatus.ACHIEVED ?? 0} hit the target`,
+        ].join('\n'),
       inline: true,
     },
   );

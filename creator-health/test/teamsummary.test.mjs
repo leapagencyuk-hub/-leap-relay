@@ -49,25 +49,6 @@ function run(made, cfg = config) {
   return out;
 }
 
-test('a creator who would have to work twice as hard is not "in reach" of 200k', () => {
-  const made = [
-    // 130k banked, needs 7,000/day, doing 5,500 — a push, so it counts.
-    make({ username: 'closeenough', monthToDate: 130000, perDay: 5500 }),
-    // 57k banked, needs 14,300/day, doing 1,900 — seven times their rate.
-    make({ username: 'nochance', monthToDate: 57000, perDay: 1900 }),
-  ];
-  const s = run(made).get('Team Alpha');
-  assert.deepEqual(s.chase.short.map((r) => r.username), ['closeenough'],
-    'listing a creator who cannot get there is how a list stops being read');
-});
-
-test('a creator already clearing it is listed as clearing, not as short', () => {
-  const s = run([make({ username: 'flying', monthToDate: 150000, perDay: 9000 })]).get('Team Alpha');
-  assert.deepEqual(s.chase.clearing.map((r) => r.username), ['flying']);
-  assert.equal(s.chase.short.length, 0);
-  assert.equal(s.chase.daysLeft, 10);
-});
-
 test('a percentage is only quoted on a base that can carry one', () => {
   const tiny = make({ username: 'tiny', monthToDate: 4900, lastToSamePoint: 40 });
   const real = make({ username: 'real', monthToDate: 60000, lastToSamePoint: 40000 });
@@ -108,12 +89,25 @@ test('teams nobody coaches get no summary', () => {
 });
 
 test('every list says what it left out', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-sum-trunc-'));
+  const store = new CaseStore(dir);
   const many = Array.from({ length: 9 }, (_, i) =>
-    make({ username: `c${i}`, monthToDate: 300000 - i * 1000 }));
-  const s = run(many).get('Team Alpha');
-  const past = teamSummaryEmbed(s).embeds[0].fields.find((f) => f.name.startsWith('Already past 200k'));
-  assert.match(past.name, /9$/);
-  assert.match(past.value, /… and 4 more/, 'a heading of nine over a list of five reads as a bug');
+    make({ username: `c${i}`, monthToDate: 60000 - i * 1000, lastToSamePoint: 90000 }));
+  for (const [i, m] of many.entries()) {
+    store.data.cases[`D-${i}`] = {
+      id: `D-${i}`, kind: 'decline', status: 'open', creatorKey: m.creator.key,
+      username: m.creator.username, coach: 'josh@leap', group: 'Team Alpha', openedOn: '2026-09-19',
+    };
+  }
+  const out = teamSummaries({
+    creators: many.map((x) => x.creator),
+    metricsByKey: new Map(many.map((x) => [x.creator.key, x.metrics])),
+    store, asOf: ASOF, config,
+  }).get('Team Alpha');
+  fs.rmSync(dir, { recursive: true, force: true });
+  const field = teamSummaryEmbed(out).embeds[0].fields.find((f) => f.name.startsWith('Slipping'));
+  assert.match(field.name, /9 open$/);
+  assert.match(field.value, /… and 4 more/, 'a heading of nine over a list of five reads as a bug');
 });
 
 test('the summary posts once a day, however often the run is repeated', () => {
