@@ -1063,7 +1063,7 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
   for (const r of coaches) {
     const line = (label, value) => `${label.padEnd(26)}${value}`;
     fields.push({
-      name: `${r.name}${r.tier ? `  ·  ${Math.round(r.tier * 100)}% tier unlocked` : ''}`,
+      name: r.name,
       value: '```\n'
         + [
           ...(r.base ? [line('Extra revenue (fixed)', gbp(r.base))] : []),
@@ -1079,8 +1079,8 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
         + '\n```'
         + `\n**${r.qualifying}** of your creators are past ${n(rev.floor)} diamonds this month `
         + `(${n(r.qualifyingDiamonds)} between them), which is what the alpha group task bonus pays on.`
-        + `\nHitting your Backstage goals takes that share from 10% to 20% — it doubles, to `
-        + `~${gbp(r.alphaWithGoals)}.`
+        + `\nEveryone is on **10%**. Hitting your goals on Backstage unlocks **a further 10%**, `
+        + `which would take that bonus to ~${gbp(r.alphaWithGoals)}.`
         + `\nThe manager diamond share is **not in either figure** — it is not something this data `
         + `can work out, so treat both as a floor rather than the whole.`,
     });

@@ -7,7 +7,7 @@ const config = {
   revenue: {
     enabled: true, baseWage: 0, baseWageByCoach: { 'josh@leap': 350, 'amy@leap': 100 },
     alphaFloorDiamonds: 100000, incrementalPerDiamondUsd: 0.0001, goalsMultiplier: 2,
-    usdToGbp: 0.754074, recruitTiers: [[10, 0.20], [5, 0.15], [1, 0.10]],
+    usdToGbp: 0.754074,
   },
   leaped: { fee: 10, currency: 'GBP' },
   coaches: { names: { 'josh@leap': 'Sur3shot' }, excludeFromBoards: ['amy@leap'] },
@@ -58,21 +58,6 @@ test('the manager diamond share is left out rather than invented', () => {
   assert.match(block[0].value, /floor, not a total/);
 });
 
-test('the unlocked tier comes from recruits in the month', () => {
-  const at = (n) => coachRevenue({
-    creators: Array.from({ length: Math.max(n, 1) }, (_, i) =>
-      who(`c${i}`, { joinDate: i < n ? '2026-09-02' : '2026-01-01' })),
-    asOf: ASOF, config,
-  }).rows[0].tier;
-  assert.equal(at(0), null, 'no recruits, no tier');
-  assert.equal(at(1), 0.10);
-  assert.equal(at(4), 0.10);
-  assert.equal(at(5), 0.15);
-  assert.equal(at(9), 0.15);
-  assert.equal(at(10), 0.20);
-  assert.equal(at(40), 0.20);
-});
-
 test('each coach gets their own fixed amount, and nobody gets an invented one', () => {
   const rev = coachRevenue({
     creators: [
@@ -100,7 +85,8 @@ test('Backstage goals double the alpha share, and sit on a second line', () => {
   const block = revenueFields(rev, rev.rows, { config })[1].value;
   assert.match(block, /ACCOUNTED FOR SO FAR/);
   assert.match(block, /with Backstage goals/);
-  assert.match(block, /from 10% to 20%/);
+  assert.match(block, /Everyone is on \*\*10%\*\*/);
+  assert.match(block, /a further 10%/);
 });
 
 test('all-time onboarded counts creators who have since left', () => {

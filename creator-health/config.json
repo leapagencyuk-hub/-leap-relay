@@ -192,25 +192,10 @@
     "alphaFloorDiamonds": 100000,
     "_incrementalPerDiamondUsd": "The 10% base. Verified against the wages sheet: diamonds x $0.01 x a 1% share, one row reading 1,006,213 diamonds to GBP 75.8758945.",
     "incrementalPerDiamondUsd": 0.0001,
-    "_goalsMultiplier": "Hitting Backstage goals takes the share from 10% to 20%, so it doubles. Shown as a second line, never folded into the figure, because it is not earned yet.",
+    "_goalsMultiplier": "Everyone is on 10%. Hitting goals on Backstage unlocks a further 10%, so the share doubles. Shown as a second line, never folded in, because it is not earned yet.",
     "goalsMultiplier": 2,
     "_usdToGbp": "The finance sheet's own FX cell.",
-    "usdToGbp": 0.754074,
-    "_recruitTiers": "Unlocked share by recruits in the month, highest first: 10+ gives 20%, 5+ gives 15%, 1-2 gives 10%.",
-    "recruitTiers": [
-      [
-        10,
-        0.2
-      ],
-      [
-        5,
-        0.15
-      ],
-      [
-        1,
-        0.1
-      ]
-    ]
+    "usdToGbp": 0.754074
   },
   "digest": {
     "maxAlertsPerCoach": 12,

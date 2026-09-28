@@ -24,16 +24,16 @@
 //                           £75.8758945 where this gives £75.8759.
 //
 //   manager diamond %       NOT REPRODUCIBLE from the creator export. It is a
-//                           share at the coach's unlocked tier, but of a base
-//                           this data does not contain: the ratio against the
-//                           wages sheet's own figures comes out at 10% for one
-//                           coach and 26% for another on the same month, so it
-//                           is not a percentage of anything here. The card
-//                           shows the unlocked tier and says the figure is
-//                           missing rather than inventing one.
+//                           share of a base this data does not contain: the
+//                           ratio against the wages sheet's own figures comes
+//                           out at 10% for one coach and 26% for another on the
+//                           same month, so it is not a percentage of anything
+//                           here. The card says the figure is missing rather
+//                           than inventing one.
 //
-// The tier is unlocked by recruits, per the sheet: 1-2 gives 10%, 5+ gives 15%,
-// 10+ gives 20%.
+// Everybody is on the same 10% share, with a further 10% unlocked by hitting
+// goals on Backstage. The sheet also carries a recruiter tier table, which is a
+// different thing and is deliberately not read here.
 import { groupKey } from './notify.mjs';
 import { monthMtd } from './policy.mjs';
 import { coachName, offTheBoards } from './coaches.mjs';
@@ -57,8 +57,7 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const defaultBase = cfg.baseWage ?? 0;
   const perCoachBase = cfg.baseWageByCoach ?? {};
   const floor = cfg.alphaFloorDiamonds ?? 100000;
-  const tiers = cfg.recruitTiers ?? [[10, 0.20], [5, 0.15], [1, 0.10]];
-  // Hitting Backstage goals takes the share from 10% to 20%, so it doubles.
+  // Everyone is on 10%; hitting Backstage goals unlocks a further 10%.
   const goalsMultiplier = cfg.goalsMultiplier ?? 2;
   const month = asOf.slice(0, 7);
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
@@ -102,7 +101,6 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     // Everything this data can actually account for. The manager diamond share
     // is deliberately absent rather than guessed at, so the total is a floor.
     const accountedFor = base + recruitBonus + alphaBonus;
-    const tier = tiers.find(([n]) => e.recruited >= n)?.[1] ?? null;
     return {
       ...e,
       teams: [...e.teams],
@@ -113,7 +111,6 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
       alphaBonus,
       alphaWithGoals,
       base,
-      tier,
       accountedFor,
       // Not earned yet, so it is a second line and never the figure.
       accountedForWithGoals: accountedFor + (alphaWithGoals - alphaBonus),
@@ -123,7 +120,7 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   }).sort((a, b) => b.accountedFor - a.accountedFor);
 
   return {
-    month, asOf, currency, fee, perDiamond, usdToGbp, floor, tiers, goalsMultiplier,
+    month, asOf, currency, fee, perDiamond, usdToGbp, floor, goalsMultiplier,
     rows,
     byCoach: new Map(rows.map((r) => [r.coach, r])),
     // The recruitment standing, which is the "all staff" board on the card. It
