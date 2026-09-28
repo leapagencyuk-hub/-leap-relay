@@ -96,3 +96,16 @@ test('a mark with no id still matches on the name, ignoring case', () => {
   assert.equal(out.added.length, 1);
   assert.equal(out.added[0].creatorKey, 'id:4');
 });
+
+test('a Manage creators export is told apart from the daily one', async () => {
+  const { isManageExport } = await import('../lib/leapedimport.mjs');
+  const U = '/root/.claude/uploads/3378091d-2cac-5574-a51b-2f4baa3af4e6/';
+  const fs = await import('node:fs');
+  const manage = `${U}4d8e4ce3-Manage_creators_2026_09_28_15_07_UTC0.xlsx`;
+  const daily = `${U}b5d60edf-Creator_data_2026_09_21_08_18_UTC0.xlsx`;
+  // Skipped where the fixtures are not present, so the suite still runs alone.
+  if (!fs.existsSync(manage) || !fs.existsSync(daily)) return;
+  assert.equal(isManageExport(manage), true);
+  assert.equal(isManageExport(daily), false, 'the daily export must not be read as leap marks');
+  assert.equal(isManageExport('/nope/missing.xlsx'), false);
+});

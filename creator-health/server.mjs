@@ -37,6 +37,7 @@ import { isOpen } from './lib/cases.mjs';
 import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 import { preflight } from './lib/dispatch.mjs';
 import { redoToday, redoSummary } from './lib/redo.mjs';
+import { isManageExport, readManualLeaps, importManualLeaps, importSummary } from './lib/leapedimport.mjs';
 import { Discord, declineEmbed, activationEmbed } from './lib/discord.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -120,6 +121,32 @@ async function handleUpload(req, res, url) {
   const tmp = path.join(os.tmpdir(), `creator-upload-${Date.now()}.xlsx`);
   fs.writeFileSync(tmp, fileBuf);
   try {
+    // Two different exports come off Backstage and they are easy to confuse.
+    // Rather than make somebody pick the right button, work out which one this
+    // is and do the right thing with it.
+    if (isManageExport(tmp)) {
+      const { exportedAt, marks, scanned } = readManualLeaps(tmp);
+      const series = new Store(config.dataDir).readSeries();
+      const store = new CaseStore(config.dataDir);
+      const out = importManualLeaps({
+        marks, creators: Object.values(series.creators), store, exportedAt,
+      });
+      store.save();
+      return json(res, 200, {
+        kind: 'manage',
+        applied: true,
+        exportedAt,
+        scanned,
+        marked: marks.length,
+        added: out.added.length,
+        corrected: out.corrected.length,
+        correctedValue: out.corrected.reduce((n, r) => n + (r.wasCredited?.fee ?? 0), 0),
+        already: out.already.length,
+        unmatched: out.unmatched,
+        message: importSummary(out),
+      });
+    }
+
     const result = ingestFile(tmp, config, { force: url.searchParams.get('force') === '1' });
     if (!result.applied) {
       return json(res, 200, { applied: false, asOf: result.asOf, reason: result.reason });

@@ -47,6 +47,24 @@ import { readSheetRows } from './xlsx.mjs';
 const LEAPED_NOTE = /^leap(ed)?$/i;
 
 /**
+ * Is this a Manage creators export rather than the daily Creator data one?
+ *
+ * The two are both .xlsx exports of the same network and easy to confuse. This
+ * one has a Notes column and puts its header on the second row, because the
+ * first carries the export timestamp. Sniffing it means somebody can drop
+ * either file on the same page and get the right thing done with it.
+ */
+export function isManageExport(filePath) {
+  try {
+    const rows = readSheetRows(filePath);
+    const header = rows.findIndex((r) => r?.includes("Creator's username"));
+    return header >= 0 && rows[header].includes('Notes');
+  } catch {
+    return false;
+  }
+}
+
+/**
  * Read the manual marks out of a Manage creators export.
  *
  * That export is not the Creator data one: its header sits on the second row

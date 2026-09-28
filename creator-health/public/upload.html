@@ -66,7 +66,7 @@
   <div class="panel">
     <div id="drop" tabindex="0" role="button" aria-label="Choose or drop the export file">
       <strong>Drop the .xlsx here</strong>
-      <span>or click to choose &middot; one file a day</span>
+      <span>Creator data, or a Manage creators export</span>
       <input type="file" id="file" accept=".xlsx">
     </div>
     <div class="bar" id="bar"><i></i></div>
@@ -158,6 +158,22 @@ function report(data) {
   if (data.applied === false) {
     result.innerHTML = `<h2>Already had this day</h2>${row('Data period ends', esc(data.asOf))}`
       + `<p class="muted" style="margin:10px 0 0">${esc(data.reason)} — nothing was double counted.</p>`;
+    return;
+  }
+  if (data.kind === 'manage') {
+    result.innerHTML = `<h2>LEAP notes read in</h2>`
+      + row('Export taken', esc(data.exportedAt))
+      + row('Marked LEAP', `${n(data.marked)} of ${n(data.scanned)}`)
+      + row('Newly on the books', n(data.added))
+      + (data.corrected
+        ? row('Taken off this month\'s bill', `${n(data.corrected)} (£${Number(data.correctedValue).toFixed(2)})`, 'ok')
+        : '')
+      + row('Already correct', n(data.already))
+      + ((data.unmatched ?? []).length
+        ? row('Not in the creator data', `${n(data.unmatched.length)} — they have left`, 'muted')
+        : '')
+      + `<p class="muted" style="margin:10px 0 0">A leap happens once per creator. Anyone marked LEAP is `
+      + `on the books as already leaped, so they can never leap again and no month bills for them.</p>`;
     return;
   }
   let html = `<h2>Uploaded</h2>`
