@@ -571,6 +571,87 @@ export function graduationEmbed(p, { mention = null, finalPush = false } = {}) {
 }
 
 /**
+ * The monthly new-creator leaderboard.
+ *
+ * Posted every day, so the movement has to be the news — a table of the same
+ * totals as yesterday is not worth a notification. Rank change carries that,
+ * and "+3 today" says who is actually working this week rather than who had a
+ * good first of the month.
+ */
+export function leaderboardEmbed(b, { config = {} } = {}) {
+  const monthName = new Date(`${b.month}-01T00:00:00Z`)
+    .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
+
+  // Movement, in the only two characters that read at a glance.
+  const arrow = (r) => {
+    if (r.isNew) return 'new';
+    if (r.move == null || r.move === 0) return '  —';
+    return r.move > 0 ? `+${r.move}` : String(r.move);
+  };
+  const medal = (rank) => (rank <= 3 ? ['1st', '2nd', '3rd'][rank - 1] : `${rank}th`);
+
+  const top = b.rows.slice(0, config.leaderboard?.show ?? 10);
+  const board = top.map((r) => {
+    const gained = r.gained > 0 ? ` (+${r.gained} today)` : '';
+    return `\`${medal(r.rank).padStart(4)}  ${arrow(r).padStart(3)}\`  **${r.name}** — `
+      + `**${r.count}** signed · ${r.started} started · ${r.earning} earning${gained}`;
+  }).join('\n');
+
+  const fields = [{
+    name: `Recruits this month — ${b.total} across ${b.rows.length} coach${b.rows.length === 1 ? '' : 'es'}`,
+    value: (board || 'Nobody has signed anyone yet this month.').slice(0, 1024),
+  }];
+
+  if (b.standout) {
+    fields.push({
+      name: 'Best signing of the month so far',
+      value: `**@${b.standout.username}** — ${n(b.standout.diamonds)} diamonds in ${b.standout.liveDays} LIVE days`
+        + `\nSigned ${b.standout.joinDate} by **${(b.standout.coach ?? 'unassigned').split('@')[0]}**`
+        + `${b.standout.group ? ` · ${b.standout.group}` : ''}`,
+    });
+  }
+
+  if (b.teams.length > 1) {
+    fields.push({
+      name: 'By team',
+      value: b.teams.slice(0, 10).map((t) =>
+        `\`${String(t.count).padStart(3)}\` ${t.team} · ${t.started} started`).join('\n').slice(0, 1024),
+    });
+  }
+
+  // The number that stops this becoming a race to sign anyone with a pulse.
+  const rate = b.startedRate == null ? '—' : `${Math.round(b.startedRate * 100)}%`;
+  fields.push({
+    name: 'Signed is not started',
+    value: `**${b.started} of ${b.total}** (${rate}) of this month's recruits have been LIVE at least once.`
+      + (b.notStarted.length
+        ? `\n**${b.notStarted.length}** have not. They are in the inactive channel, and they count against `
+          + 'the graduation rate whether they start or not.'
+        : '\nEvery one of them has started.'),
+  });
+
+  const pace = b.change != null
+    ? `**${b.total}** signed so far, against **${n(b.lastToSamePoint)}** by day ${b.dayOfMonth} last month `
+      + `(**${pct(b.change)}**).`
+    : `**${b.total}** signed so far this month.`;
+  const landing = b.projected == null ? '' : b.projectedFrom === 'last month'
+    ? `\nLast month finished on **${n(b.lastMonthTotal)}**; on the same shape this one lands near **${n(b.projected)}**, `
+      + `with **${b.daysLeft}** day${b.daysLeft === 1 ? '' : 's'} to go.`
+    : `\nOn this pace the month finishes on **${n(b.projected)}**, with **${b.daysLeft}** day${b.daysLeft === 1 ? '' : 's'} to go.`;
+
+  return {
+    embeds: [{
+      title: `New creator leaderboard — ${monthName}`,
+      description: `${pace}${landing}`,
+      color: b.change == null ? COLOR.opportunity : b.change >= 0 ? COLOR.recovered : COLOR.warn,
+      fields,
+      footer: { text: `${b.asOf} · resets on the 1st` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/**
  * One creator about to miss the activeness gate.
  *
  * The gate is a cliff: 15 LIVE hours across more than 7 days in the calendar

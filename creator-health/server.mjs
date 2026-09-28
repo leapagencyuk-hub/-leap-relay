@@ -260,6 +260,7 @@ async function handleSelfTest(req, res, url) {
       teamSummaries: Object.values(discord.teamSummaries ?? {}).filter((g) => g.webhook || g.channelId).length,
       activenessOverview: discord.activenessOverviewWebhook ? 'set' : 'MISSING',
       activenessPings: discord.activenessPingWebhook ? 'set' : 'MISSING',
+      leaderboard: discord.leaderboardWebhook ? 'set' : 'MISSING',
       teamsResolved: teams.filter((t) => t.destination !== 'NONE').length,
       teamsMissing: teams.filter((t) => t.destination === 'NONE').map((t) => t.team),
     },

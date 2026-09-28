@@ -13,6 +13,9 @@
     "activenessOverviewChannelId": "1554079367175340112",
     "activenessPingWebhook": "env:DISCORD_WEBHOOK_ACTIVENESS_PINGS",
     "activenessPingChannelId": "1554079392886693929",
+    "_leaderboard": "The monthly new-creator leaderboard, posted once a day.",
+    "leaderboardWebhook": "env:DISCORD_WEBHOOK_LEADERBOARD",
+    "leaderboardChannelId": "1554107268151386142",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",

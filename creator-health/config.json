@@ -121,6 +121,12 @@
     "minNewCreatorsPerQuarter": 60,
     "minDiamondsPerQuarter": 500000
   },
+  "leaderboard": {
+    "_note": "Monthly new-creator recruitment board, credited to the creator's Creator Network manager \u2014 the export has no separate recruiter column, and the manager is the person who has to make the signing work.",
+    "enabled": true,
+    "_show": "Coaches listed. Everyone is counted either way; this is only how many rows the card prints.",
+    "show": 10
+  },
   "digest": {
     "maxAlertsPerCoach": 12,
     "maxRampRowsPerCoach": 10,

@@ -124,6 +124,8 @@ export function loadDiscordConfig(raw) {
     activenessOverviewChannelId: channelOrNull(fromEnv(raw.activenessOverviewChannelId)),
     activenessPingWebhook: webhookOrNull(fromEnv(raw.activenessPingWebhook)),
     activenessPingChannelId: channelOrNull(fromEnv(raw.activenessPingChannelId)),
+    leaderboardWebhook: webhookOrNull(fromEnv(raw.leaderboardWebhook)),
+    leaderboardChannelId: channelOrNull(fromEnv(raw.leaderboardChannelId)),
     coaches,
   };
 }

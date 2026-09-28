@@ -7,13 +7,14 @@ import {
   Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
   teamSummaryEmbed, graduationEmbed,
-  activenessPingEmbed, activenessOverviewEmbed, policyEmbed,
+  activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed,
 } from './discord.mjs';
 import { campaignGap, concentrationRisk, programmesDue, rosterDue, uploadStaleness } from './programmes.mjs';
 import { teamSummaries, teamSummaryDue } from './teamsummary.mjs';
 import { graduationEvents } from './graduation.mjs';
 import { activenessRows, activenessPings, recordPings, activenessSummary, activenessDue } from './activeness.mjs';
 import { policyStanding } from './policy.mjs';
+import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -359,6 +360,23 @@ export async function dispatch({
           && (metricsByKey.get(c.key)?.curr28.diamonds ?? 0) > 0).length },
       }));
       if (!dryRun) store.data.lastProgrammesOn = asOf;
+    }
+  }
+
+  // --- the monthly recruitment board ----------------------------------------
+  // Daily, because the movement is the point: a board that only changes when
+  // somebody remembers to look is not a competition.
+  const boardRoute = discordConfig.leaderboardWebhook
+    ? { webhook: discordConfig.leaderboardWebhook }
+    : (discordConfig.leaderboardChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.leaderboardChannelId } : null;
+  if (boardRoute && creators.length && leaderboardDue(config, store, asOf)) {
+    const board = leaderboard({ creators, asOf, store, config });
+    if (board.total || board.lastMonthTotal) {
+      await send('leaderboard', '(leaderboard)', boardRoute, leaderboardEmbed(board, { config }));
+      // Recorded after rendering, so today's card shows movement against
+      // yesterday rather than against itself.
+      if (!dryRun) { recordBoard(store, board); store.data.lastLeaderboardOn = asOf; }
     }
   }
 
