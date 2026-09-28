@@ -8,6 +8,7 @@
 //   node cli.mjs rebuild                        re-derive the series
 //   node cli.mjs status                         what is stored
 //   node cli.mjs run [--dry] [--force-overview] [--again=leaderboard,growth]
+//   node cli.mjs redo                       post every daily card again, fresh
 //   node cli.mjs graduation [--limit N]      the 200k chase as it stands
 //   node cli.mjs activeness [--limit N]      who is about to miss the 15h/7d gate
 //   node cli.mjs policy                      where the network stands on the 2026 rules
@@ -40,6 +41,7 @@ import { loadRoutes } from './lib/notify.mjs';
 import { coverage, routeFor } from './lib/dispatch.mjs';
 import { groupKey } from './lib/notify.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
+import { redoToday, redoSummary } from './lib/redo.mjs';
 import { graduationEvents } from './lib/graduation.mjs';
 import { activenessRows, activenessSummary } from './lib/activeness.mjs';
 import { policyStanding } from './lib/policy.mjs';
@@ -228,6 +230,15 @@ async function cmdRun() {
       console.log(JSON.stringify(p.payload, null, 2));
     }
   }
+}
+
+/** Post every daily card again with the current numbers. */
+async function cmdRedo() {
+  const r = await redoToday(config, configPath, { asOf: option('as-of') });
+  console.log(redoSummary(r));
+  for (const [label, count] of r.byLabel) console.log(`  ${String(count).padStart(3)}  ${label}`);
+  for (const f of r.failed) console.log(`  FAILED  ${f.label} ${f.coach}: ${f.error}`);
+  if (r.warning) console.log(`  ${r.warning}`);
 }
 
 function cmdCases() {
@@ -734,7 +745,7 @@ function cmdClose() {
 const commands = {
   ingest: cmdIngest, report: cmdReport, coach: cmdCoach,
   creator: cmdCreator, rebuild: cmdRebuild, status: cmdStatus,
-  run: cmdRun, cases: cmdCases, case: cmdCase,
+  run: cmdRun, redo: cmdRedo, cases: cmdCases, case: cmdCase,
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,
   'discord-env': cmdDiscordEnv,

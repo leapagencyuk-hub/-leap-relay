@@ -170,6 +170,24 @@ export function parseCustomId(raw) {
   return ns === 'ch' && action && caseId ? { action, caseId } : null;
 }
 
+/**
+ * The redo control for the management overview.
+ *
+ * Two steps on purpose. This puts about twenty cards into fourteen channels,
+ * and one mis-click re-pings every coach, so the first press only opens a
+ * confirmation nobody else can see.
+ */
+export function redoButton({ enabled = true } = {}) {
+  if (!enabled) return [];
+  return [{
+    type: 1,
+    components: [{
+      type: 2, style: BUTTON.SECONDARY, label: 'Redo today',
+      custom_id: customId('redo', 'today'),
+    }],
+  }];
+}
+
 export function caseButtons(caseRecord, { enabled = true } = {}) {
   // Until the interactions endpoint is live, Discord answers every click with
   // "This interaction failed" — which reads as a broken tool. So buttons are

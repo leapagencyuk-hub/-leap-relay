@@ -36,6 +36,7 @@ import { computeMetrics } from './lib/metrics.mjs';
 import { isOpen } from './lib/cases.mjs';
 import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 import { preflight } from './lib/dispatch.mjs';
+import { redoToday, redoSummary } from './lib/redo.mjs';
 import { Discord, declineEmbed, activationEmbed } from './lib/discord.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -214,7 +215,20 @@ async function handleDiscordInteractions(req, res) {
   }
 
   try {
-    const reply = await handleInteraction(interaction, { config });
+    // `followUp` edits the deferred reply once slow work finishes. Discord
+    // wants an answer within three seconds and a redo takes longer, so the
+    // handler defers and the result arrives here.
+    const followUp = async (content) => {
+      const app = interaction.application_id;
+      const tok = interaction.token;
+      if (!app || !tok) return;
+      await fetch(`https://discord.com/api/v10/webhooks/${app}/${tok}/messages/@original`, {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ content, components: [] }),
+      }).catch(() => {});
+    };
+    const reply = await handleInteraction(interaction, { config, configPath, followUp });
     return json(res, 200, reply);
   } catch (err) {
     // Never leave Discord waiting: an error here still gets a valid response,
@@ -350,6 +364,18 @@ async function handleSelfTest(req, res, url) {
   return json(res, 200, result);
 }
 
+/**
+ * Repost today, fresh.
+ *
+ * POST only, deliberately: this puts about twenty cards into fourteen channels
+ * and a GET would let a link preview or a browser prefetch fire it.
+ */
+async function handleRedo(req, res, url) {
+  if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+  const summary = await redoToday(config, configPath, { asOf: url.searchParams.get('as-of') });
+  return json(res, 200, { ...summary, message: redoSummary(summary) });
+}
+
 async function handleRun(req, res, url) {
   if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
   const dryRun = url.searchParams.get('dry') === '1';
@@ -384,6 +410,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && route === '/upload') return await handleUpload(req, res, url);
     if (req.method === 'POST' && route === '/notify') return await handleNotify(req, res, url);
     if (req.method === 'POST' && route === '/run') return await handleRun(req, res, url);
+    if (req.method === 'POST' && route === '/redo') return await handleRedo(req, res, url);
     if (route === '/selftest') return await handleSelfTest(req, res, url);  // GET or POST
     if (req.method === 'POST' && route === '/discord/interactions') {
       return await handleDiscordInteractions(req, res);

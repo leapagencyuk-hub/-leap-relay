@@ -1,0 +1,87 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { redoSummary } from '../lib/redo.mjs';
+import { handleInteraction, INTERACTION, RESPONSE, COMMANDS } from '../lib/interactions.mjs';
+import { redoButton, parseCustomId } from '../lib/discord.mjs';
+import { supersedes } from '../lib/dispatch.mjs';
+
+const config = { dataDir: '/tmp/redo-test-does-not-need-to-exist' };
+
+test('the redo button carries no case, and parses', () => {
+  const rows = redoButton();
+  const id = rows[0].components[0].custom_id;
+  assert.equal(id, 'ch:redo:today');
+  // It has to survive parseCustomId, which every component goes through.
+  assert.deepEqual(parseCustomId(id), { action: 'redo', caseId: 'today' });
+});
+
+test('buttons are withheld when nothing is listening for them', () => {
+  // An unanswered button reads "This interaction failed", which looks like a
+  // broken tool rather than a missing setting.
+  assert.deepEqual(redoButton({ enabled: false }), []);
+});
+
+test('pressing redo asks first, and does not post anything yet', async () => {
+  const reply = await handleInteraction({
+    type: INTERACTION.COMPONENT,
+    data: { custom_id: 'ch:redo:today' },
+    member: { user: { username: 'slow' } },
+  }, { config });
+
+  assert.equal(reply.type, RESPONSE.MESSAGE);
+  assert.equal(reply.data.flags, 64, 'only the person who pressed it sees this');
+  assert.match(reply.data.content, /Repost every daily card/);
+  assert.match(reply.data.content, /Creator cards, graduations and leaps are left alone/);
+  const confirm = reply.data.components[0].components[0];
+  assert.equal(confirm.custom_id, 'ch:redogo:today');
+  assert.equal(confirm.style, 4, 'the confirm is styled as the destructive one');
+});
+
+test('/redo asks the same question the button does', async () => {
+  assert.ok(COMMANDS.some((c) => c.name === 'redo'), 'the command is registered');
+  const reply = await handleInteraction({
+    type: INTERACTION.COMMAND,
+    data: { name: 'redo' },
+    member: { user: { username: 'slow' } },
+  }, { config });
+  assert.equal(reply.data.flags, 64);
+  assert.match(reply.data.content, /Repost every daily card/);
+});
+
+test('confirming without a config path says so instead of half-running', async () => {
+  const reply = await handleInteraction({
+    type: INTERACTION.COMPONENT,
+    data: { custom_id: 'ch:redogo:today' },
+    member: { user: { username: 'slow' } },
+  }, { config });
+  assert.equal(reply.data.flags, 64);
+  assert.match(reply.data.content, /did not pass its config path/);
+});
+
+test('a redo replaces the current period, and never an older one', () => {
+  // This is the guard that stops a redo eating last month's closing board: the
+  // boards replace within a month only, and the final board of each month is
+  // the result and survives.
+  const prev = { id: '111', period: '2026-09' };
+  assert.equal(supersedes(prev, '2026-09', '222'), true, 'same month, replace');
+  assert.equal(supersedes(prev, '2026-10', '222'), false, 'new month, keep September');
+  // A card with no period at all is always today's view and always replaced.
+  assert.equal(supersedes({ id: '111', period: null }, null, '222'), true);
+  // And nothing is deleted when the repost produced no new message.
+  assert.equal(supersedes(prev, '2026-09', undefined), false);
+});
+
+test('the summary counts both directions and reads as English', () => {
+  assert.equal(
+    redoSummary({ asOf: '2026-09-20', posted: 19, replaced: 17, failed: [], byLabel: [] }),
+    '19 cards reposted for 2026-09-20, 17 older copies removed.');
+  assert.equal(
+    redoSummary({ asOf: '2026-09-20', posted: 1, replaced: 1, failed: [], byLabel: [] }),
+    '1 card reposted for 2026-09-20, 1 older copy removed.');
+  assert.match(
+    redoSummary({ asOf: '2026-09-20', posted: 18, replaced: 17, failed: [{ label: 'x' }], byLabel: [] }),
+    /1 failed\.$/);
+  assert.match(
+    redoSummary({ skipped: 'no webhook URLs are set', asOf: '2026-09-20', posted: 0, replaced: 0, failed: [] }),
+    /^Nothing posted — no webhook URLs are set$/);
+});

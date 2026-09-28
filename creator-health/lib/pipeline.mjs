@@ -184,7 +184,7 @@ export async function runDaily(config, configPath, { asOf = null, dryRun = false
 
   const routes = loadRoutes(path.dirname(configPath));
   const discordConfig = routes.discord;
-  let delivery = { sent: [], previews: [] };
+  let delivery = { sent: [], previews: [], replaced: [] };
   if (discordConfig.enabled) {
     delivery = await dispatch({
       asOf: result.asOf,

@@ -8,6 +8,7 @@
 // close.
 import crypto from 'node:crypto';
 import { parseCustomId } from './discord.mjs';
+import { redoToday, redoSummary } from './redo.mjs';
 import { CaseStore, acknowledge, recordAction, snooze, resolve, STATUS } from './cases.mjs';
 import { PLAYBOOK } from './playbook.mjs';
 import { Store } from './store.mjs';
@@ -162,6 +163,12 @@ export async function handleInteraction(interaction, context) {
   if (interaction.type === INTERACTION.COMPONENT) {
     const parsed = parseCustomId(interaction.data?.custom_id);
     if (!parsed) return ephemeral('That button is from an older version of the bot.');
+
+    // The redo controls carry no case, so they are answered before the lookup
+    // below — which would otherwise reject them as a case that does not exist.
+    if (parsed.action === 'redo') return redoConfirm();
+    if (parsed.action === 'redogo') return await runRedo(context);
+
     const c = store.get(parsed.caseId);
     if (!c) return ephemeral(`Case \`${parsed.caseId}\` no longer exists.`);
 
@@ -229,12 +236,56 @@ export async function handleInteraction(interaction, context) {
   return ephemeral('Unsupported interaction.');
 }
 
+// --- redo --------------------------------------------------------------------
+
+/**
+ * Step one of two. Nobody else sees this, so a mis-click costs one click back.
+ */
+function redoConfirm() {
+  return {
+    type: RESPONSE.MESSAGE,
+    data: {
+      content: 'Repost every daily card with the current numbers, and remove the copy before it?'
+        + '\nCreator cards, graduations and leaps are left alone.',
+      flags: EPHEMERAL,
+      components: [{
+        type: 1,
+        components: [{ type: 2, style: 4, label: 'Yes, redo today', custom_id: 'ch:redogo:today' }],
+      }],
+    },
+  };
+}
+
+/**
+ * Step two: actually do it.
+ *
+ * Discord wants an answer within three seconds and a redo takes longer than
+ * that, so the reply is deferred and the result edited in when it lands. The
+ * caller is given `followUp` to do that editing; without one the work still
+ * runs and only the acknowledgement is lost.
+ */
+async function runRedo(context) {
+  const { config, configPath, followUp } = context;
+  if (!configPath) return ephemeral('Redo is not available here — the server did not pass its config path.');
+
+  const finish = redoToday(config, configPath)
+    .then((r) => redoSummary(r))
+    .catch((err) => `Redo failed — ${err.message}`);
+
+  if (typeof followUp === 'function') {
+    finish.then((content) => followUp(content)).catch(() => {});
+    return { type: RESPONSE.DEFERRED_MESSAGE, data: { flags: EPHEMERAL } };
+  }
+  return ephemeral(await finish);
+}
+
 // --- slash commands ----------------------------------------------------------
 
 const optionValue = (interaction, name) =>
   (interaction.data?.options ?? []).find((o) => o.name === name)?.value ?? null;
 
 async function handleCommand(interaction, context) {
+  if (interaction.data?.name === 'redo') return redoConfirm();
   const { config, store, actor } = context;
   const name = interaction.data?.name;
 
@@ -303,5 +354,9 @@ export const COMMANDS = [
     name: 'creator',
     description: 'Look up one creator\'s current numbers',
     options: [{ name: 'username', description: 'TikTok username, with or without the @', type: 3, required: true }],
+  },
+  {
+    name: 'redo',
+    description: 'Post every daily card again with the current numbers',
   },
 ];

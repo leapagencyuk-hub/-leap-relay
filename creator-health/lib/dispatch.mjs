@@ -9,6 +9,7 @@ import {
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
   leapedEmbed, leapedOverviewEmbed,
+  redoButton,
 } from './discord.mjs';
 import { campaignGap, concentrationRisk, programmesDue, rosterDue, uploadStaleness } from './programmes.mjs';
 import { teamSummaries, teamSummaryDue } from './teamsummary.mjs';
@@ -217,6 +218,10 @@ export async function dispatch({
   const spotlightByKey = new Map(spotlight.map((r) => [r.creator.key, r]));
   const sent = [];
   const previews = [];
+  // Recurring cards whose previous copy was removed as this one went up. The
+  // redo button reports this back, so somebody pressing it can see the old
+  // cards actually went rather than hoping they did.
+  const replaced = [];
 
   const send = async (label, coach, route, payload, caseRecord = null) => {
     if (dryRun) {
@@ -262,7 +267,8 @@ export async function dispatch({
     }
     if (supersedes(prev, period, res.body?.id) && route.webhook) {
       const gone = await client.deleteWebhookMessage(route.webhook, prev.id);
-      if (!gone.ok) sent.push({ label: `${label}-cleanup`, coach: who, ok: false, error: gone.error });
+      if (gone.ok) replaced.push({ label, coach: who, slot, id: prev.id });
+      else sent.push({ label: `${label}-cleanup`, coach: who, ok: false, error: gone.error });
     }
     return res;
   };
@@ -565,6 +571,10 @@ export async function dispatch({
         daysLeft: grad.rows[0]?.daysLeft ?? 0,
       } : null,
     });
+    // The redo control rides the management overview, where the directors are,
+    // and only when the interactions endpoint is actually listening — an
+    // unanswered button reads as a broken tool.
+    if (buttons) card.components = redoButton({ enabled: true });
     await (replaces('overview')
       ? replaceLast('overview', '(overview)', summaryRoute, card, 'overview')
       : send('overview', '(overview)', summaryRoute, card));
@@ -574,5 +584,5 @@ export async function dispatch({
   }
 
   if (!dryRun) store.save();
-  return { sent, previews, warning: check.warning };
+  return { sent, previews, replaced, warning: check.warning };
 }
