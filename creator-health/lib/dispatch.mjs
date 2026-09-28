@@ -88,6 +88,21 @@ async function deliver(client, route, payload, label = '') {
   };
 }
 
+/**
+ * Whether the message we posted last replaces the one still in the channel.
+ *
+ * Only within the same period. A monthly board's last post is the final
+ * standings, and deleting it on the 1st to make room for a board showing nobody
+ * having signed anybody yet throws the result away. So the channel ends up
+ * holding one live board plus one closing board per month, which is what a
+ * competition wants to keep.
+ */
+export function supersedes(previous, period, newId) {
+  if (!previous?.id || !newId) return false;
+  if (previous.id === newId) return false;
+  return previous.period === period;
+}
+
 export function caseStats(store, asOf) {
   const all = store.all();
   const count = (p) => all.filter(p).length;
@@ -117,9 +132,18 @@ export function caseStats(store, asOf) {
  */
 export function preflight(discordConfig) {
   if (!discordConfig?.enabled) return { ok: false, reason: 'Discord is disabled in routes.json' };
-  const hasWebhook = Boolean(discordConfig.defaultWebhook)
+  // Every webhook destination, not just the team ones. A server configured
+  // only for the boards, or only for the overview, is a valid setup and used to
+  // be refused here as "no webhook URLs are set".
+  const singles = [
+    'defaultWebhook', 'summaryWebhook', 'escalationWebhook', 'inactiveWebhook',
+    'activenessOverviewWebhook', 'activenessPingWebhook',
+    'leaderboardWebhook', 'growthBoardWebhook',
+  ];
+  const hasWebhook = singles.some((k) => Boolean(discordConfig[k]))
     || Object.values(discordConfig.coaches ?? {}).some((c) => c.webhook)
-    || Object.values(discordConfig.groups ?? {}).some((g) => g.webhook);
+    || Object.values(discordConfig.groups ?? {}).some((g) => g.webhook)
+    || Object.values(discordConfig.teamSummaries ?? {}).some((g) => g.webhook);
   if (discordConfig.mode === 'webhook' && !hasWebhook) {
     return { ok: false, reason: 'mode is "webhook" but no webhook URLs are set' };
   }
@@ -130,7 +154,8 @@ export function preflight(discordConfig) {
   }
   const hasDestination = hasWebhook || discordConfig.defaultChannelId
     || Object.values(discordConfig.coaches ?? {}).some((c) => c.channelId || c.userId)
-    || Object.values(discordConfig.groups ?? {}).some((g) => g.channelId || g.webhook);
+    || Object.values(discordConfig.groups ?? {}).some((g) => g.channelId || g.webhook)
+    || Object.values(discordConfig.teamSummaries ?? {}).some((g) => g.channelId);
   if (!hasDestination) return { ok: false, reason: 'no channel, user or webhook configured for any team or coach' };
   return { ok: true };
 }
@@ -189,13 +214,41 @@ export async function dispatch({
     if (dryRun) {
       previews.push({ label, coach, payload, to: route.webhook ?? route.channelId ?? null });
       sent.push({ label, coach, ok: true, dryRun: true });
-      return;
+      return null;
     }
     const res = await deliver(client, route, payload, caseRecord?.group ?? coach);
     if (res.ok && caseRecord && res.body?.id) {
       caseRecord.discord = { channelId: res.body.channel_id ?? route.channelId, messageId: res.body.id };
     }
     sent.push({ label, coach, ok: res.ok, error: res.error, caseId: caseRecord?.id });
+    return res;
+  };
+
+  /**
+   * Post the new one, then remove the old one.
+   *
+   * For a board, a channel of thirty daily posts is thirty stale leaderboards
+   * and one current one. This keeps exactly one, and it is a fresh message
+   * rather than an edit so the channel still bumps and people still see that it
+   * moved — an edited message notifies nobody.
+   *
+   * The order matters: post first, delete second. If the post fails there is
+   * still yesterday's board in the channel, which is wrong but readable. Delete
+   * first and a failed post leaves the channel empty.
+   */
+  const replaceLast = async (label, route, payload, slot, period) => {
+    const res = await send(label, `(${label})`, route, payload);
+    if (dryRun || !res?.ok) return res;
+    const prev = store.data.lastMessage?.[slot] ?? null;
+    if (res.body?.id) {
+      store.data.lastMessage ??= {};
+      store.data.lastMessage[slot] = { id: res.body.id, period };
+    }
+    if (supersedes(prev, period, res.body?.id) && route.webhook) {
+      const gone = await client.deleteWebhookMessage(route.webhook, prev.id);
+      if (!gone.ok) sent.push({ label: `${label}-cleanup`, coach: `(${label})`, ok: false, error: gone.error });
+    }
+    return res;
   };
 
   // --- newly opened cases ---------------------------------------------------
@@ -381,7 +434,8 @@ export async function dispatch({
   if (boardRoute && creators.length && (again('leaderboard') || leaderboardDue(config, store, asOf))) {
     const board = leaderboard({ creators, asOf, store, config });
     if (board.total || board.lastMonthTotal) {
-      await send('leaderboard', '(leaderboard)', boardRoute, leaderboardEmbed(board, { config }));
+      await (config.leaderboard?.replacePrevious === false ? send('leaderboard', '(leaderboard)', boardRoute, leaderboardEmbed(board, { config }))
+        : replaceLast('leaderboard', boardRoute, leaderboardEmbed(board, { config }), 'leaderboard', board.month));
       // Recorded after rendering, so today's card shows movement against
       // yesterday rather than against itself.
       if (!dryRun) { recordBoard(store, board); store.data.lastLeaderboardOn = asOf; }
@@ -397,7 +451,8 @@ export async function dispatch({
     const gb = growthBoard({ creators, metricsByKey, asOf, store, config });
     // Nothing to rank in a network's first month; the card would be a heading.
     if (gb.rows.length) {
-      await send('growth-board', '(growth)', growthRoute, growthBoardEmbed(gb, { config }));
+      await (config.growthBoard?.replacePrevious === false ? send('growth-board', '(growth)', growthRoute, growthBoardEmbed(gb, { config }))
+        : replaceLast('growth-board', growthRoute, growthBoardEmbed(gb, { config }), 'growthBoard', gb.month));
       if (!dryRun) { recordGrowthBoard(store, gb); store.data.lastGrowthBoardOn = asOf; }
     }
   }

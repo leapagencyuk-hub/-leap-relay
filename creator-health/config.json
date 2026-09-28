@@ -144,7 +144,9 @@
     "_note": "Monthly new-creator recruitment board, credited to the creator's Creator Network manager \u2014 the export has no separate recruiter column, and the manager is the person who has to make the signing work.",
     "enabled": true,
     "_show": "Coaches listed. Everyone is counted either way; this is only how many rows the card prints.",
-    "show": 10
+    "show": 10,
+    "_replacePrevious": "Each day's board removes the previous one, so the channel holds exactly one live board. Only within a month \u2014 the final board of a month is left as the result. Set false to keep every day's post.",
+    "replacePrevious": true
   },
   "growthBoard": {
     "_note": "Coach growth board. Ranked on month-on-month growth pulled toward the network average in proportion to how few creators it rests on, so a big percentage on a small team does not automatically lead.",
@@ -155,7 +157,9 @@
     "minComparable": 3,
     "show": 12,
     "_thinBelow": "Fewer comparable creators than this and the card marks the row as a small team.",
-    "thinBelow": 10
+    "thinBelow": 10,
+    "_replacePrevious": "Each day's board removes the previous one, so the channel holds exactly one live board. Only within a month \u2014 the final board of a month is left as the result. Set false to keep every day's post.",
+    "replacePrevious": true
   },
   "digest": {
     "maxAlertsPerCoach": 12,

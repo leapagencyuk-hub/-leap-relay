@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { loadRoutes, groupKey, isChannelId, isWebhookUrl } from '../lib/notify.mjs';
-import { routeFor, coverage, preflight } from '../lib/dispatch.mjs';
+import { routeFor, coverage, preflight, supersedes } from '../lib/dispatch.mjs';
 
 const ID = (n) => String(n).padStart(18, '1');
 
@@ -408,5 +408,63 @@ test('a once-a-day card can be deliberately asked for again', async () => {
   assert.equal((await call(['all'])).previews.filter((p) => p.label === 'leaderboard').length, 1);
   assert.equal((await call(['growth'])).previews.filter((p) => p.label === 'leaderboard').length, 0,
     'and forcing one card does not repost the others');
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+// --- one live board, not thirty ---------------------------------------------
+
+test('preflight accepts a server configured only for the boards', () => {
+  const cfg = routesFrom({
+    mode: 'webhook',
+    leaderboardWebhook: 'https://discord.com/api/webhooks/9/board',
+  });
+  assert.equal(preflight(cfg).ok, true,
+    'boards-only is a valid setup and used to be refused as "no webhook URLs are set"');
+  const summariesOnly = routesFrom({
+    mode: 'webhook',
+    teamSummaries: { 'Team Alpha': { webhook: 'https://discord.com/api/webhooks/9/s' } },
+  });
+  assert.equal(preflight(summariesOnly).ok, true);
+  const activenessOnly = routesFrom({
+    mode: 'webhook',
+    activenessPingWebhook: 'https://discord.com/api/webhooks/9/a',
+  });
+  assert.equal(preflight(activenessOnly).ok, true);
+});
+
+test('yesterday\'s board is replaced; last month\'s is kept', () => {
+  const yesterday = { id: '111', period: '2026-09' };
+  assert.equal(supersedes(yesterday, '2026-09', '222'), true,
+    'same month, so the old board is stale the moment the new one lands');
+  assert.equal(supersedes(yesterday, '2026-10', '222'), false,
+    'the last board of a month is the result, and survives into the next one');
+  assert.equal(supersedes(null, '2026-09', '222'), false, 'nothing to replace on the first post');
+  assert.equal(supersedes(yesterday, '2026-09', null), false,
+    'a post that came back without an id must not delete what is already there');
+  assert.equal(supersedes(yesterday, '2026-09', '111'), false, 'never delete the message just posted');
+});
+
+test('a board posts, records its message, and the next one replaces it', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-replace-'));
+  const store = new CaseStore(dir);
+  const discord = routesFrom({
+    mode: 'webhook',
+    leaderboardWebhook: 'https://discord.com/api/webhooks/9/board',
+  });
+  const creator = {
+    key: 'k1', username: 'creator1', group: 'Team Alpha', manager: 'josh@leap',
+    quitOn: null, joinDate: '2026-09-02',
+    obs: [{ date: '2026-09-20', mtd: { diamonds: 5000, validLiveDays: 3 } }],
+  };
+  // A dry run must not record a message id, or tomorrow's real board would try
+  // to delete a message that was never posted.
+  await dispatch({
+    asOf: '2026-09-20', store, discordConfig: discord, dryRun: true,
+    changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+    creators: [creator], metricsByKey: new Map(),
+    config: { leaderboard: { enabled: true }, monitoring: { ignoreGroups: [] } },
+  });
+  assert.equal(store.data.lastMessage, undefined, 'a preview posts nothing, so it records nothing');
   fs.rmSync(dir, { recursive: true, force: true });
 });

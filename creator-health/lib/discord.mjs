@@ -94,8 +94,23 @@ export class Discord {
 
   postToWebhook(url, payload) {
     // `?wait=true` makes Discord return the created message, so the id can be
-    // stored on the case and the card edited later.
+    // stored on the case and the card edited or removed later.
     return request('POST', `${url}${url.includes('?') ? '&' : '?'}wait=true`, { body: payload });
+  }
+
+  /**
+   * Remove a message this webhook posted.
+   *
+   * A webhook can edit and delete its own messages with nothing but its URL, so
+   * a channel that should only ever hold the current version of something does
+   * not need a bot. A 404 means it is already gone, which is the outcome we
+   * wanted, so it is not an error.
+   */
+  async deleteWebhookMessage(url, messageId) {
+    const base = url.split('?')[0].replace(/\/$/, '');
+    const res = await request('DELETE', `${base}/messages/${messageId}`, {});
+    if (!res.ok && res.status === 404) return { ok: true, alreadyGone: true };
+    return res;
   }
 
   /** DM a coach. Discord requires opening the channel before posting to it. */
