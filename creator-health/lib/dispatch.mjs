@@ -7,7 +7,7 @@ import {
   Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
   teamSummaryEmbed, graduationEmbed,
-  activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed,
+  activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
 } from './discord.mjs';
 import { campaignGap, concentrationRisk, programmesDue, rosterDue, uploadStaleness } from './programmes.mjs';
 import { teamSummaries, teamSummaryDue } from './teamsummary.mjs';
@@ -15,6 +15,7 @@ import { graduationEvents } from './graduation.mjs';
 import { activenessRows, activenessPings, recordPings, activenessSummary, activenessDue } from './activeness.mjs';
 import { policyStanding } from './policy.mjs';
 import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
+import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -377,6 +378,20 @@ export async function dispatch({
       // Recorded after rendering, so today's card shows movement against
       // yesterday rather than against itself.
       if (!dryRun) { recordBoard(store, board); store.data.lastLeaderboardOn = asOf; }
+    }
+  }
+
+  // --- the coach growth board ------------------------------------------------
+  const growthRoute = discordConfig.growthBoardWebhook
+    ? { webhook: discordConfig.growthBoardWebhook }
+    : (discordConfig.growthBoardChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.growthBoardChannelId } : null;
+  if (growthRoute && creators.length && growthBoardDue(config, store, asOf)) {
+    const gb = growthBoard({ creators, metricsByKey, asOf, store, config });
+    // Nothing to rank in a network's first month; the card would be a heading.
+    if (gb.rows.length) {
+      await send('growth-board', '(growth)', growthRoute, growthBoardEmbed(gb, { config }));
+      if (!dryRun) { recordGrowthBoard(store, gb); store.data.lastGrowthBoardOn = asOf; }
     }
   }
 

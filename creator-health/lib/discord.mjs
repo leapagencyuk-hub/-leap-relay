@@ -571,6 +571,72 @@ export function graduationEmbed(p, { mention = null, finalPush = false } = {}) {
 }
 
 /**
+ * The coach growth board.
+ *
+ * Deliberately sparse. A coach wants to know whether they are up, and where
+ * they sit — not a spreadsheet. So it carries the rank, the movement, their own
+ * real growth, and their team size, and nothing else per row.
+ *
+ * The order is growth weighted for how many creators it rests on, but the
+ * number printed is the unweighted truth. One footnote explains why a big
+ * percentage on a small team does not necessarily lead.
+ */
+export function growthBoardEmbed(b, { config = {} } = {}) {
+  const monthName = new Date(`${b.month}-01T00:00:00Z`)
+    .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
+  const arrow = (r) => {
+    if (r.isNew) return 'new';
+    if (r.move == null || r.move === 0) return '  —';
+    return r.move > 0 ? `+${r.move}` : String(r.move);
+  };
+  const place = (rank) => (rank <= 3 ? ['1st', '2nd', '3rd'][rank - 1] : `${rank}th`);
+
+  const top = b.rows.slice(0, config.growthBoard?.show ?? 12);
+  const board = top.map((r) =>
+    `\`${place(r.rank).padStart(4)}  ${arrow(r).padStart(3)}  ${pct(r.growth).padStart(5)}\`  `
+    + `**${r.name}**  ·  ${r.roster} creator${r.roster === 1 ? '' : 's'}${r.thin ? '  (small team)' : ''}`
+  ).join('\n');
+
+  const fields = [{
+    name: `Against the same point in ${b.prevName}`,
+    value: (board || 'Not enough history to rank anyone yet.').slice(0, 1024),
+  }];
+
+  const callouts = [];
+  if (b.bestHabit?.habitRate != null) {
+    callouts.push(`**${b.bestHabit.name}** has the most creators streaming regularly — `
+      + `${Math.round(b.bestHabit.habitRate * 100)}% of their earners went LIVE ${b.habitTarget}+ days in 28.`);
+  }
+  if (b.bestConversion?.earningRate != null) {
+    callouts.push(`**${b.bestConversion.name}** has the most of their roster earning — `
+      + `${Math.round(b.bestConversion.earningRate * 100)}%.`);
+  }
+  if (callouts.length) {
+    fields.push({ name: 'Not about size', value: callouts.join('\n').slice(0, 1024) });
+  }
+
+  fields.push({
+    name: 'How this is ranked',
+    value: 'Growth against the same point last month, on creators who were earning in both, '
+      + 'weighted for how many creators it rests on. The same swing across five creators is not '
+      + 'the same evidence as across a hundred, so a big percentage on a small team does not '
+      + 'automatically lead. The percentage shown is the real one.',
+  });
+
+  return {
+    embeds: [{
+      title: `Growth leaderboard — ${monthName}`,
+      description: `The network is **${pct(b.network)}** on the same point in ${b.prevName}, `
+        + `with **${b.daysLeft}** day${b.daysLeft === 1 ? '' : 's'} to go.`,
+      color: b.network >= 0 ? COLOR.recovered : COLOR.warn,
+      fields,
+      footer: { text: `${b.asOf} · ${b.rows.length} coach${b.rows.length === 1 ? '' : 'es'} ranked` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/**
  * The monthly new-creator leaderboard.
  *
  * Posted every day, so the movement has to be the news — a table of the same

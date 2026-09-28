@@ -127,6 +127,17 @@
     "_show": "Coaches listed. Everyone is counted either way; this is only how many rows the card prints.",
     "show": 10
   },
+  "growthBoard": {
+    "_note": "Coach growth board. Ranked on month-on-month growth pulled toward the network average in proportion to how few creators it rests on, so a big percentage on a small team does not automatically lead.",
+    "enabled": true,
+    "_priorWeight": "Creators' worth of network average mixed into every coach's figure. Higher means small teams need to be more extraordinary to top the board.",
+    "priorWeight": 25,
+    "_minComparable": "Fewer creators than this in both months and a coach is not ranked at all.",
+    "minComparable": 3,
+    "show": 12,
+    "_thinBelow": "Fewer comparable creators than this and the card marks the row as a small team.",
+    "thinBelow": 10
+  },
   "digest": {
     "maxAlertsPerCoach": 12,
     "maxRampRowsPerCoach": 10,

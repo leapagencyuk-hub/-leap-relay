@@ -12,6 +12,7 @@
 //   node cli.mjs activeness [--limit N]      who is about to miss the 15h/7d gate
 //   node cli.mjs policy                      where the network stands on the 2026 rules
 //   node cli.mjs leaderboard                 this month's new-creator recruitment board
+//   node cli.mjs growthboard                 which coaches are growing, adjusted for team size
 //   node cli.mjs cases [--coach E] [--all]      the open caseload
 //   node cli.mjs case <id>                      one case and its history
 //   node cli.mjs effectiveness                  which interventions work
@@ -42,6 +43,7 @@ import { graduationEvents } from './lib/graduation.mjs';
 import { activenessRows, activenessSummary } from './lib/activeness.mjs';
 import { policyStanding } from './lib/policy.mjs';
 import { leaderboard } from './lib/leaderboard.mjs';
+import { growthBoard } from './lib/growthboard.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -423,6 +425,7 @@ function cmdDiscordEnv() {
   lift(safe.discord, 'activenessOverviewWebhook', 'DISCORD_WEBHOOK_ACTIVENESS_OVERVIEW');
   lift(safe.discord, 'activenessPingWebhook', 'DISCORD_WEBHOOK_ACTIVENESS_PINGS');
   lift(safe.discord, 'leaderboardWebhook', 'DISCORD_WEBHOOK_LEADERBOARD');
+  lift(safe.discord, 'growthBoardWebhook', 'DISCORD_WEBHOOK_GROWTH_BOARD');
   lift(safe.discord, 'botToken', 'DISCORD_BOT_TOKEN');
   for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
     lift(entry, 'webhook', varName(label));
@@ -500,7 +503,8 @@ function cmdDiscordCheck() {
     : '\ndaily team summary: no channels set — no summaries are posted');
   console.log(`activeness: overview ${discord.activenessOverviewWebhook ? 'set' : 'MISSING'}, `
     + `pings ${discord.activenessPingWebhook ? 'set' : 'MISSING'}`);
-  console.log(`leaderboard: ${discord.leaderboardWebhook ? 'set' : 'MISSING'}`);
+  console.log(`leaderboard: ${discord.leaderboardWebhook ? 'set' : 'MISSING'}`
+    + ` · growth board: ${discord.growthBoardWebhook ? 'set' : 'MISSING'}`);
   console.log(discord.inactiveWebhook
     ? `\ncreators earning nothing: one shared channel, webhook …${discord.inactiveWebhook.slice(-6)}`
     : '\ncreators earning nothing: no shared channel set — they go to the team channels');
@@ -620,6 +624,29 @@ function cmdLeaderboard() {
   }
 }
 
+/** Which coaches are growing, once team size is accounted for. */
+function cmdGrowthBoard() {
+  const { creators, metricsByKey, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
+  const store = new CaseStore(config.dataDir);
+  const b = growthBoard({ creators, metricsByKey, asOf, store, config });
+  if (!b.rows.length) return console.log('Not enough history to rank anyone yet.');
+
+  const move = (r) => (r.isNew ? 'new' : r.move == null || r.move === 0 ? '—' : r.move > 0 ? `+${r.move}` : String(r.move));
+  const pc = (x) => (x == null ? '—' : `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`);
+  console.log(`Growth board — ${b.month}, day ${b.dayOfMonth} of ${b.monthLength}`);
+  console.log(`Network ${pc(b.network)} on the same point in ${b.prevName}, ${b.daysLeft} day(s) to go\n`);
+  console.log(`  ${'#'.padStart(3)} ${'move'.padStart(5)}  ${'coach'.padEnd(20)}${'growth'.padStart(8)}${'roster'.padStart(8)}${'compared'.padStart(10)}${'ranked at'.padStart(11)}`);
+  for (const r of b.rows) {
+    console.log(`  ${String(r.rank).padStart(3)} ${move(r).padStart(5)}  ${r.name.padEnd(20)}`
+      + `${pc(r.growth).padStart(8)}${String(r.roster).padStart(8)}${String(r.comparable).padStart(10)}`
+      + `${pc(r.weighted).padStart(11)}${r.thin ? '  small team' : ''}`);
+  }
+  console.log(`\n  ranked on growth weighted toward the network average by how few creators it rests on`);
+  if (b.bestHabit) console.log(`  best habit:      ${b.bestHabit.name} — ${Math.round(b.bestHabit.habitRate * 100)}% of earners LIVE ${b.habitTarget}+ days in 28`);
+  if (b.bestConversion) console.log(`  best conversion: ${b.bestConversion.name} — ${Math.round(b.bestConversion.earningRate * 100)}% of roster earning`);
+  if (b.unranked.length) console.log(`  not ranked (too little in both months): ${b.unranked.join(', ')}`);
+}
+
 function cmdTeams() {
   const store = new CaseStore(config.dataDir);
   const asOf = new SeriesStore(config.dataDir).readSeries().lastAsOf
@@ -673,7 +700,8 @@ const commands = {
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,
   'discord-env': cmdDiscordEnv,
   teams: cmdTeams, graduation: cmdGraduation, policy: cmdPolicy,
-  activeness: cmdActiveness, leaderboard: cmdLeaderboard, snooze: cmdSnooze, close: cmdClose,
+  activeness: cmdActiveness, leaderboard: cmdLeaderboard, growthboard: cmdGrowthBoard,
+  snooze: cmdSnooze, close: cmdClose,
 };
 
 if (!command || !commands[command]) {

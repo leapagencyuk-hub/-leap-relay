@@ -16,6 +16,9 @@
     "_leaderboard": "The monthly new-creator leaderboard, posted once a day.",
     "leaderboardWebhook": "env:DISCORD_WEBHOOK_LEADERBOARD",
     "leaderboardChannelId": "1554107268151386142",
+    "_growthBoard": "Coach growth board, ranked on growth weighted for team size. Posted once a day.",
+    "growthBoardWebhook": "env:DISCORD_WEBHOOK_GROWTH_BOARD",
+    "growthBoardChannelId": "1554107822340440235",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",
