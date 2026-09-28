@@ -9,6 +9,8 @@
 //   node cli.mjs status                         what is stored
 //   node cli.mjs run [--dry] [--force-overview] daily run: cases + Discord
 //   node cli.mjs graduation [--limit N]      the 200k chase as it stands
+//   node cli.mjs activeness [--limit N]      who is about to miss the 15h/7d gate
+//   node cli.mjs policy                      where the network stands on the 2026 rules
 //   node cli.mjs cases [--coach E] [--all]      the open caseload
 //   node cli.mjs case <id>                      one case and its history
 //   node cli.mjs effectiveness                  which interventions work
@@ -36,6 +38,8 @@ import { coverage, routeFor } from './lib/dispatch.mjs';
 import { groupKey } from './lib/notify.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
 import { graduationEvents } from './lib/graduation.mjs';
+import { activenessRows, activenessSummary } from './lib/activeness.mjs';
+import { policyStanding } from './lib/policy.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -414,6 +418,8 @@ function cmdDiscordEnv() {
   lift(safe.discord, 'summaryWebhook', 'DISCORD_WEBHOOK_OVERVIEW');
   lift(safe.discord, 'escalationWebhook', 'DISCORD_WEBHOOK_ESCALATION');
   lift(safe.discord, 'inactiveWebhook', 'DISCORD_WEBHOOK_INACTIVE');
+  lift(safe.discord, 'activenessOverviewWebhook', 'DISCORD_WEBHOOK_ACTIVENESS_OVERVIEW');
+  lift(safe.discord, 'activenessPingWebhook', 'DISCORD_WEBHOOK_ACTIVENESS_PINGS');
   lift(safe.discord, 'botToken', 'DISCORD_BOT_TOKEN');
   for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
     lift(entry, 'webhook', varName(label));
@@ -489,6 +495,8 @@ function cmdDiscordCheck() {
   console.log(sum
     ? `\ndaily team summary: ${sum} of ${live.length} monitored team(s) have a channel`
     : '\ndaily team summary: no channels set — no summaries are posted');
+  console.log(`activeness: overview ${discord.activenessOverviewWebhook ? 'set' : 'MISSING'}, `
+    + `pings ${discord.activenessPingWebhook ? 'set' : 'MISSING'}`);
   console.log(discord.inactiveWebhook
     ? `\ncreators earning nothing: one shared channel, webhook …${discord.inactiveWebhook.slice(-6)}`
     : '\ncreators earning nothing: no shared channel set — they go to the team channels');
@@ -526,6 +534,55 @@ function cmdGraduation() {
   }
   if (done.length) {
     console.log(`\n  graduated this month: ${done.map((r) => `@${r.username} (${r.monthToDate.toLocaleString()})`).join(', ')}`);
+  }
+}
+
+/** Where the network stands against the 2026 rules. */
+function cmdPolicy() {
+  const { creators, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
+  const p = policyStanding({ creators, asOf, config });
+  const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(1)}%`);
+  const g = p.graduation, m = p.mature, st = p.standing;
+
+  console.log(`Network standing as of ${asOf}  (graduation threshold ${g.threshold.toLocaleString()})\n`);
+  console.log(`  new creator graduation rate   ${pct(g.rate).padStart(7)}   ${g.numerator} of ${g.denominator}`);
+  console.log(`    joined since ${g.since}, past ${g.floor.toLocaleString()} diamonds this month`);
+  console.log(`    ${g.joined} joined in the window, ${g.denominator} evaluated\n`);
+  console.log(`  mature rank-up + maintenance  ${pct(m.rate).padStart(7)}   ${m.numerator} of ${m.denominator}`);
+  console.log(`    ${m.clearsBonus ? 'clears' : `${m.toBonus} more to clear`} the ${pct(m.bonusAt)} line (+1% rank-up bonus)`);
+  console.log(`    ${m.clearsInvite ? 'clears' : `${m.toInvite} more to clear`} the ${pct(m.inviteAt)} line (premium invitations)\n`);
+  console.log(`  inactive-operations rule      ${st.safe ? 'not at risk' : 'AT RISK'}`);
+  console.log(`    new creators in 3 months  ${st.newCreators.toLocaleString().padStart(12)}  (breaches under ${st.minNew})`);
+  console.log(`    diamonds in 3 months      ${st.diamonds.toLocaleString().padStart(12)}  (breaches under ${st.minDiamonds.toLocaleString()})`);
+
+  if (m.dropped.length) {
+    console.log(`\n  dropped a tier, closest back first:`);
+    for (const r of m.dropped.slice(0, Number(option('limit', 8)))) {
+      console.log(`    @${r.username.padEnd(22)}${r.now.toLocaleString().padStart(10)} now, was ${r.was.toLocaleString().padStart(9)}`
+        + `  ${r.toHold.toLocaleString().padStart(8)} to get back  ${r.group ?? '—'}`);
+    }
+  }
+}
+
+/** Who is about to miss the activeness gate. */
+function cmdActiveness() {
+  const { creators, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
+  const rows = activenessRows({ creators, asOf, config, groupKey });
+  const s = activenessSummary(rows, config);
+  if (!s.total) return console.log('Nobody has been LIVE this month yet.');
+
+  console.log(`Activeness gate as of ${asOf} — ${s.daysLeft} day(s) left in ${s.month}\n`);
+  console.log(`  gate: ${config.activeness?.hours ?? 15} LIVE hours across more than ${config.activeness?.days ?? 7} days\n`);
+  console.log(`  cleared        ${String(s.cleared).padStart(5)} of ${s.total}`);
+  console.log(`  still winnable ${String(s.reachable).padStart(5)}   (${s.worthChasing} past ${s.minDiamonds.toLocaleString()} diamonds, ~${s.atStake.toLocaleString()} at stake)`);
+  console.log(`  already gone   ${String(s.lost).padStart(5)}   (~${s.forfeited.toLocaleString()} forgone)\n`);
+
+  const open = rows.filter((r) => !r.cleared && r.reachable && r.diamonds >= s.minDiamonds)
+    .sort((a, b) => b.atStake - a.atStake);
+  console.log(`  ${'creator'.padEnd(22)}${'has'.padStart(12)}${'needs'.padStart(12)}${'at stake'.padStart(10)}  team`);
+  for (const r of open.slice(0, Number(option('limit', 20)))) {
+    console.log(`  ${('@' + r.username).padEnd(22)}${`${r.hours}h/${r.days}d`.padStart(12)}`
+      + `${`${r.needHours}h/${r.needDays}d`.padStart(12)}${r.atStake.toLocaleString().padStart(10)}  ${r.group ?? '—'}`);
   }
 }
 
@@ -581,7 +638,8 @@ const commands = {
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,
   'discord-env': cmdDiscordEnv,
-  teams: cmdTeams, graduation: cmdGraduation, snooze: cmdSnooze, close: cmdClose,
+  teams: cmdTeams, graduation: cmdGraduation, policy: cmdPolicy,
+  activeness: cmdActiveness, snooze: cmdSnooze, close: cmdClose,
 };
 
 if (!command || !commands[command]) {

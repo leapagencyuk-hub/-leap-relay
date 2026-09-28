@@ -85,6 +85,42 @@
     "_finalPushStretch": "And only when the rate needed is within this multiple of the rate they are actually doing, so the ping is never a lie.",
     "finalPushStretch": 4
   },
+  "activeness": {
+    "_note": "The rank-up incentive's eligibility gate, quoted from the 2026 Fee Policy deck: \"Creators who went LIVE for 15 hours on over 7 days that month.\" Both halves, one calendar month, resets on the 1st.",
+    "enabled": true,
+    "hours": 15,
+    "_days": "\"over 7 days\" means 8 or more; the code adds the one.",
+    "days": 7,
+    "_pingWithinDays": "Per-creator pings start when the month has this many days left. Earlier than that it is not urgent and the overview covers it.",
+    "pingWithinDays": 7,
+    "_minDiamonds": "Below this the gate is not what is holding the creator back, and the bonus it protects is worth a few dozen diamonds.",
+    "minDiamonds": 5000,
+    "_plausibleHoursPerDay": "Used to judge whether the remaining hours can still fit in the remaining days. The network median is 3.2 hours per active day.",
+    "plausibleHoursPerDay": 3,
+    "_maxPingsPerRun": "A channel of a dozen cards gets read. Ninety-six gets scrolled past, and the overview carries everyone either way.",
+    "maxPingsPerRun": 12
+  },
+  "policy": {
+    "_note": "The network-level rules from the 2026 Creator Network Policies & Rules deck. See lib/policy.mjs for the definitions and where each number comes from.",
+    "_cohortMonths": "Graduation counts creators who joined in the last N CALENDAR months, not the last 90 days.",
+    "cohortMonths": 3,
+    "_graduationFloorRatio": "Only creators past this share of the graduation threshold are evaluated at all. The deck: an 80,000 region gives 80,000 x 0.5% = 400. At 200,000 it is 1,000.",
+    "graduationFloorRatio": 0.005,
+    "_tierBands": "Diamond tier boundaries from the deck's worked example. The real bands for this region are on LIVE Backstage.",
+    "tierBands": [
+      40000,
+      80000,
+      150000,
+      250000
+    ],
+    "_rankUpBaseRatio": "Base rank-up bonus: 4% of the creator's monthly Diamonds, 5% with the advanced requirement met.",
+    "rankUpBaseRatio": 0.04,
+    "rankUpBonusThreshold": 0.3,
+    "premiumInviteThreshold": 0.5,
+    "_termination": "The inactive-operations rule needs ALL THREE breached: under 60 new creators in 3 months, under 500,000 diamonds in 3 months, and Low tier for 3 consecutive months.",
+    "minNewCreatorsPerQuarter": 60,
+    "minDiamondsPerQuarter": 500000
+  },
   "digest": {
     "maxAlertsPerCoach": 12,
     "maxRampRowsPerCoach": 10,

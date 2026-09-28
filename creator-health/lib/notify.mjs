@@ -117,6 +117,13 @@ export function loadDiscordConfig(raw) {
     inactiveChannelId: channelOrNull(fromEnv(raw.inactiveChannelId)),
     inactiveWebhook: webhookOrNull(fromEnv(raw.inactiveWebhook)),
     teamSummaries: summaryGroups,
+    // The activeness gate: one channel for the daily network picture, one for
+    // the per-creator pings. Separate because the first is read once and the
+    // second is acted on.
+    activenessOverviewWebhook: webhookOrNull(fromEnv(raw.activenessOverviewWebhook)),
+    activenessOverviewChannelId: channelOrNull(fromEnv(raw.activenessOverviewChannelId)),
+    activenessPingWebhook: webhookOrNull(fromEnv(raw.activenessPingWebhook)),
+    activenessPingChannelId: channelOrNull(fromEnv(raw.activenessPingChannelId)),
     coaches,
   };
 }

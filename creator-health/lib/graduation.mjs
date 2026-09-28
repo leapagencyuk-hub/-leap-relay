@@ -37,6 +37,8 @@ export const MILESTONES = [
   { key: 'DONE', remaining: 0, label: 'Graduated' },
 ];
 
+import { cohortStart } from './policy.mjs';
+
 const monthKey = (asOf) => asOf.slice(0, 7);
 
 /** Where one creator stands, in the terms a coach would use. */
@@ -130,7 +132,8 @@ export function graduationEvents({ ramp, store, asOf, config, persist = true }) 
   const cfg = config.graduation ?? {};
   if (cfg.enabled === false) return { milestones: [], finalPush: [], rows: [] };
   const month = monthKey(asOf);
-  const windowDays = config.ramp?.windowDays ?? 90;
+  // The cohort boundary: the first day of the calendar month two months back.
+  const since = cohortStart(asOf, config.policy?.cohortMonths ?? 3);
   const pushDays = cfg.finalPushDays ?? 5;
   const pushReach = cfg.finalPushReach ?? 50000;
   const pushStretch = cfg.finalPushStretch ?? 4;
@@ -140,15 +143,18 @@ export function graduationEvents({ ramp, store, asOf, config, persist = true }) 
     // Two exclusions, both of which cost us a false graduation against
     // Backstage's count when they were missing.
     //
-    // Past day 90: `ramp` keeps a grace period past the window so the report
-    // can still show a creator, and a 200k month landed after the window still
-    // reads as ACHIEVED there. It is not a graduation, and firing "100,000 to
-    // go" at a coach for a creator with no attempt left is pure noise.
+    // Outside the cohort: the 2026 rules count creators who joined in the last
+    // 3 CALENDAR MONTHS, not the last 90 days. The difference is real — a
+    // creator who joined on 2 July is in the July/August/September cohort all
+    // the way to 30 September, which is 91 days, and drops out on 1 October
+    // rather than on their 91st day. Chasing someone with no attempt left, or
+    // counting their month as a graduation, is how our number stops matching
+    // Backstage's.
     //
     // Already graduated: once a creator lands a 200k month they are a mature
     // creator, not a candidate. Chasing them again would double-count them and
     // spend a coach's morning on someone who has already done it.
-    .filter((r) => r.day <= windowDays && r.achievedIn == null)
+    .filter((r) => r.creator.joinDate >= since && r.achievedIn == null)
     .map((r) => progressFor(r, config));
 
   const milestones = [];

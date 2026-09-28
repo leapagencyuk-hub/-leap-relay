@@ -7,10 +7,13 @@ import {
   Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
   teamSummaryEmbed, graduationEmbed,
+  activenessPingEmbed, activenessOverviewEmbed, policyEmbed,
 } from './discord.mjs';
 import { campaignGap, concentrationRisk, programmesDue, rosterDue, uploadStaleness } from './programmes.mjs';
 import { teamSummaries, teamSummaryDue } from './teamsummary.mjs';
 import { graduationEvents } from './graduation.mjs';
+import { activenessRows, activenessPings, recordPings, activenessSummary, activenessDue } from './activeness.mjs';
+import { policyStanding } from './policy.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -270,6 +273,42 @@ export async function dispatch({
       graduationEmbed(p, { mention: route.mention, finalPush: isPush }));
   }
 
+  // --- the activeness gate ---------------------------------------------------
+  // A cliff, not a slope: miss 15 LIVE hours across more than 7 days in the
+  // month and the rank-up incentive pays nothing on that creator at all. Pings
+  // go to their own channel because they are a different job from a decline —
+  // the fix is "go LIVE tonight", not a conversation about why revenue slipped.
+  const actRoute = (kind) => {
+    const hook = discordConfig[`activeness${kind}Webhook`];
+    const chan = discordConfig[`activeness${kind}ChannelId`];
+    if (hook) return { webhook: hook };
+    // A channel id is only usable with a bot token to post with.
+    return chan && discordConfig.botToken ? { channelId: chan } : null;
+  };
+  const pingRoute = actRoute('Ping');
+  const activenessRoute = actRoute('Overview');
+  let activeness = null;
+  if (config.activeness?.enabled !== false && creators.length) {
+    const rows = activenessRows({ creators, asOf, config, groupKey });
+    activeness = activenessSummary(rows, config);
+
+    if (pingRoute) {
+      const due = activenessPings({ rows, store, asOf, config });
+      for (const r of due) {
+        const coachRoute = routeFor({ coach: r.coach, group: r.group }, discordConfig);
+        await send('activeness-ping', r.coach, { ...pingRoute, mention: coachRoute.mention },
+          activenessPingEmbed(r, { mention: coachRoute.mention }));
+      }
+      if (!dryRun && due.length) recordPings(store, asOf, due);
+    }
+
+    if (activenessRoute && rows.length && activenessDue(config, store, asOf)) {
+      await send('activeness-overview', '(activeness)', activenessRoute,
+        activenessOverviewEmbed(activeness, { config }));
+      if (!dryRun) store.data.lastActivenessOn = asOf;
+    }
+  }
+
   // --- the daily picture of each team ---------------------------------------
   // Posted before the escalation and the overview, so a coach opening Discord
   // in the morning reads where their team stands before they read what is
@@ -321,6 +360,15 @@ export async function dispatch({
       }));
       if (!dryRun) store.data.lastProgrammesOn = asOf;
     }
+  }
+
+  // --- where the network itself stands --------------------------------------
+  // The two rates TikTok sets our benefits tier on. Management's channel, once
+  // a day, beside the overview: no coach can move these directly.
+  if (summaryRoute && creators.length && store.data.lastPolicyOn !== asOf) {
+    await send('policy', '(overview)', summaryRoute,
+      policyEmbed(policyStanding({ creators, asOf, config }), { asOf }));
+    if (!dryRun) store.data.lastPolicyOn = asOf;
   }
 
   const alreadyPosted = store.data.lastOverviewOn === asOf;

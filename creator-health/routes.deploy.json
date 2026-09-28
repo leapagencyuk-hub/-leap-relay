@@ -8,6 +8,11 @@
     "_inactive": "Every creator earning nothing goes to this one channel, not the team channels.",
     "inactiveWebhook": "env:DISCORD_WEBHOOK_INACTIVE",
     "inactiveChannelId": "1551857471054946316",
+    "_activeness": "The 15 LIVE hours over 7 days gate. Overview is the daily picture; pings are per-creator, in the closing days.",
+    "activenessOverviewWebhook": "env:DISCORD_WEBHOOK_ACTIVENESS_OVERVIEW",
+    "activenessOverviewChannelId": "1554079367175340112",
+    "activenessPingWebhook": "env:DISCORD_WEBHOOK_ACTIVENESS_PINGS",
+    "activenessPingChannelId": "1554079392886693929",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",

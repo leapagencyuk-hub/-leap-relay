@@ -1,4 +1,9 @@
-// The 200,000 diamond target.
+// The graduation target.
+//
+// 200,000 is LEAP's REGIONAL benchmark, not a universal rule — the 2026 policy
+// deck's worked example uses a region set at 80,000. It lives in
+// `config.ramp.targetDiamonds`, so another region is a config change.
+//
 //
 // It is a MONTHLY target, not a cumulative one. A creator has to land 200,000
 // diamonds inside a single calendar month, and their first 90 days give them

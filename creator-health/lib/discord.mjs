@@ -571,6 +571,180 @@ export function graduationEmbed(p, { mention = null, finalPush = false } = {}) {
 }
 
 /**
+ * One creator about to miss the activeness gate.
+ *
+ * The gate is a cliff: 15 LIVE hours across more than 7 days in the calendar
+ * month, or the rank-up incentive pays nothing on them at all. So the card
+ * leads with the two gaps and the days left, and says what it is worth.
+ */
+export function activenessPingEmbed(r, { mention = null } = {}) {
+  const gaps = [
+    r.daysShort > 0 ? `**${r.daysShort} more LIVE day${r.daysShort === 1 ? '' : 's'}**` : null,
+    r.hoursShort > 0 ? `**${r.hoursShort} more hour${r.hoursShort === 1 ? '' : 's'}**` : null,
+  ].filter(Boolean).join(' and ');
+
+  const urgent = r.daysLeft <= 3 || r.daysShort >= r.daysLeft;
+
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      author: authorBlock({ username: r.username, group: r.group }, null),
+      title: `${gaps.replace(/\*\*/g, '')} to clear activeness — ${r.daysLeft} day${r.daysLeft === 1 ? '' : 's'} left`,
+      description: `They are on **${r.hours}h** across **${r.days} LIVE day${r.days === 1 ? '' : 's'}** this month.\n`
+        + `The gate is **${r.needHours}h across ${r.needDays} days**`
+        + (r.prorated ? ` (scaled to ${Math.round(r.scale * 100)}% — they joined mid-month)` : '')
+        + `.\nThey need ${gaps} before the 1st.`,
+      color: urgent ? COLOR.urgent : COLOR.warn,
+      fields: [
+        { name: 'Has done', value: `${r.hours}h · ${r.days} days`, inline: true },
+        { name: 'Needs', value: `${r.needHours}h · ${r.needDays} days`, inline: true },
+        { name: 'Days left', value: String(r.daysLeft), inline: true },
+        {
+          name: 'Why it matters',
+          value: `Miss this and the rank-up incentive pays **nothing** on their `
+            + `${n(r.diamonds)} diamonds this month — up to **${n(r.atStake)}** forgone. `
+            + `It resets on the 1st, so there is no catching up next month.`,
+        },
+        ...(r.daysShort > 0 && r.daysShort >= r.daysLeft
+          ? [{ name: 'Tight', value: `They have to go LIVE **every remaining day** to clear it.` }]
+          : []),
+      ],
+      footer: { text: `${r.group ?? 'no team'}${r.coach ? ` · ${r.coach.split('@')[0]}` : ''} · activeness gate` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/** The daily network picture of the activeness gate. */
+export function activenessOverviewEmbed(s, { config = {} } = {}) {
+  const pctClear = s.total ? Math.round((s.cleared / s.total) * 100) : 0;
+  const fields = [];
+
+  if (s.oneDayShort.length) {
+    fields.push({
+      name: `One LIVE day short — ${s.oneDayShort.length}`,
+      value: s.oneDayShort.slice(0, 10).map((r) =>
+        `**@${r.username}** ${r.hours}h/${r.days}d · ${n(r.diamonds)} · ${r.group ?? '—'}`).join('\n').slice(0, 1024),
+    });
+  }
+  if (s.hoursOnly.length) {
+    fields.push({
+      name: `Days met, hours short — ${s.hoursOnly.length}`,
+      value: s.hoursOnly.slice(0, 10).map((r) =>
+        `**@${r.username}** ${r.hoursShort}h to go · ${n(r.diamonds)} · ${r.group ?? '—'}`).join('\n').slice(0, 1024),
+    });
+  }
+
+  const teams = s.teams.filter((t) => t.worthChasing > 0 || t.lost > 0).slice(0, 12);
+  if (teams.length) {
+    fields.push({
+      name: `By team — worth chasing (past ${n(s.minDiamonds)} diamonds)`,
+      value: teams.map((t) =>
+        `\`${String(t.worthChasing).padStart(3)}\` ${t.team} · ~${n(t.atStake)} at stake`
+        + (t.lost ? ` · ${t.lost} already gone` : '')).join('\n').slice(0, 1024),
+    });
+  }
+
+  fields.push({
+    name: 'What the gate is',
+    value: '15 LIVE hours across more than 7 days in the calendar month, excluding static streams. '
+      + 'Clear it and the rank-up incentive can pay on that creator; miss it and it pays nothing, '
+      + 'whatever they earned. It resets on the 1st.',
+  });
+
+  return {
+    embeds: [{
+      title: `Activeness — ${s.daysLeft} day${s.daysLeft === 1 ? '' : 's'} left in the month`,
+      description: `\`${progressBar(s.cleared, s.total)}\`\n`
+        + `**${s.cleared} of ${s.total}** active creators have cleared the gate (${pctClear}%).\n`
+        + `**${s.reachable}** can still make it — **${s.worthChasing}** of them past ${n(s.minDiamonds)} diamonds, `
+        + `worth up to **${n(s.atStake)}** in rank-up bonus.`
+        + (s.lost ? `\n**${s.lost}** can no longer clear it this month — ~${n(s.forfeited)} gone.` : ''),
+      color: s.reachable > 0 ? COLOR.warn : COLOR.recovered,
+      fields,
+      footer: { text: `${s.month} · posted once a day` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/**
+ * Where the network itself stands, for management.
+ *
+ * These are the two numbers TikTok judges LEAP on. Neither is a coach's to fix
+ * directly, which is why they go here and not into a team channel.
+ */
+export function policyEmbed(p, { asOf }) {
+  const g = p.graduation;
+  const m = p.mature;
+  const pct = (x) => (x == null ? '—' : `${(x * 100).toFixed(1)}%`);
+  const fields = [];
+
+  fields.push({
+    name: 'New creator graduation rate',
+    value: [
+      `**${pct(g.rate)}** — ${g.numerator} of ${g.denominator}`,
+      `Counted: joined since ${g.since}, and past ${n(g.floor)} diamonds this month.`,
+      `${g.joined} joined in the window; ${g.denominator} cleared ${n(g.floor)} and so are evaluated.`,
+    ].join('\n'),
+  });
+
+  if (g.closest.length) {
+    fields.push({
+      name: 'Closest to graduating this month',
+      value: g.closest.slice(0, 6).map((r) =>
+        `**@${r.username}** ${n(r.remaining)} to go · ${r.group ?? '—'}`).join('\n').slice(0, 1024),
+    });
+  }
+
+  fields.push({
+    name: 'Mature creator rank-up and maintenance rate',
+    value: [
+      `**${pct(m.rate)}** — ${m.numerator} of ${m.denominator} held or raised their tier`,
+      m.clearsBonus
+        ? `Clears the ${pct(m.bonusAt)} line, so the rank-up bonus carries the extra 1%.`
+        : `**${m.toBonus} more** would clear the ${pct(m.bonusAt)} line and add 1% to the rank-up bonus.`,
+      m.clearsInvite
+        ? `Clears the ${pct(m.inviteAt)} line for the premium invitation reward.`
+        : `**${m.toInvite} more** would clear the ${pct(m.inviteAt)} line for the premium invitation reward.`,
+    ].join('\n'),
+  });
+
+  if (m.dropped.length) {
+    fields.push({
+      name: 'Dropped a tier — closest to climbing back',
+      value: m.dropped.slice(0, 6).map((r) =>
+        `**@${r.username}** ${n(r.now)} now, was ${n(r.was)} · ${n(r.toHold)} to get back · ${r.group ?? '—'}`)
+        .join('\n').slice(0, 1024),
+    });
+  }
+
+  const st = p.standing;
+  fields.push({
+    name: st.safe ? 'Inactive-operations rule: not at risk' : 'Inactive-operations rule',
+    value: [
+      `New creators in 3 months: **${n(st.newCreators)}** (breaches under ${n(st.minNew)})`,
+      `Diamonds in 3 months: **${n(st.diamonds)}** (breaches under ${n(st.minDiamonds)})`,
+      st.safe
+        ? 'All three have to breach together for a consequence. Two are clear, so this rule cannot fire.'
+        : 'Both quantity criteria are breached. A third consecutive Low month would trigger a consequence.',
+    ].join('\n'),
+  });
+
+  return {
+    embeds: [{
+      title: 'Where the network stands',
+      description: 'The two rates TikTok sets our benefits tier on. '
+        + `Graduation threshold for this region is **${n(g.threshold)}**.`,
+      color: g.rate != null && g.rate > 0 ? COLOR.opportunity : COLOR.neutral,
+      fields,
+      footer: { text: `as of ${asOf} · 2026 Creator Network Policies & Rules` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/**
  * The daily state of one team, for the coach who runs it.
  *
  * Ordered the way a coach spends their day: what the team is worth this month,

@@ -14,8 +14,8 @@ const config = {
 
 /** One ramp row, with only the fields the graduation chase reads. */
 const row = ({ username = 'c1', monthToDate = 0, daysLeft = 10, perDay = 5000, day = 40,
-  attemptsLeft = 1, achievedIn = null, group = 'Team Alpha' } = {}) => ({
-  creator: { key: username, username, group, manager: 'josh@leap', quitOn: null },
+  attemptsLeft = 1, achievedIn = null, group = 'Team Alpha', joinDate = '2026-08-11' } = {}) => ({
+  creator: { key: username, username, group, manager: 'josh@leap', quitOn: null, joinDate },
   day, month: '2026-09', daysLeftInMonth: daysLeft, monthToDate,
   currentPerDay: perDay, projected: monthToDate + perDay * daysLeft,
   attemptsLeft, achievedIn, bestMonth: { key: '2026-08', diamonds: 50000 },
@@ -85,11 +85,19 @@ test('the closing ping is never a lie', () => {
   assert.deepEqual(pushed, [], 'telling a coach to chase an impossible gap is how they stop reading');
 });
 
-test('a creator past day 90 is not in the chase, however big their month', () => {
+test('a creator outside the three-month cohort is not in the chase, however big their month', () => {
   const s = store();
-  const out = run([row({ username: 'toolate', day: 97, monthToDate: 208500, daysLeft: 0 })], s);
+  // Joined in June, so on 20 September they are outside July-August-September.
+  const out = run([row({ username: 'toolate', joinDate: '2026-06-17', day: 97, monthToDate: 208500, daysLeft: 0 })], s);
   assert.equal(out.rows.length, 0);
   assert.equal(out.milestones.length, 0, 'a 200k month after the window closed is not a graduation');
+});
+
+test('the cohort is calendar months, so day 91 of a July joiner still counts', () => {
+  const s = store();
+  const out = run([row({ username: 'julyjoiner', joinDate: '2026-07-02', day: 91, monthToDate: 145000 })],
+    s, '2026-09-30');
+  assert.equal(out.rows.length, 1, 'they are in the July-August-September cohort until 1 October');
 });
 
 test('a creator who already graduated is not chased again', () => {
