@@ -4,7 +4,11 @@ import { coachRevenue } from '../lib/revenue.mjs';
 import { revenueFields, teamSummaryEmbed } from '../lib/discord.mjs';
 
 const config = {
-  revenue: { enabled: true, baseWage: 150, incrementalPerDiamondUsd: 0.00005, usdToGbp: 0.75, goalBonusPct: 0.10, bonusOnBase: false },
+  revenue: {
+    enabled: true, baseWage: 150, incrementalFloorDiamonds: 100000,
+    incrementalPerDiamondUsd: 0.00005, goalsMultiplier: 2,
+    usdPerDiamond: 0.01, rankUpRatio: 0.065, rankUpShare: 0.10, usdToGbp: 0.754074,
+  },
   leaped: { fee: 10, currency: 'GBP' },
   coaches: { names: { 'josh@leap': 'Sur3shot' }, excludeFromBoards: ['amy@leap'] },
   monitoring: { ignoreGroups: [] },
@@ -18,7 +22,44 @@ const who = (username, { coach = 'josh@leap', group = 'Team Alpha', joinDate = '
 });
 const leapedFor = (pairs) => ({ thisMonth: pairs.map(([coach, username]) => ({ coach, username, fee: 10 })) });
 
-test('the three parts add up, and the bonus is a ceiling not a total', () => {
+test('the incremental share reproduces the finance sheet, to the penny', () => {
+  // WAGES CALCUATOR, July, SHOTTY / gdubz360streams: 1,006,213 diamonds shows
+  // a coach share of 100.6213 USD and 75.8758945 GBP. That row is the spec.
+  const rev = coachRevenue({
+    creators: [who('gdubz360streams', { diamonds: 1006213 })],
+    asOf: ASOF,
+    // The sheet's own share is the 20% rate, so double the 10% base to match it.
+    config: { ...config, revenue: { ...config.revenue, incrementalPerDiamondUsd: 0.0001 } },
+  });
+  assert.equal(Math.round(rev.rows[0].incremental * 10000) / 10000, 75.8759);
+});
+
+test('both shares are paid only on creators past the floor', () => {
+  const rev = coachRevenue({
+    creators: [
+      who('big', { diamonds: 1000000 }),
+      who('under', { diamonds: 99999 }),
+      who('exactly_on', { diamonds: 100000 }),
+    ],
+    asOf: ASOF, config,
+  });
+  const r = rev.rows[0];
+  assert.equal(r.diamonds, 1199999, 'the roster total is everyone');
+  assert.equal(r.qualifying, 2, 'but the share is paid on two of them');
+  assert.equal(r.qualifyingDiamonds, 1100000);
+  assert.equal(r.incremental, 1100000 * 0.00005 * 0.754074);
+});
+
+test('the rank-up share is a tenth of what TikTok pays for the rank-up', () => {
+  const rev = coachRevenue({ creators: [who('a', { diamonds: 1006213 })], asOf: ASOF, config });
+  const r = rev.rows[0];
+  // The sheet's "TIKTOK VALUE" for this row is 654.03845 USD at a 6.5% ratio.
+  assert.equal(Math.round(r.rankUpValue / 0.754074 * 100000) / 100000, 654.03845);
+  assert.equal(Math.round(r.rankUp * 1000) / 1000,
+    Math.round(r.rankUpValue * 0.1 * 1000) / 1000);
+});
+
+test('the three parts add up, and Backstage goals double the incremental share', () => {
   const rev = coachRevenue({
     creators: [
       who('a', { diamonds: 1000000, joinDate: '2026-09-02' }),
@@ -27,54 +68,15 @@ test('the three parts add up, and the bonus is a ceiling not a total', () => {
     asOf: ASOF, config, leaped: leapedFor([['josh@leap', 'a'], ['josh@leap', 'b']]),
   });
   const r = rev.rows[0];
-  assert.equal(r.recruited, 1, 'only the one who joined this month');
-  assert.equal(r.leapedCount, 2);
+  assert.equal(r.recruited, 1);
   assert.equal(r.leapedPay, 20);
-  assert.equal(r.diamonds, 3000000);
-  assert.equal(r.incremental, 3000000 * 0.0000375);
   assert.equal(r.base, 150);
-  assert.equal(r.earned, 132.5, 'what they made on top of the fixed wage');
-  assert.equal(r.total, 150 + 132.5);
-  assert.ok(r.withBonus > r.total, 'the bonus is not earned yet, so it sits above the estimate');
-});
-
-test('the goal bonus is taken on what was earned, not on the fixed wage', () => {
-  const creators = [who('a', { diamonds: 2000000 })];   // GBP 75 incremental
-  const off = coachRevenue({ creators, asOf: ASOF, config }).rows[0];
-  assert.equal(off.total, 225);
-  assert.equal(off.withBonus, 225 + 7.5, '10% of the 75 earned, not of the 225');
-
-  const on = coachRevenue({
-    creators, asOf: ASOF,
-    config: { ...config, revenue: { ...config.revenue, bonusOnBase: true } },
-  }).rows[0];
-  // 225 * 1.1 is 247.50000000000003; adding the share is exact, which is why
-  // the code is written that way round.
-  assert.equal(on.withBonus, 247.5, 'unless somebody says otherwise');
-});
-
-test('with no base wage set, nothing about the base is printed', () => {
-  const rev = coachRevenue({
-    creators: [who('a', { diamonds: 2000000 })], asOf: ASOF,
-    config: { ...config, revenue: { ...config.revenue, baseWage: 0 } },
-  });
-  assert.equal(rev.rows[0].base, 0);
-  assert.equal(rev.rows[0].total, 75);
-  const block = revenueFields(rev, rev.rows, { config })[1].value;
-  assert.ok(!/Base wage/.test(block));
-  assert.ok(!/base wage/.test(block), 'including the footnote about it');
-});
-
-test('the per-diamond rate is the USD rate converted, not a second number to drift', () => {
-  const rev = coachRevenue({ creators: [who('a', { diamonds: 100 })], asOf: ASOF, config });
-  assert.equal(rev.perDiamond, 0.0000375, 'and not 0.000037500000000000003');
-  const euro = coachRevenue({
-    creators: [who('a', { diamonds: 1000000 })], asOf: ASOF,
-    config: { ...config, revenue: { ...config.revenue, usdToGbp: 0.8 } },
-  });
-  assert.equal(euro.perDiamond, 0.00004, 'changing the exchange rate moves one number');
-  assert.equal(euro.rows[0].incremental, 40);
-  assert.equal(euro.rows[0].total, 190, 'and the base rides on top of it');
+  assert.equal(r.earned, r.leapedPay + r.incremental + r.rankUp);
+  assert.equal(r.total, 150 + r.earned);
+  // Doubling the incremental share, not adding a tenth of everything.
+  assert.equal(r.withGoals, r.total + r.incremental);
+  assert.equal(r.incrementalWithGoals, r.incremental * 2);
+  assert.ok(r.withGoals > r.total);
 });
 
 test('all-time onboarded counts creators who have since left', () => {

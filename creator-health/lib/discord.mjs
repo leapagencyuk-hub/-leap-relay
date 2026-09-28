@@ -1054,7 +1054,9 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
     name: 'Your revenue — rough estimate only',
     value: '**THIS IS FOR VISUAL PURPOSES AND A ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT. '
       + 'FOR EXACT FIGURES TALK TO THE DIRECTORS** — the percentages behind this move '
-      + 'through the month, so this can only ever be an indication of where you are.',
+      + 'through the month, so this can only ever be an indication of where you are. '
+      + `The rank-up share in particular assumes a ${(rev.rankUpRatio * 100).toFixed(1)}% bonus ratio; `
+      + 'the real one is set per creator per month on Backstage.',
   });
 
   for (const r of coaches) {
@@ -1067,15 +1069,17 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
           line('Recruited this month', String(r.recruited)),
           line('Leaped this month', `${r.leapedCount}  =  ${gbp(r.leapedPay)}`),
           line('Incremental share', `~${gbp(r.incremental)}`),
+          line('Rank-up share', `~${gbp(r.rankUp)}`),
           line('Onboarded all time', String(r.onboardedAllTime)),
           '',
           line('ESTIMATED THIS MONTH', `~${gbp(r.total)}`),
-          line('with Backstage goals', `~${gbp(r.withBonus)}`),
+          line('with Backstage goals', `~${gbp(r.withGoals)}`),
         ].join('\n')
         + '\n```'
-        + `\nIncremental share is ${n(r.diamonds)} diamonds this month at ${rev.perDiamond} each. `
-        + `A further ${Math.round(rev.bonus * 100)}% is available for hitting your Backstage goals`
-        + `${rev.base && !rev.bonusOnBase ? ', taken on what you earn on top of the base wage' : ''}.`,
+        + `\n**${r.qualifying}** of your creators are past ${n(rev.floor)} diamonds this month `
+        + `(${n(r.qualifyingDiamonds)} between them), which is what both shares are paid on.\n`
+        + `Hitting your Backstage goals takes the incremental share from 10% to 20% — it doubles, `
+        + `to ~${gbp(r.incrementalWithGoals)}.`,
     });
   }
 

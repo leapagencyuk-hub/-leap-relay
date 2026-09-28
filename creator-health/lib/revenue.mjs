@@ -20,16 +20,23 @@
 //                 estimate reflects what actually reaches them rather than
 //                 only the part that moves.
 //
-//   incremental   the coach's creators' diamonds this month times a rate.
-//                 0.00005 USD per diamond, converted at the rate in config, so
-//                 changing the exchange rate changes one number rather than
-//                 two. 0.00005 x 0.75 is the 0.0000375 per diamond in GBP.
+//   incremental   a share of the creator's diamond value. LEAP's finance
+//                 sheet works it as diamonds x $0.01 a diamond x a 1% share,
+//                 which reproduces its own per-creator figures exactly — one
+//                 row there reads 1,006,213 diamonds to £75.8758945, and this
+//                 gives £75.8759. Hitting Backstage goals takes the share from
+//                 10% to 20%, i.e. doubles it, which is why both lines show.
 //
-// Plus a further 10% available for hitting Backstage goals, shown as a ceiling
-// rather than folded into the total, because it is not earned yet. By default
-// that 10% is taken on the earned part only, not on the fixed wage: this is an
-// estimate somebody may plan around, and an estimate that comes in under is a
-// better failure than one that comes in over. `bonusOnBase` flips it.
+//   rank-up       10% of what TikTok pays the network for that creator ranking
+//                 up. The finance sheet calls it "TIKTOK VALUE": diamonds x a
+//                 bonus ratio x $0.01. The ratio is per creator per month and
+//                 comes off Backstage — 0.065 in nearly every row of the sheet,
+//                 so that is the default here, and it is an ESTIMATE.
+//
+// Only creators past a floor count towards the last two. The finance sheet
+// lists nobody under 100,000 diamonds in a month, and applying the share to
+// every creator on a roster overstates it badly.
+//
 import { groupKey } from './notify.mjs';
 import { monthMtd } from './policy.mjs';
 import { coachName, offTheBoards } from './coaches.mjs';
@@ -50,9 +57,13 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const perDiamond = Number((usdPerDiamond * usdToGbp).toPrecision(6));
   const fee = config.leaped?.fee ?? 10;
   const currency = config.leaped?.currency ?? 'GBP';
-  const bonus = cfg.goalBonusPct ?? 0.10;
   const base = cfg.baseWage ?? 0;
-  const bonusOnBase = cfg.bonusOnBase === true;
+  const floor = cfg.incrementalFloorDiamonds ?? 100000;
+  // Hitting Backstage goals takes the incremental share from 10% to 20%.
+  const goalsMultiplier = cfg.goalsMultiplier ?? 2;
+  const rankUpRatio = cfg.rankUpRatio ?? 0.065;
+  const rankUpShare = cfg.rankUpShare ?? 0.10;
+  const usdPerDiamondGross = cfg.usdPerDiamond ?? 0.01;
   const month = asOf.slice(0, 7);
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
 
@@ -67,14 +78,19 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     const key = c.manager ?? 'unassigned';
     const e = byCoach.get(key) ?? {
       coach: key, name: coachName(key, config),
-      recruited: 0, onboardedAllTime: 0, roster: 0, diamonds: 0, teams: new Set(),
+      recruited: 0, onboardedAllTime: 0, roster: 0, diamonds: 0,
+      qualifying: 0, qualifyingDiamonds: 0, teams: new Set(),
     };
     // All-time includes creators who have since left: the coach still onboarded
     // them, and a number that shrinks when somebody quits reads as a penalty.
     e.onboardedAllTime++;
     if (!c.quitOn) e.roster++;
     if (c.joinDate?.slice(0, 7) === month) e.recruited++;
-    e.diamonds += monthMtd(c, month)?.diamonds ?? 0;
+    const d = monthMtd(c, month)?.diamonds ?? 0;
+    e.diamonds += d;
+    // The share is only paid on creators past the floor, so it is counted
+    // separately from the roster's total output.
+    if (d >= floor) { e.qualifying++; e.qualifyingDiamonds += d; }
     if (c.group) e.teams.add(c.group);
     byCoach.set(key, e);
   }
@@ -82,26 +98,36 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const rows = [...byCoach.values()].map((e) => {
     const leapedCount = leapedByCoach.get(e.coach) ?? 0;
     const leapedPay = leapedCount * fee;
-    const incremental = e.diamonds * perDiamond;
-    const earned = leapedPay + incremental;
+    const incremental = e.qualifyingDiamonds * perDiamond;
+    // What TikTok pays the network for these creators ranking up, and the
+    // coach's tenth of it.
+    const rankUpValue = e.qualifyingDiamonds * rankUpRatio * usdPerDiamondGross * usdToGbp;
+    const rankUp = rankUpValue * rankUpShare;
+    const earned = leapedPay + incremental + rankUp;
     const total = base + earned;
+    // With Backstage goals the incremental share doubles; nothing else moves.
+    const withGoals = total + incremental * (goalsMultiplier - 1);
     return {
       ...e,
       teams: [...e.teams],
       diamonds: Math.round(e.diamonds),
+      qualifyingDiamonds: Math.round(e.qualifyingDiamonds),
       leapedCount,
       leapedPay,
       incremental,
+      incrementalWithGoals: incremental * goalsMultiplier,
+      rankUpValue,
+      rankUp,
       base,
       earned,
       total,
-      // Not earned yet, so it is a ceiling and never the headline.
-      withBonus: total + bonus * (bonusOnBase ? total : earned),
+      withGoals,
     };
   }).sort((a, b) => b.total - a.total);
 
   return {
-    month, asOf, currency, fee, perDiamond, usdPerDiamond, usdToGbp, bonus, base, bonusOnBase,
+    month, asOf, currency, fee, perDiamond, usdPerDiamond, usdToGbp, base, floor,
+    goalsMultiplier, rankUpRatio, rankUpShare,
     rows,
     byCoach: new Map(rows.map((r) => [r.coach, r])),
     // The recruitment standing, which is the "all staff" board on the card. It
