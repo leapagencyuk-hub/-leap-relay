@@ -14,7 +14,7 @@ import { ACTIVATION_PLAYBOOK } from './activation.mjs';
 import { profileUrl, avatarUrl } from './profile.mjs';
 import { sparkline, progressBar, monthlyTrend } from './spark.mjs';
 import { MILESTONES } from './graduation.mjs';
-import { coachName } from './coaches.mjs';
+import { coachName, offTheBoards, earningsHidden } from './coaches.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -145,6 +145,20 @@ export class Discord {
   async deleteWebhookMessage(url, messageId) {
     const base = url.split('?')[0].replace(/\/$/, '');
     const res = await request('DELETE', `${base}/messages/${messageId}`, {});
+    if (!res.ok && res.status === 404) return { ok: true, alreadyGone: true };
+    return res;
+  }
+
+  /**
+   * Remove a message the bot posted to a channel.
+   *
+   * The counterpart to deleteWebhookMessage, for routes that fall back to a
+   * channel id and a bot token. A bot needs no special permission to delete
+   * its OWN messages, so this works wherever it could post in the first place.
+   * As above, a 404 means it is already gone, which is the outcome we wanted.
+   */
+  async deleteMessage(channelId, messageId) {
+    const res = await request('DELETE', `/channels/${channelId}/messages/${messageId}`, { token: this.token });
     if (!res.ok && res.status === 404) return { ok: true, alreadyGone: true };
     return res;
   }
@@ -1095,6 +1109,9 @@ export function policyEmbed(p, { asOf }) {
  */
 export function revenueFields(rev, coaches, { config = {} } = {}) {
   if (!rev || !coaches?.length) return [];
+  // Somebody not on a coach's package yet sees their team's card without a
+  // wage on it. The figures are still computed; only the display is withheld.
+  const shown = coaches.filter((r) => !earningsHidden(r.coach, config));
   const cur = rev.currency;
   const gbp = (x) => {
     try {
@@ -1103,6 +1120,11 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
   };
   const fields = [];
 
+  // With nobody left to pay, the warning has nothing to disclaim and the
+  // header would sit above an empty space. The all-staff recruitment board is
+  // not earnings and is the same on every card, so it still goes out below.
+  if (!shown.length) return recruitBoardFields(rev, fields);
+
   fields.push({
     name: 'Your revenue — rough estimate only',
     value: '**THIS IS FOR VISUAL PURPOSES AND A ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT. '
@@ -1110,7 +1132,7 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
       + '_Paid on the 15th of next month._',
   });
 
-  for (const r of coaches) {
+  for (const r of shown) {
     const line = (label, value) => `${label.padEnd(26)}${value}`;
     fields.push({
       name: r.name,
@@ -1132,14 +1154,18 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
     });
   }
 
+  return recruitBoardFields(rev, fields);
+}
+
+/** The all-staff recruitment standing, which is a count of signings, not pay. */
+function recruitBoardFields(rev, fields = []) {
   if (rev.recruitBoard.length) {
     fields.push({
       name: 'Recruited this month — all staff',
-      value: rev.recruitBoard.slice(0, 12).map((r, i) =>
-        `\`${String(i + 1).padStart(2)}\`  **${r.name}** — ${r.recruited}`).join('\n').slice(0, 1024),
+      value: fitJoin(rev.recruitBoard.slice(0, 12).map((r, i) =>
+        `\`${String(i + 1).padStart(2)}\`  **${r.name}** — ${r.recruited}`)),
     });
   }
-
   return fields;
 }
 
@@ -1165,6 +1191,8 @@ export function rankUpFields(board, coaches, { config = {}, limit = 6 } = {}) {
   const fields = [];
 
   for (const coach of coaches) {
+    // Every line here is a pound figure, so it is withheld with the rest.
+    if (earningsHidden(coach, config)) continue;
     const e = board.byCoach.get(coach);
     if (!e || (!e.ranked.length && !e.close.length)) continue;
 

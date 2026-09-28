@@ -276,3 +276,37 @@ test('the block renders inside the summary, last', () => {
   assert.ok(idx >= fields.findIndex((f) => /habit/i.test(f.name)),
     'and comes after the coaching, not before it');
 });
+
+test('a coach not on a package yet sees their team card without a wage on it', () => {
+  const cfg = { ...config, revenue: { ...config.revenue, hideEarningsFor: ['amy@leap'] } };
+  const rev = coachRevenue({
+    creators: [
+      who('a', { coach: 'josh@leap', diamonds: 500000, lastMonth: 0 }),
+      who('b', { coach: 'amy@leap', diamonds: 900000, lastMonth: 0 }),
+    ],
+    asOf: ASOF, config: cfg,
+  });
+  // Still computed: the directors' figures and the network total stay whole.
+  assert.ok(rev.byCoach.get('amy@leap').total > 0);
+  assert.equal(rev.networkTotal, rev.rows.reduce((n, r) => n + r.total, 0));
+
+  const body = revenueFields(rev, rev.rows, { config: cfg }).map((f) => `${f.name}\n${f.value}`).join('\n');
+  assert.match(body, /Sur3shot/, 'the other coach still sees theirs');
+  assert.doesNotMatch(body, /ESTIMATED THIS MONTH[\s\S]*amy/, 'but amy has no pay block');
+  assert.equal(revenueFields(rev, rev.rows, { config: cfg }).filter((f) => f.name === 'amy').length, 0);
+});
+
+test('when nobody on the card is paid, the estimate block goes entirely', () => {
+  const cfg = { ...config, revenue: { ...config.revenue, hideEarningsFor: ['josh@leap'] } };
+  const rev = coachRevenue({
+    creators: [who('a', { coach: 'josh@leap', joinDate: '2026-09-02', diamonds: 500000, lastMonth: 0 })],
+    asOf: ASOF, config: cfg,
+  });
+  const fields = revenueFields(rev, rev.rows, { config: cfg });
+  // No warning either: there is no estimate left on the card to disclaim.
+  assert.ok(!fields.some((f) => /rough estimate only/i.test(f.name)));
+  assert.ok(!fields.some((f) => /ESTIMATED THIS MONTH/.test(f.value)));
+  // The all-staff recruitment standing is a count of signings, not pay, and is
+  // the same on every card, so it still goes out.
+  assert.deepEqual(fields.map((f) => f.name), ['Recruited this month — all staff']);
+});

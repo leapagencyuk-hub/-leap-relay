@@ -265,8 +265,17 @@ export async function dispatch({
       store.data.lastMessage ??= {};
       store.data.lastMessage[slot] = { id: res.body.id, period };
     }
-    if (supersedes(prev, period, res.body?.id) && route.webhook) {
-      const gone = await client.deleteWebhookMessage(route.webhook, prev.id);
+    if (supersedes(prev, period, res.body?.id)) {
+      // Whichever way this slot posts. A webhook deletes its own messages with
+      // nothing but its URL; a bot deletes its own with its token. Before both
+      // were handled, a route that fell back from a missing webhook env var to
+      // a channel id posted fine and silently never cleaned up, so the channel
+      // grew a copy a day while the code reported success.
+      const gone = route.webhook
+        ? await client.deleteWebhookMessage(route.webhook, prev.id)
+        : route.channelId
+          ? await client.deleteMessage(route.channelId, prev.id)
+          : { ok: false, error: 'no webhook or channel to delete through' };
       if (gone.ok) replaced.push({ label, coach: who, slot, id: prev.id });
       else sent.push({ label: `${label}-cleanup`, coach: who, ok: false, error: gone.error });
     }

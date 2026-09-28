@@ -85,3 +85,84 @@ test('the summary counts both directions and reads as English', () => {
     redoSummary({ skipped: 'no webhook URLs are set', asOf: '2026-09-20', posted: 0, replaced: 0, failed: [] }),
     /^Nothing posted — no webhook URLs are set$/);
 });
+
+test('a bot-posted card is cleaned up too, not only a webhook one', async () => {
+  // The bug this covers: a route whose webhook env var is missing falls back
+  // to a channel id and a bot token. It posted fine and silently never cleaned
+  // up, so the channel grew a copy a day while the code reported success.
+  const { Discord } = await import('../lib/discord.mjs');
+  const calls = [];
+  const client = new Discord({ token: 'bot-token' });
+  assert.equal(typeof client.deleteMessage, 'function',
+    'the bot needs a delete of its own, beside deleteWebhookMessage');
+
+  // Both delete paths treat "already gone" as the outcome we wanted.
+  const orig = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    calls.push(`${opts.method} ${String(url)}`);
+    return new Response('{"message":"Unknown Message"}', { status: 404, headers: { 'content-type': 'application/json' } });
+  };
+  try {
+    const viaBot = await client.deleteMessage('123', '456');
+    assert.equal(viaBot.ok, true);
+    assert.equal(viaBot.alreadyGone, true);
+    assert.match(calls[0], /^DELETE .*\/channels\/123\/messages\/456$/);
+  } finally {
+    globalThis.fetch = orig;
+  }
+});
+
+test('a slot that falls back from a missing webhook to a bot still cleans up', async () => {
+  // The regression, end to end through dispatch. On Render the growth board's
+  // webhook env var was unset, so the route fell back to a channel id and the
+  // bot posted it. The cleanup was guarded on `route.webhook`, so it never
+  // ran: the channel grew a copy a day while every run reported success.
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const { dispatch } = await import('../lib/dispatch.mjs');
+  const { CaseStore } = await import('../lib/cases.mjs');
+  const { loadRoutes } = await import('../lib/notify.mjs');
+
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'redo-bot-'));
+  fs.writeFileSync(path.join(dir, 'routes.json'), JSON.stringify({
+    discord: {
+      enabled: true, mode: 'bot', botToken: 'bot-token',
+      // No webhook anywhere: every card takes the channel path.
+      overviewChannelId: '900000000000000001',
+      summaryChannelId: '900000000000000001',
+      groups: { 'Team Alpha': { channelId: '900000000000000002' } },
+    },
+  }));
+  const discord = loadRoutes(dir).discord;
+
+  const calls = [];
+  const orig = globalThis.fetch;
+  let nextId = 700;
+  globalThis.fetch = async (url, opts) => {
+    calls.push(`${opts.method} ${String(url).replace('https://discord.com/api/v10', '')}`);
+    if (opts.method === 'DELETE') return new Response('', { status: 204 });
+    return new Response(JSON.stringify({ id: String(++nextId), channel_id: '900000000000000001' }),
+      { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+
+  const run = () => dispatch({
+    asOf: '2026-09-20', store: new CaseStore(dir), discordConfig: discord, dryRun: false,
+    changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+    forceSummary: true, force: ['all'], config: { dataDir: dir },
+  });
+
+  try {
+    await run();
+    const afterFirst = calls.filter((c) => c.startsWith('DELETE')).length;
+    assert.equal(afterFirst, 0, 'nothing to clean up on the first run');
+    await run();
+    const deletes = calls.filter((c) => c.startsWith('DELETE'));
+    assert.ok(deletes.length > 0, 'the second run removes what the first one posted');
+    for (const d of deletes) assert.match(d, /^DELETE \/channels\/\d+\/messages\/\d+$/);
+  } finally {
+    globalThis.fetch = orig;
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});

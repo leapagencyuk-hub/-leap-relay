@@ -219,3 +219,14 @@ test('the advanced ratio is a network setting, and never changes the coach\'s 1%
   assert.equal(adv.ratio, 0.075);
   assert.equal(base.worth, adv.worth, 'what the coach gets does not move');
 });
+
+test('a coach whose earnings are withheld gets no bracket card either', () => {
+  // Every line in a bracket card is a pound figure, so it is withheld with
+  // the rest of the pay block rather than half-shown.
+  const cfg = { ...config, revenue: { ...config.revenue, hideEarningsFor: ['josh@leap'] } };
+  const board = rankUpBoard({
+    creators: [who('banked', { diamonds: 400000, lastMonth: 120000 })], asOf: ASOF, config: cfg,
+  });
+  assert.equal(board.ranked.length, 1, 'still computed');
+  assert.deepEqual(rankUpFields(board, ['josh@leap'], { config: cfg }), []);
+});

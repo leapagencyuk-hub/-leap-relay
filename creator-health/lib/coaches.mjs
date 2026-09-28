@@ -31,3 +31,22 @@ export function offTheBoards(email, config = {}) {
   const list = config.coaches?.excludeFromBoards ?? [];
   return list.map((e) => String(e).toLowerCase()).includes(String(email).toLowerCase());
 }
+
+/**
+ * Coaches whose earnings are not shown to them yet.
+ *
+ * Separate again from `offTheBoards`: that is about the internal competition,
+ * this is about money. Somebody can be top of the recruitment board and still
+ * not be on a coach's package — a trial, a hand-over, somebody doing the work
+ * before the arrangement is settled. Putting an estimated wage in front of
+ * them before that is agreed creates an expectation nobody promised.
+ *
+ * Their figures are still computed, so the directors' numbers and the network
+ * totals stay whole. Only the display is withheld, and turning it back on is
+ * one line of config.
+ */
+export function earningsHidden(email, config = {}) {
+  if (!email) return false;
+  const list = config.revenue?.hideEarningsFor ?? [];
+  return list.map((e) => String(e).toLowerCase()).includes(String(email).toLowerCase());
+}
