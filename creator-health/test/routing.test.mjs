@@ -376,3 +376,37 @@ test('a summary channel id is not used without a bot token to post with', async 
   fs.rmSync(dir, { recursive: true, force: true });
   assert.equal(out.previews.filter((p) => p.label === 'team-summary').length, 0);
 });
+
+test('a once-a-day card can be deliberately asked for again', async () => {
+  const BOARD_HOOK = 'https://discord.com/api/webhooks/5/board';
+  const discord = routesFrom({
+    mode: 'webhook',
+    groups: { 'Team Alpha': { webhook: TEAM_HOOK } },
+    leaderboardWebhook: BOARD_HOOK,
+  });
+  const creator = {
+    key: 'k1', username: 'creator1', group: 'Team Alpha', manager: 'josh@leap',
+    quitOn: null, joinDate: '2026-09-02',
+    obs: [{ date: '2026-09-20', mtd: { diamonds: 5000, validLiveDays: 3 } }],
+  };
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-force-'));
+  const store = new CaseStore(dir);
+  const call = (force) => dispatch({
+    asOf: '2026-09-20', store, discordConfig: discord, dryRun: true, force,
+    changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+    alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+    creators: [creator], metricsByKey: new Map(),
+    config: { leaderboard: { enabled: true }, monitoring: { ignoreGroups: [] } },
+  });
+
+  assert.equal((await call()).previews.filter((p) => p.label === 'leaderboard').length, 1);
+  store.data.lastLeaderboardOn = '2026-09-20';
+  assert.equal((await call()).previews.filter((p) => p.label === 'leaderboard').length, 0,
+    'the guard still holds for an ordinary run');
+  assert.equal((await call(['leaderboard'])).previews.filter((p) => p.label === 'leaderboard').length, 1,
+    'but not when somebody has asked for it again');
+  assert.equal((await call(['all'])).previews.filter((p) => p.label === 'leaderboard').length, 1);
+  assert.equal((await call(['growth'])).previews.filter((p) => p.label === 'leaderboard').length, 0,
+    'and forcing one card does not repost the others');
+  fs.rmSync(dir, { recursive: true, force: true });
+});

@@ -10,6 +10,8 @@
 //   GET  /creator/:name     one creator's numbers
 //   POST /notify            run today's analysis and push digests to webhooks
 //   POST /run               the daily run: reconcile cases and post to Discord
+//                           ?force=leaderboard,growth,overview,policy,activeness,summaries
+//                           (or ?force=all) reposts today's once-a-day cards
 //   POST /discord/interactions  Discord's interactions endpoint (button clicks)
 //   GET  /cases             the open caseload
 //   GET  /effectiveness     which interventions are working
@@ -353,8 +355,11 @@ async function handleRun(req, res, url) {
     asOf: url.searchParams.get('as-of'),
     dryRun,
     // The once-a-day guard is right for automatic runs and wrong when someone
-    // has deliberately asked for the overview again.
+    // has deliberately asked for a post again.
     forceSummary: url.searchParams.get('force-overview') === '1',
+    // ?force=leaderboard,growth or ?force=all — reposts today's once-a-day
+    // cards without waiting for tomorrow.
+    force: (url.searchParams.get('force') ?? '').split(',').map((x) => x.trim()).filter(Boolean),
   });
   return json(res, 200, {
     asOf: result.asOf,

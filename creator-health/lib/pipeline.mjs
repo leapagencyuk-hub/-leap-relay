@@ -168,7 +168,7 @@ export function dataHealth(config, asOf) {
   };
 }
 
-export async function runDaily(config, configPath, { asOf = null, dryRun = false, forceSummary = false } = {}) {
+export async function runDaily(config, configPath, { asOf = null, dryRun = false, forceSummary = false, force = null } = {}) {
   const result = analyse(config, { asOf, persist: !dryRun });
   const store = new CaseStore(config.dataDir);
   const changes = reconcile({
@@ -197,6 +197,7 @@ export async function runDaily(config, configPath, { asOf = null, dryRun = false
       discordConfig,
       dryRun,
       forceSummary,
+      force,
       health: dataHealth(config, result.asOf),
       creators: result.creators,
       metricsByKey: result.metricsByKey,

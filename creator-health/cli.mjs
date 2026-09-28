@@ -7,7 +7,7 @@
 //   node cli.mjs creator <username>             one creator's full history
 //   node cli.mjs rebuild                        re-derive the series
 //   node cli.mjs status                         what is stored
-//   node cli.mjs run [--dry] [--force-overview] daily run: cases + Discord
+//   node cli.mjs run [--dry] [--force-overview] [--again=leaderboard,growth]
 //   node cli.mjs graduation [--limit N]      the 200k chase as it stands
 //   node cli.mjs activeness [--limit N]      who is about to miss the 15h/7d gate
 //   node cli.mjs policy                      where the network stands on the 2026 rules
@@ -190,6 +190,8 @@ async function cmdRun() {
   const dry = flag('dry');
   const { result, changes, delivery, cases } = await runDaily(config, configPath, {
     asOf: option('as-of'), dryRun: dry, forceSummary: flag('force-overview'),
+    // --again=leaderboard,growth reposts today's once-a-day cards.
+    force: (option('again', '') || '').split(',').map((x) => x.trim()).filter(Boolean),
   });
 
   console.log(`daily run — ${result.asOf}${dry ? '  (dry run, nothing sent or saved)' : ''}`);

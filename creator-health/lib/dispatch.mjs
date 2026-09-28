@@ -137,7 +137,7 @@ export function preflight(discordConfig) {
 
 export async function dispatch({
   asOf, changes, alerts, spotlight, ramp, stats, store, discordConfig,
-  dryRun = false, forceSummary = false, health = null,
+  dryRun = false, forceSummary = false, force = null, health = null,
   creators = [], metricsByKey = new Map(), activation = [], config = {},
 }) {
   const activationSummary = activation.length ? {
@@ -148,6 +148,12 @@ export async function dispatch({
     dormant: activation.filter((r) => r.stage === 'DORMANT').length,
     open: store.all().filter((c) => c.kind === 'activation' && isOpen(c)).length,
   } : null;
+  // Once-a-day posts that somebody has deliberately asked for again — after a
+  // fix, or because a channel was misconfigured when the day's run went out.
+  // The guard is right for automatic runs and wrong here.
+  const forced = new Set(Array.isArray(force) ? force : force ? [...force] : []);
+  const again = (what) => forced.has(what) || forced.has('all');
+
   const check = preflight(discordConfig);
   if (!dryRun && !check.ok) return { sent: [], previews: [], skipped: check.reason };
   const client = new Discord({ token: discordConfig.botToken });
@@ -304,7 +310,7 @@ export async function dispatch({
       if (!dryRun && due.length) recordPings(store, asOf, due);
     }
 
-    if (activenessRoute && rows.length && activenessDue(config, store, asOf)) {
+    if (activenessRoute && rows.length && (again('activeness') || activenessDue(config, store, asOf))) {
       await send('activeness-overview', '(activeness)', activenessRoute,
         activenessOverviewEmbed(activeness, { config }));
       if (!dryRun) store.data.lastActivenessOn = asOf;
@@ -315,7 +321,8 @@ export async function dispatch({
   // Posted before the escalation and the overview, so a coach opening Discord
   // in the morning reads where their team stands before they read what is
   // wrong with it.
-  if (Object.keys(discordConfig.teamSummaries ?? {}).length && teamSummaryDue(config, store, asOf)) {
+  if (Object.keys(discordConfig.teamSummaries ?? {}).length
+    && (again('summaries') || teamSummaryDue(config, store, asOf))) {
     const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows });
     for (const [team, summary] of summaries) {
       const entry = discordConfig.teamSummaries[groupKey(team)];
@@ -371,7 +378,7 @@ export async function dispatch({
     ? { webhook: discordConfig.leaderboardWebhook }
     : (discordConfig.leaderboardChannelId && discordConfig.botToken)
       ? { channelId: discordConfig.leaderboardChannelId } : null;
-  if (boardRoute && creators.length && leaderboardDue(config, store, asOf)) {
+  if (boardRoute && creators.length && (again('leaderboard') || leaderboardDue(config, store, asOf))) {
     const board = leaderboard({ creators, asOf, store, config });
     if (board.total || board.lastMonthTotal) {
       await send('leaderboard', '(leaderboard)', boardRoute, leaderboardEmbed(board, { config }));
@@ -386,7 +393,7 @@ export async function dispatch({
     ? { webhook: discordConfig.growthBoardWebhook }
     : (discordConfig.growthBoardChannelId && discordConfig.botToken)
       ? { channelId: discordConfig.growthBoardChannelId } : null;
-  if (growthRoute && creators.length && growthBoardDue(config, store, asOf)) {
+  if (growthRoute && creators.length && (again('growth') || growthBoardDue(config, store, asOf))) {
     const gb = growthBoard({ creators, metricsByKey, asOf, store, config });
     // Nothing to rank in a network's first month; the card would be a heading.
     if (gb.rows.length) {
@@ -398,14 +405,14 @@ export async function dispatch({
   // --- where the network itself stands --------------------------------------
   // The two rates TikTok sets our benefits tier on. Management's channel, once
   // a day, beside the overview: no coach can move these directly.
-  if (summaryRoute && creators.length && store.data.lastPolicyOn !== asOf) {
+  if (summaryRoute && creators.length && (again('policy') || store.data.lastPolicyOn !== asOf)) {
     await send('policy', '(overview)', summaryRoute,
       policyEmbed(policyStanding({ creators, asOf, config }), { asOf }));
     if (!dryRun) store.data.lastPolicyOn = asOf;
   }
 
   const alreadyPosted = store.data.lastOverviewOn === asOf;
-  if (summaryRoute && (!alreadyPosted || forceSummary)) {
+  if (summaryRoute && (!alreadyPosted || forceSummary || again('overview'))) {
     await send('overview', '(overview)', summaryRoute, overviewEmbed({
       asOf, stats, caseStats: caseStats(store, asOf), alerts, ramp, spotlight,
       changes, sent, teams: teamOutcomes(store, { now: asOf }), health,
