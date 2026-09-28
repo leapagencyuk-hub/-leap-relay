@@ -18,6 +18,7 @@ import { policyStanding } from './policy.mjs';
 import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
 import { leapedState, leapedDue } from './leaped.mjs';
+import { coachRevenue } from './revenue.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -388,13 +389,24 @@ export async function dispatch({
     }
   }
 
+  // --- leaped creators, worked out early -------------------------------------
+  // The payroll records are needed twice: by the revenue block at the bottom of
+  // each team's summary, and by the leaped channels further down. Computed once
+  // here so both read the same records rather than each working it out.
+  const leapedForRevenue = (config.leaped?.enabled !== false && creators.length)
+    ? leapedState({ creators, asOf, store, config, persist: !dryRun })
+    : null;
+  const revenue = (config.revenue?.enabled !== false && creators.length)
+    ? coachRevenue({ creators, asOf, config, leaped: leapedForRevenue })
+    : null;
+
   // --- the daily picture of each team ---------------------------------------
   // Posted before the escalation and the overview, so a coach opening Discord
   // in the morning reads where their team stands before they read what is
   // wrong with it.
   if (Object.keys(discordConfig.teamSummaries ?? {}).length
     && (again('summaries') || teamSummaryDue(config, store, asOf))) {
-    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows });
+    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows, revenue });
     for (const [team, summary] of summaries) {
       const entry = discordConfig.teamSummaries[groupKey(team)];
       // The channel id is only usable with a bot token. The ids are committed
@@ -407,7 +419,7 @@ export async function dispatch({
       // channel stops being read.
       if (!summary.roster.earning) continue;
       const route = { webhook: entry.webhook, channelId: entry.channelId };
-      const card = teamSummaryEmbed(summary);
+      const card = teamSummaryEmbed(summary, { config });
       await (replaces('teamSummary')
         ? replaceLast('team-summary', team, route, card, `summary:${groupKey(team)}`)
         : send('team-summary', team, route, card));
@@ -496,7 +508,7 @@ export async function dispatch({
       ? { channelId: discordConfig.leapedOverviewChannelId } : null;
 
   if (config.leaped?.enabled !== false && creators.length) {
-    const leaped = leapedState({ creators, asOf, store, config, persist: !dryRun });
+    const leaped = leapedForRevenue;
     leaped.carriedOverTotal = Object.values(store.data.leaped ?? {}).filter((r) => r.carriedOver).length;
 
     if (leapedRoute && leaped.today.length) {

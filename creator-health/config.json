@@ -171,6 +171,16 @@
     "_excluded": "Partner agencies are not LEAP payroll, so monitoring.ignoreGroups applies here too.",
     "closeHoursWithin": 3
   },
+  "revenue": {
+    "_note": "A rough monthly earnings estimate at the bottom of each team summary. An indication, not a payslip: the percentages behind the incremental share move through the month, and the card says so.",
+    "enabled": true,
+    "_incrementalPerDiamondUsd": "Recruiter commission per diamond, in USD.",
+    "incrementalPerDiamondUsd": 5e-05,
+    "_usdToGbp": "Converted here rather than storing a second per-diamond rate, so changing the exchange rate changes one number. 0.00005 x 0.75 gives 0.0000375 per diamond.",
+    "usdToGbp": 0.75,
+    "_goalBonusPct": "A further share available for hitting Backstage goals. Shown as a ceiling, never folded into the total, because it is not earned yet.",
+    "goalBonusPct": 0.1
+  },
   "digest": {
     "maxAlertsPerCoach": 12,
     "maxRampRowsPerCoach": 10,

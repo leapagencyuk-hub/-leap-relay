@@ -1032,6 +1032,63 @@ export function policyEmbed(p, { asOf }) {
 }
 
 /**
+ * A coach's rough earnings, for the bottom of their daily summary.
+ *
+ * Laid out as a block per coach so it reads like a payslip rather than a
+ * paragraph, and so a team with two coaches does not double the length of the
+ * card. The warning goes FIRST and in bold: this number will be wrong, and
+ * somebody reading it a fortnight from now must not be able to say they thought
+ * it was their pay.
+ */
+export function revenueFields(rev, coaches, { config = {} } = {}) {
+  if (!rev || !coaches?.length) return [];
+  const cur = rev.currency;
+  const gbp = (x) => {
+    try {
+      return new Intl.NumberFormat('en-GB', { style: 'currency', currency: cur }).format(x);
+    } catch { return `${cur} ${x.toFixed(2)}`; }
+  };
+  const fields = [];
+
+  fields.push({
+    name: 'Your revenue — rough estimate only',
+    value: '**THIS IS FOR VISUAL PURPOSES AND A ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT. '
+      + 'FOR EXACT FIGURES TALK TO THE DIRECTORS** — the percentages behind this move '
+      + 'through the month, so this can only ever be an indication of where you are.',
+  });
+
+  for (const r of coaches) {
+    const line = (label, value) => `${label.padEnd(24)}${value}`;
+    fields.push({
+      name: r.name,
+      value: '```\n'
+        + [
+          line('Recruited this month', String(r.recruited)),
+          line('Leaped this month', `${r.leapedCount}  =  ${gbp(r.leapedPay)}`),
+          line('Incremental share', `~${gbp(r.incremental)}`),
+          line('Onboarded all time', String(r.onboardedAllTime)),
+          '',
+          line('ESTIMATED THIS MONTH', `~${gbp(r.total)}`),
+          line('with Backstage goals', `~${gbp(r.withBonus)}`),
+        ].join('\n')
+        + '\n```'
+        + `\nIncremental share is ${n(r.diamonds)} diamonds this month at ${rev.perDiamond} each. `
+        + `A further ${Math.round(rev.bonus * 100)}% is available for hitting your Backstage goals.`,
+    });
+  }
+
+  if (rev.recruitBoard.length) {
+    fields.push({
+      name: 'Recruited this month — all staff',
+      value: rev.recruitBoard.slice(0, 12).map((r, i) =>
+        `\`${String(i + 1).padStart(2)}\`  **${r.name}** — ${r.recruited}`).join('\n').slice(0, 1024),
+    });
+  }
+
+  return fields;
+}
+
+/**
  * The daily state of one team, for the coach who runs it.
  *
  * Ordered the way a coach spends their day: what the team is worth this month,
@@ -1039,7 +1096,7 @@ export function policyEmbed(p, { asOf }) {
  * then what is slipping. The habit that drives all of it goes last, because it
  * is the one thing that is true every day and does not need reading twice.
  */
-export function teamSummaryEmbed(summary, { mention = null } = {}) {
+export function teamSummaryEmbed(summary, { mention = null, config = {} } = {}) {
   const s = summary;
   const fields = [];
   const line = (r, tail) => `**@${r.username}** ${tail}`;
@@ -1126,6 +1183,11 @@ export function teamSummaryEmbed(summary, { mention = null } = {}) {
       f.closest.map((r) => `@${r.username} (${Math.round(r.liveDays28)}d)`).join(' · ')}`);
   }
   fields.push({ name: `The habit that decides the rest`, value: habit.join('\n').slice(0, 1024) });
+
+  // Last, deliberately: it is the part a coach will look for, and putting it
+  // first would have the card read as a payslip with some creator notes
+  // attached rather than the other way round.
+  fields.push(...revenueFields(s.revenue, s.revenueCoaches, { config }));
 
   const m = s.month;
   // Both halves of the comparison are the same creators, and the sentence says
