@@ -9,6 +9,7 @@
 //   node cli.mjs status                         what is stored
 //   node cli.mjs run [--dry] [--force-overview] [--again=leaderboard,growth]
 //   node cli.mjs redo                       post every daily card again, fresh
+//   node cli.mjs leaped-import <manage.xlsx> [--dry]  seed leaps LEAP paid by hand
 //   node cli.mjs graduation [--limit N]      the 200k chase as it stands
 //   node cli.mjs activeness [--limit N]      who is about to miss the 15h/7d gate
 //   node cli.mjs policy                      where the network stands on the 2026 rules
@@ -42,6 +43,7 @@ import { coverage, routeFor } from './lib/dispatch.mjs';
 import { groupKey } from './lib/notify.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
 import { redoToday, redoSummary } from './lib/redo.mjs';
+import { readManualLeaps, importManualLeaps, importSummary } from './lib/leapedimport.mjs';
 import { graduationEvents } from './lib/graduation.mjs';
 import { activenessRows, activenessSummary } from './lib/activeness.mjs';
 import { policyStanding } from './lib/policy.mjs';
@@ -229,6 +231,38 @@ async function cmdRun() {
       console.log(`\n--- ${p.label} ${p.coach} ---`);
       console.log(JSON.stringify(p.payload, null, 2));
     }
+  }
+}
+
+/**
+ * Seed the leap records from the Notes column of a Manage creators export.
+ *
+ * Everyone LEAP marked by hand goes on the books as carried over: on the
+ * record so they can never leap again, worth nothing so no month of ours bills
+ * for what LEAP already paid.
+ */
+function cmdLeapedImport() {
+  const file = positional[0];
+  if (!file) die('usage: cli.mjs leaped-import <Manage creators .xlsx> [--dry]');
+  const dry = flag('dry');
+  const { exportedAt, marks, scanned } = readManualLeaps(file);
+  const series = new Store(config.dataDir).readSeries();
+  const store = new CaseStore(config.dataDir);
+  const out = importManualLeaps({
+    marks, creators: Object.values(series.creators), store, exportedAt, persist: !dry,
+  });
+  if (!dry) store.save();
+
+  console.log(`${marks.length} marked LEAP of ${scanned} creators${exportedAt ? ` (export of ${exportedAt})` : ''}`);
+  console.log(importSummary(out) + (dry ? '  (dry run, nothing written)' : ''));
+  if (out.corrected.length) {
+    console.log(`\nBilled by us but already paid by hand — corrected to carried over:`);
+    for (const r of out.corrected.slice(0, 15)) console.log(`  @${r.username}  (was ${r.wasCredited.month}, £${r.wasCredited.fee})`);
+    if (out.corrected.length > 15) console.log(`  and ${out.corrected.length - 15} more.`);
+  }
+  if (out.unmatched.length) {
+    console.log(`\nNot in the creator data — they have left, so there is nothing to carry:`);
+    for (const u of out.unmatched) console.log(`  @${u}`);
   }
 }
 
@@ -745,7 +779,8 @@ function cmdClose() {
 const commands = {
   ingest: cmdIngest, report: cmdReport, coach: cmdCoach,
   creator: cmdCreator, rebuild: cmdRebuild, status: cmdStatus,
-  run: cmdRun, redo: cmdRedo, cases: cmdCases, case: cmdCase,
+  run: cmdRun, redo: cmdRedo, 'leaped-import': cmdLeapedImport,
+  cases: cmdCases, case: cmdCase,
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,
   'discord-env': cmdDiscordEnv,
