@@ -1055,31 +1055,31 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
     value: '**THIS IS FOR VISUAL PURPOSES AND A ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT. '
       + 'FOR EXACT FIGURES TALK TO THE DIRECTORS** — the percentages behind this move '
       + 'through the month, so this can only ever be an indication of where you are. '
-      + `The rank-up share in particular assumes a ${(rev.rankUpRatio * 100).toFixed(1)}% bonus ratio; `
-      + 'the real one is set per creator per month on Backstage.',
+      + 'It also leaves out the manager diamond share entirely, so it is a floor, not a total. '
+      + 'Payments are made on the 15th of the following month, so this is the month you are '
+      + 'building rather than the money about to land.',
   });
 
   for (const r of coaches) {
-    const line = (label, value) => `${label.padEnd(24)}${value}`;
+    const line = (label, value) => `${label.padEnd(26)}${value}`;
     fields.push({
-      name: r.name,
+      name: `${r.name}${r.tier ? `  ·  ${Math.round(r.tier * 100)}% tier unlocked` : ''}`,
       value: '```\n'
         + [
-          ...(r.base ? [line('Base wage', gbp(r.base))] : []),
-          line('Recruited this month', String(r.recruited)),
-          line('Leaped this month', `${r.leapedCount}  =  ${gbp(r.leapedPay)}`),
-          line('Incremental share', `~${gbp(r.incremental)}`),
-          line('Rank-up share', `~${gbp(r.rankUp)}`),
+          ...(r.base ? [line('Extra revenue (fixed)', gbp(r.base))] : []),
+          line('Recruits this month', String(r.recruited)),
+          line('New recruit bonus', `${r.leapedCount} x ${gbp(rev.fee)}  =  ${gbp(r.recruitBonus)}`),
+          line('Alpha group task bonus', `~${gbp(r.alphaBonus)}`),
+          line('Manager diamond %', 'not calculated'),
           line('Onboarded all time', String(r.onboardedAllTime)),
           '',
-          line('ESTIMATED THIS MONTH', `~${gbp(r.total)}`),
-          line('with Backstage goals', `~${gbp(r.withGoals)}`),
+          line('ACCOUNTED FOR SO FAR', `~${gbp(r.accountedFor)}`),
         ].join('\n')
         + '\n```'
         + `\n**${r.qualifying}** of your creators are past ${n(rev.floor)} diamonds this month `
-        + `(${n(r.qualifyingDiamonds)} between them), which is what both shares are paid on.\n`
-        + `Hitting your Backstage goals takes the incremental share from 10% to 20% — it doubles, `
-        + `to ~${gbp(r.incrementalWithGoals)}.`,
+        + `(${n(r.qualifyingDiamonds)} between them), which is what the alpha group task bonus pays on.`
+        + `\nThe manager diamond share is **not in this figure** — it is not something this data can `
+        + `work out, so treat the total as a floor rather than the whole.`,
     });
   }
 

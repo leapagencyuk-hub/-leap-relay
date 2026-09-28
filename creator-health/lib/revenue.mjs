@@ -1,42 +1,39 @@
 // A coach's rough monthly earnings, for the bottom of their daily summary.
 //
-// THIS IS AN ESTIMATE AND THE CARD SAYS SO IN AS MANY WORDS. The percentages
-// behind the incremental share move during a month, and the exact figure is the
-// directors' to give. What this is for is a coach being able to see, every
-// morning, roughly what their work is worth and which lever moves it — not to
-// settle anybody's pay.
+// THIS IS AN ESTIMATE AND THE CARD SAYS SO IN AS MANY WORDS. What this is for
+// is a coach seeing every morning roughly what their month is worth and which
+// lever moves it — not settling anybody's pay.
 //
-// Three parts:
+// The components and their names come from LEAP's own Recruitment 26/27 sheet.
+// Payments are made on the 15th of the FOLLOWING month, so what this shows is
+// the month being built, not the money about to land.
 //
-//   recruited     creators who joined this calendar month, credited to their
-//                 Creator Network manager. A count, not money.
+//   extra revenue           a fixed monthly amount, per coach. Most are on 150;
+//                           the sheet has Sureshot on 350 and Malkin on 300.
 //
-//   leaped        creators who passed 5 LIVE hours and 5,000 diamonds this
-//                 month, at the fee in config.leaped. Comes straight from
-//                 `leaped.mjs` so there is one definition of a leap and one
-//                 set of records behind the pay, not two that can drift.
+//   new recruit bonus       10 for each recruit who qualifies. Read from the
+//                           leaped records so there is one definition of a
+//                           qualifying recruit, not two that can drift.
 //
-//   base          a fixed monthly wage every coach already has, shown so the
-//                 estimate reflects what actually reaches them rather than
-//                 only the part that moves.
+//   alpha group task bonus  VERIFIED against the WAGES CALCUATOR sheet:
+//                           diamonds x $0.01 a diamond x a 1% share x FX, over
+//                           creators past 100,000 diamonds in the month. That
+//                           sheet's July totals appear unchanged as August's
+//                           Alpha Group Task Bonus for all six coaches with
+//                           data, and one row reads 1,006,213 diamonds to
+//                           £75.8758945 where this gives £75.8759.
 //
-//   incremental   a share of the creator's diamond value. LEAP's finance
-//                 sheet works it as diamonds x $0.01 a diamond x a 1% share,
-//                 which reproduces its own per-creator figures exactly — one
-//                 row there reads 1,006,213 diamonds to £75.8758945, and this
-//                 gives £75.8759. Hitting Backstage goals takes the share from
-//                 10% to 20%, i.e. doubles it, which is why both lines show.
+//   manager diamond %       NOT REPRODUCIBLE from the creator export. It is a
+//                           share at the coach's unlocked tier, but of a base
+//                           this data does not contain: the ratio against the
+//                           wages sheet's own figures comes out at 10% for one
+//                           coach and 26% for another on the same month, so it
+//                           is not a percentage of anything here. The card
+//                           shows the unlocked tier and says the figure is
+//                           missing rather than inventing one.
 //
-//   rank-up       10% of what TikTok pays the network for that creator ranking
-//                 up. The finance sheet calls it "TIKTOK VALUE": diamonds x a
-//                 bonus ratio x $0.01. The ratio is per creator per month and
-//                 comes off Backstage — 0.065 in nearly every row of the sheet,
-//                 so that is the default here, and it is an ESTIMATE.
-//
-// Only creators past a floor count towards the last two. The finance sheet
-// lists nobody under 100,000 diamonds in a month, and applying the share to
-// every creator on a roster overstates it badly.
-//
+// The tier is unlocked by recruits, per the sheet: 1-2 gives 10%, 5+ gives 15%,
+// 10+ gives 20%.
 import { groupKey } from './notify.mjs';
 import { monthMtd } from './policy.mjs';
 import { coachName, offTheBoards } from './coaches.mjs';
@@ -57,13 +54,10 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const perDiamond = Number((usdPerDiamond * usdToGbp).toPrecision(6));
   const fee = config.leaped?.fee ?? 10;
   const currency = config.leaped?.currency ?? 'GBP';
-  const base = cfg.baseWage ?? 0;
-  const floor = cfg.incrementalFloorDiamonds ?? 100000;
-  // Hitting Backstage goals takes the incremental share from 10% to 20%.
-  const goalsMultiplier = cfg.goalsMultiplier ?? 2;
-  const rankUpRatio = cfg.rankUpRatio ?? 0.065;
-  const rankUpShare = cfg.rankUpShare ?? 0.10;
-  const usdPerDiamondGross = cfg.usdPerDiamond ?? 0.01;
+  const defaultBase = cfg.baseWage ?? 0;
+  const perCoachBase = cfg.baseWageByCoach ?? {};
+  const floor = cfg.alphaFloorDiamonds ?? 100000;
+  const tiers = cfg.recruitTiers ?? [[10, 0.20], [5, 0.15], [1, 0.10]];
   const month = asOf.slice(0, 7);
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
 
@@ -97,37 +91,31 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
 
   const rows = [...byCoach.values()].map((e) => {
     const leapedCount = leapedByCoach.get(e.coach) ?? 0;
-    const leapedPay = leapedCount * fee;
-    const incremental = e.qualifyingDiamonds * perDiamond;
-    // What TikTok pays the network for these creators ranking up, and the
-    // coach's tenth of it.
-    const rankUpValue = e.qualifyingDiamonds * rankUpRatio * usdPerDiamondGross * usdToGbp;
-    const rankUp = rankUpValue * rankUpShare;
-    const earned = leapedPay + incremental + rankUp;
-    const total = base + earned;
-    // With Backstage goals the incremental share doubles; nothing else moves.
-    const withGoals = total + incremental * (goalsMultiplier - 1);
+    const recruitBonus = leapedCount * fee;
+    const alphaBonus = e.qualifyingDiamonds * perDiamond;
+    const base = perCoachBase[e.coach] ?? defaultBase;
+    // Everything this data can actually account for. The manager diamond share
+    // is deliberately absent rather than guessed at, so the total is a floor.
+    const accountedFor = base + recruitBonus + alphaBonus;
+    const tier = tiers.find(([n]) => e.recruited >= n)?.[1] ?? null;
     return {
       ...e,
       teams: [...e.teams],
       diamonds: Math.round(e.diamonds),
       qualifyingDiamonds: Math.round(e.qualifyingDiamonds),
       leapedCount,
-      leapedPay,
-      incremental,
-      incrementalWithGoals: incremental * goalsMultiplier,
-      rankUpValue,
-      rankUp,
+      recruitBonus,
+      alphaBonus,
       base,
-      earned,
-      total,
-      withGoals,
+      tier,
+      accountedFor,
+      // What the sheet calls MANAGER DIAMOND %, which this cannot compute.
+      managerDiamondShare: null,
     };
-  }).sort((a, b) => b.total - a.total);
+  }).sort((a, b) => b.accountedFor - a.accountedFor);
 
   return {
-    month, asOf, currency, fee, perDiamond, usdPerDiamond, usdToGbp, base, floor,
-    goalsMultiplier, rankUpRatio, rankUpShare,
+    month, asOf, currency, fee, perDiamond, usdToGbp, floor, tiers,
     rows,
     byCoach: new Map(rows.map((r) => [r.coach, r])),
     // The recruitment standing, which is the "all staff" board on the card. It
@@ -136,6 +124,6 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     recruitBoard: [...rows]
       .filter((r) => r.recruited > 0 && !offTheBoards(r.coach, config))
       .sort((a, b) => b.recruited - a.recruited || a.name.localeCompare(b.name)),
-    networkTotal: rows.reduce((n, r) => n + r.total, 0),
+    networkTotal: rows.reduce((n, r) => n + r.accountedFor, 0),
   };
 }

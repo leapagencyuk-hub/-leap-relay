@@ -172,24 +172,35 @@
     "closeHoursWithin": 3
   },
   "revenue": {
-    "_note": "A rough monthly earnings estimate at the bottom of each team summary. Every rate here is taken from LEAP's own finance workbook (WAGES CALCUATOR), where diamonds x 0.01 x a 1% share x the FX rate reproduces its per-creator figures exactly.",
+    "_note": "Rough monthly earnings at the bottom of each team summary, using the component names from the Recruitment 26/27 sheet. Payments land on the 15th of the following month, so this is the month being built.",
     "enabled": true,
-    "_baseWage": "Fixed monthly wage every coach already has.",
+    "_baseWage": "The sheet calls this EXTRA REVENUE. Most coaches are on 150.",
     "baseWage": 150,
-    "_incrementalFloorDiamonds": "The finance sheet lists nobody under this in a month. Applying the share to a whole roster overstates it badly.",
-    "incrementalFloorDiamonds": 100000,
-    "_incrementalPerDiamondUsd": "The 10% base share: 0.00005 USD a diamond. The sheet pays 0.0001, which is this doubled \u2014 the 20% rate you get for hitting Backstage goals.",
-    "incrementalPerDiamondUsd": 5e-05,
-    "_goalsMultiplier": "Hitting Backstage goals takes the incremental share from 10% to 20%, so it doubles. Nothing else moves.",
-    "goalsMultiplier": 2,
-    "_usdPerDiamond": "Gross value of a diamond to the network, from the finance sheet's own constant.",
-    "usdPerDiamond": 0.01,
-    "_rankUpRatio": "ESTIMATE. The bonus ratio TikTok pays for a creator ranking up. It is per creator per month and comes off Backstage; the finance sheet shows 0.065 in nearly every row, with 0.045 and 0.075 appearing too.",
-    "rankUpRatio": 0.065,
-    "_rankUpShare": "The coach's cut of that rank-up bonus.",
-    "rankUpShare": 0.1,
-    "_usdToGbp": "Taken from the finance sheet's own FX cell.",
-    "usdToGbp": 0.754074
+    "_baseWageByCoach": "Overrides for coaches on a different fixed amount, keyed by their address.",
+    "baseWageByCoach": {
+      "joshbates93@hotmail.com": 350
+    },
+    "_alphaFloorDiamonds": "The wages sheet lists nobody under this in a month, and the alpha group task bonus is paid on those creators only.",
+    "alphaFloorDiamonds": 100000,
+    "_incrementalPerDiamondUsd": "Verified against the wages sheet: diamonds x $0.01 x a 1% share. One row reads 1,006,213 diamonds to GBP 75.8758945.",
+    "incrementalPerDiamondUsd": 0.0001,
+    "_usdToGbp": "The finance sheet's own FX cell.",
+    "usdToGbp": 0.754074,
+    "_recruitTiers": "Unlocked share by recruits in the month, highest first: 10+ gives 20%, 5+ gives 15%, 1-2 gives 10%. Shown on the card; the base it applies to is not in this data.",
+    "recruitTiers": [
+      [
+        10,
+        0.2
+      ],
+      [
+        5,
+        0.15
+      ],
+      [
+        1,
+        0.1
+      ]
+    ]
   },
   "digest": {
     "maxAlertsPerCoach": 12,
