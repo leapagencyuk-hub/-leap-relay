@@ -480,3 +480,73 @@ test('a board posts, records its message, and the next one replaces it', async (
   assert.equal(store.data.lastMessage, undefined, 'a preview posts nothing, so it records nothing');
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+import { overviewEmbed } from '../lib/discord.mjs';
+
+test('counts on the overview read as English, not as "card(s)"', () => {
+  // Ten people read this card every morning. "1 creator(s) have left" is the
+  // kind of thing that quietly tells a reader nobody looks at this.
+  const e = overviewEmbed({
+    asOf: '2026-09-20',
+    stats: { tracked: 10, quit: 1, snapshots: 4, skipped: 0 },
+    caseStats: { open: 0, opened: 0, closed: 0, snoozed: 0 },
+    alerts: [], ramp: [], spotlight: [],
+    sent: [{ label: 'team-summary', coach: 'a@leap', ok: true }],
+    health: { lastAsOf: '2026-09-20', snapshots: 4, missingDays: 1, monthOnMonth: true },
+  });
+  const body = JSON.stringify(e);
+  assert.doesNotMatch(body, /\(s\)/, 'no "(s)" anywhere on the card');
+  assert.match(e.embeds[0].description, /1 creator has left the network/);
+  assert.match(body, /1 card/);
+  assert.match(body, /1 day never uploaded/);
+});
+
+test('and the plurals still work at two', () => {
+  const e = overviewEmbed({
+    asOf: '2026-09-20',
+    stats: { tracked: 10, quit: 2, snapshots: 4, skipped: 0 },
+    caseStats: { open: 0, opened: 0, closed: 0, snoozed: 0 },
+    alerts: [], ramp: [], spotlight: [],
+    sent: [
+      { label: 'team-summary', coach: 'a@leap', ok: true },
+      { label: 'team-summary', coach: 'b@leap', ok: true },
+    ],
+    health: { lastAsOf: '2026-09-20', snapshots: 4, missingDays: 2, monthOnMonth: true },
+  });
+  assert.match(e.embeds[0].description, /2 creators have left the network/);
+  assert.match(JSON.stringify(e), /2 cards/);
+  assert.match(JSON.stringify(e), /2 days never uploaded/);
+});
+
+import { leapedEmbed } from '../lib/discord.mjs';
+
+test('a long list drops whole entries and counts what it dropped', () => {
+  // The bug this replaces cut mid-username — "@bia" where the creator was
+  // @biancawhatever — and then appended "and 48 more", a number worked out
+  // before the cut, so it was wrong too.
+  const rows = Array.from({ length: 73 }, (_, i) => ({
+    username: `a_creator_with_a_long_name_${String(i).padStart(3, '0')}`,
+    name: 'Sur3shot', atHours: 26.4, atDiamonds: 51880, fee: 10, on: '2026-09-20', month: '2026-09',
+  }));
+  const field = leapedEmbed(rows, { threshold: { hours: 5, diamonds: 5000 } })
+    .embeds[0].fields.find((f) => f.name === 'Who');
+
+  assert.ok(field.value.length <= 1024);
+  const lines = field.value.split('\n');
+  const tail = lines.pop();
+  assert.match(tail, /^… and (\d+) more$/);
+  // Every line that remains is a whole entry, not half of one.
+  for (const l of lines) assert.match(l, /^\*\*@a_creator_with_a_long_name_\d{3}\*\* — Sur3shot · 26\.4h · 51,880$/);
+  // And the count is what was actually left out, against all 73.
+  assert.equal(Number(/(\d+)/.exec(tail)[1]), 73 - lines.length);
+});
+
+test('a list that fits keeps every entry and says nothing about more', () => {
+  const rows = Array.from({ length: 3 }, (_, i) => ({
+    username: `c${i}`, name: 'Bean', atHours: 10, atDiamonds: 6000, fee: 10, on: '2026-09-20', month: '2026-09',
+  }));
+  const field = leapedEmbed(rows, { threshold: { hours: 5, diamonds: 5000 } })
+    .embeds[0].fields.find((f) => f.name === 'Who');
+  assert.equal(field.value.split('\n').length, 3);
+  assert.doesNotMatch(field.value, /more/);
+});

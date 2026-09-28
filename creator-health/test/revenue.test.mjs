@@ -242,7 +242,8 @@ test('the card calls it Rank ups, which is what the coaches call it', () => {
   // The card has to say which population each diamond line is, or the two
   // figures look like one of them is simply wrong.
   assert.match(body, /whole roster — \*\*940,000\*\* diamonds/);
-  assert.match(body, /Rank ups are the \*\*1\*\* creators who moved up a tier/);
+  assert.match(body, /Rank ups are the \*\*1\*\* creator who moved up a tier/,
+    'one creator, not "1 creators"');
 });
 
 test('a team summary shows the coaches who work that team, not the whole network', () => {

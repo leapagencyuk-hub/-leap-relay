@@ -32,23 +32,40 @@ export const COLOR = {
 
 const n = (x) => (x == null ? '—' : Math.round(x).toLocaleString('en-GB'));
 
+/** "1 card" / "2 cards". Nobody writes "card(s)" except a computer. */
+const plural = (count, one, many = `${one}s`) => `${n(count)} ${count === 1 ? one : many}`;
+
 /**
- * Join lines to fit a Discord field, cutting whole lines rather than mid-word.
+ * Join a list to fit a Discord field, dropping whole entries rather than
+ * cutting one in half, and saying honestly how many were left out.
  *
- * A plain slice is fine for a list of one-line entries. It is not fine where an
- * entry wraps onto a second line, because the cut lands inside a sentence about
- * somebody's money and reads as a bug.
+ * A plain slice is the obvious thing and it is wrong in two ways at once. It
+ * lands mid-word — "@bia" where the creator is @biancasomething — and the
+ * "and 48 more" it appends was counted before the slice, so the number is a
+ * lie as well. Both read as a bug to anyone who looks.
+ *
+ * `total` is how many entries exist, when `parts` has already been capped by
+ * the caller. The tail counts everything not shown, whichever cap dropped it.
  */
-function fitLines(lines, max = 1024) {
-  const out = [];
-  let len = 0;
-  for (const line of lines) {
-    const add = (out.length ? 1 : 0) + line.length;
-    if (len + add > max) break;
-    out.push(line);
-    len += add;
-  }
-  return out.join('\n');
+function fitJoin(parts, { total = parts.length, max = 1024, sep = '\n' } = {}) {
+  const tailFor = (rest) => `${sep}… and ${n(rest)} more`;
+  const fit = (reserve) => {
+    const out = [];
+    let len = 0;
+    for (const part of parts) {
+      const add = (out.length ? sep.length : 0) + part.length;
+      if (len + add + reserve > max) break;
+      out.push(part);
+      len += add;
+    }
+    return out;
+  };
+  // If the whole list fits with nothing left over, it needs no room for a tail.
+  const whole = fit(0);
+  if (whole.length === parts.length && total === parts.length) return whole.join(sep);
+  const shown = fit(tailFor(total).length);
+  const rest = total - shown.length;
+  return shown.join(sep) + (rest > 0 ? tailFor(rest) : '');
 }
 const pct = (x) => (x == null ? '—' : `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`);
 
@@ -490,16 +507,15 @@ export function activationRosterEmbed({ team, rows, asOf, config }) {
     const list = byStage[stage];
     if (!list?.length) continue;
     const book = ACTIVATION_PLAYBOOK[stage] ?? {};
-    const shown = list.slice(0, perStage);
-    const line = shown.map((r) => {
+    const parts = list.slice(0, perStage).map((r) => {
       const tag = stage === 'DORMANT'
         ? (r.lastMonth > 0 ? ` (was ${n(r.lastMonth)})` : '')
         : r.day != null ? ` (d${r.day})` : '';
       return `@${r.creator.username}${tag}`;
-    }).join(' · ');
+    });
     fields.push({
       name: `${book.title ?? stage} — ${list.length}`,
-      value: `${line}${list.length > shown.length ? ` … +${list.length - shown.length} more` : ''}`.slice(0, 1024),
+      value: fitJoin(parts, { total: list.length, sep: ' · ' }),
     });
   }
 
@@ -655,10 +671,10 @@ export function leapedEmbed(rows, { threshold, currency = 'GBP', fee = 10 } = {}
       color: COLOR.recovered,
       fields: [{
         name: 'Who',
-        value: rows.slice(0, 25).map((r) =>
-          `**@${r.username}** — ${r.name ?? 'unassigned'} · ${r.atHours}h · ${n(r.atDiamonds)}`)
-          .join('\n').slice(0, 1024)
-          + (rows.length > 25 ? `\n… and ${rows.length - 25} more` : ''),
+        value: fitJoin(
+          rows.slice(0, 25).map((r) =>
+            `**@${r.username}** — ${r.name ?? 'unassigned'} · ${r.atHours}h · ${n(r.atDiamonds)}`),
+          { total: rows.length }),
       }],
       footer: { text: `leaped ${rows[0]?.on ?? ''} · ${money(fee, currency)} each` },
       timestamp: new Date().toISOString(),
@@ -1101,8 +1117,11 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
         + `at ${rev.incrementalUsdPerDiamond} a diamond in dollars, about ${rev.incrementalPerDiamond} in pounds. `
         + `The sheet calls this line MANAGER DIAMOND %. It is the roughest number here: the exchange `
         + `rate is approximate and the real figure is settled by Backstage, so expect it to move. `
-        + `Rank ups are the **${r.rankUps}** creators who moved up a tier `
-        + `(**${n(r.rankUpDiamonds)}** between them), and land on the 15th of next month.`
+        + (r.rankUps === 1
+          ? `Rank ups are the **1** creator who moved up a tier `
+            + `(**${n(r.rankUpDiamonds)}** diamonds), and land on the 15th of next month.`
+          : `Rank ups are the **${r.rankUps}** creators who moved up a tier `
+            + `(**${n(r.rankUpDiamonds)}** between them), and land on the 15th of next month.`)
         + (r.closeToRankUp
           ? `\n**${r.closeToRankUp}** more ${r.closeToRankUp === 1 ? 'is' : 'are'} in reach of a rank-up, `
             + `worth about ${gbp(r.rankUpUpside)} on top — see the brackets below.`
@@ -1173,7 +1192,7 @@ export function rankUpFields(board, coaches, { config = {}, limit = 6 } = {}) {
 
     fields.push({
       name: `Rank-up brackets — ${e.name}`,
-      value: fitLines(lines),
+      value: fitJoin(lines),
     });
   }
 
@@ -1205,11 +1224,8 @@ export function teamSummaryEmbed(summary, { mention = null, config = {} } = {}) 
 
   // A list is only as trustworthy as its count. Showing five under a heading
   // that says nine reads as a bug, so say what was left out.
-  const listOf = (rows, total, render) => {
-    const shown = rows.map(render).join('\n');
-    const rest = (total ?? rows.length) - rows.length;
-    return `${shown}${rest > 0 ? `\n… and ${rest} more` : ''}`.slice(0, 1024);
-  };
+  const listOf = (rows, total, render) =>
+    fitJoin(rows.map(render), { total: total ?? rows.length });
 
   // Movement, quoted on a base that can carry it. Off 40 diamonds a percentage
   // is noise, so those are said in diamonds instead.
@@ -1472,9 +1488,9 @@ export function overviewEmbed({
     {
       name: 'Sent today',
       value: posted.length
-        ? `**${posted.length}** card(s)\n${deliveryLines.slice(0, 10).join('\n') || '—'}`
+        ? `**${plural(posted.length, 'card')}**\n${deliveryLines.slice(0, 10).join('\n') || '—'}`
           + (failed.length ? `\n${failed.length} failed to send` : '')
-        : failed.length ? `nothing delivered — ${failed.length} failure(s)` : 'Nothing new today.',
+        : failed.length ? `nothing delivered — ${plural(failed.length, 'failure')}` : 'Nothing new today.',
       inline: true,
     },
     {
@@ -1595,14 +1611,14 @@ export function overviewEmbed({
       name: 'Data',
       value: [
         `Last export: ${health.lastAsOf ?? '—'} (${health.snapshots} held)`,
-        health.missingDays ? `${health.missingDays} day(s) never uploaded` : 'No missing days',
+        health.missingDays ? `${plural(health.missingDays, 'day')} never uploaded` : 'No missing days',
         // Two detectors, and only one of them needs daily history. Saying
         // "detection: off" while the month comparison is raising urgent cases
         // reads as a contradiction.
         `Month on month: on${health.monthSource ? ` (vs ${health.monthSource})` : ''}`,
         health.declineReady
           ? 'Week on week: on'
-          : `Week on week: needs ~${health.uploadsNeeded} more daily upload(s)`,
+          : `Week on week: needs ~${plural(health.uploadsNeeded, 'more daily upload', 'more daily uploads')}`,
       ].join('\n'),
       inline: false,
     });
@@ -1611,7 +1627,9 @@ export function overviewEmbed({
   return {
     embeds: [{
       title: `LEAP creator overview — ${asOf}`,
-      description: stats.quit ? `${stats.quit} creator(s) have left the network.` : undefined,
+      description: stats.quit
+        ? `${plural(stats.quit, 'creator')} ${stats.quit === 1 ? 'has' : 'have'} left the network.`
+        : undefined,
       color: changes.escalated?.length ? COLOR.escalation : COLOR.neutral,
       fields,
       footer: { text: 'Posted once a day. Team cards go to each team\'s channel.' },
