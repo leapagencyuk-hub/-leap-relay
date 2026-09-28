@@ -472,9 +472,15 @@ const server = http.createServer(async (req, res) => {
       });
     }
     if (route === '/health') {
-      const store = new Store(config.dataDir);
-      const dates = store.listSnapshotDates();
-      return json(res, 200, { ok: true, snapshots: dates.length, latest: dates.at(-1) ?? null });
+      // Liveness only, and deliberately nothing else. The host restarts a
+      // service whose health check fails, so anything this depends on becomes
+      // something that can get the service killed and keep it killed. Reading
+      // the data directory made the check depend on a network disk that is
+      // still mounting at the moment the first check arrives.
+      //
+      // How much data there is belongs on /status.json, which nobody restarts
+      // anything over.
+      return json(res, 200, { ok: true, uptime: Math.round(process.uptime()) });
     }
     if (route === '/report.json') {
       const result = analyse(config, { asOf: url.searchParams.get('as-of'), persist: false });
@@ -563,9 +569,39 @@ process.on('uncaughtException', (err) => {
   console.error('uncaught exception:', err?.stack ?? err);
 });
 
+/**
+ * Say enough at boot that a log answers "why is it down" without a second
+ * deploy. Every line is wrapped: a diagnostic that throws is worse than no
+ * diagnostic, because it takes the service with it.
+ */
+function bootReport() {
+  const line = (label, get) => {
+    let value;
+    try { value = get(); } catch (err) { value = `unavailable (${err.code ?? err.message})`; }
+    console.log(`  ${label.padEnd(14)} ${value}`);
+  };
+  console.log('boot:');
+  line('node', () => process.version);
+  line('data dir', () => config.dataDir);
+  line('writable', () => {
+    fs.mkdirSync(config.dataDir, { recursive: true });
+    const probe = path.join(config.dataDir, '.writetest');
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+    return 'yes';
+  });
+  line('snapshots', () => new Store(config.dataDir).listSnapshotDates().length);
+  line('discord', () => {
+    const d = loadRoutes(path.dirname(configPath)).discord;
+    const check = preflight(d);
+    return `${check.ok ? 'routed' : `NOT ROUTED — ${check.reason}`}${d.botToken ? ', bot token set' : ', no bot token'}`;
+  });
+  line('token', () => (TOKEN ? 'set' : 'NOT SET — /upload and /redo are open'));
+}
+
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`creator-health listening on :${PORT}  (data: ${config.dataDir})`);
-  if (!TOKEN) console.log('warning: UPLOAD_TOKEN is not set — /upload and /notify are open');
+  bootReport();
   startDailySchedule();
   console.log(`daily safety-net run at ${process.env.CH_DAILY_HOUR ?? 9}:00 UTC`
     + ` (first check ${Math.round(Number(process.env.CH_BOOT_DELAY_MS ?? 30000) / 1000)}s after boot)`);
