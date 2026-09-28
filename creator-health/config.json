@@ -157,6 +157,20 @@
     "_thinBelow": "Fewer comparable creators than this and the card marks the row as a small team.",
     "thinBelow": 10
   },
+  "leaped": {
+    "_note": "A creator leaps when their CUMULATIVE totals pass the bar below, at any point in their life with us. It happens once per creator and puts the fee on that month's payroll. Recorded permanently the first time it is seen, so a re-run or a config change can never move anybody's pay.",
+    "enabled": true,
+    "hours": 5,
+    "diamonds": 5000,
+    "fee": 10,
+    "currency": "GBP",
+    "_closeWithin": "Creators this near the diamond half of the bar are named on the overview, so a coach can push them over it.",
+    "closeWithin": 1500,
+    "_maxCardsPerRun": "Up to this many leaps get their own card; more than that in one run are digested into one.",
+    "maxCardsPerRun": 5,
+    "_excluded": "Partner agencies are not LEAP payroll, so monitoring.ignoreGroups applies here too.",
+    "closeHoursWithin": 3
+  },
   "digest": {
     "maxAlertsPerCoach": 12,
     "maxRampRowsPerCoach": 10,
@@ -197,7 +211,8 @@
       "activenessOverview": true,
       "activationRoster": true,
       "overview": true,
-      "policy": true
+      "policy": true,
+      "leapedOverview": true
     }
   },
   "activation": {

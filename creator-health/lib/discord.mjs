@@ -586,6 +586,130 @@ export function graduationEmbed(p, { mention = null, finalPush = false, config =
   };
 }
 
+const money = (amount, currency = 'GBP') => {
+  try {
+    return new Intl.NumberFormat('en-GB', { style: 'currency', currency, maximumFractionDigits: 0 })
+      .format(amount);
+  } catch { return `${currency} ${amount}`; }
+};
+
+/**
+ * One creator crossing the leaped line.
+ *
+ * A payroll event, so it says what was earned, by whom, and on what evidence.
+ * Several in a day are digested into one card rather than posted separately —
+ * a channel of forty is a spreadsheet, and this is meant to be read.
+ */
+export function leapedEmbed(rows, { threshold, currency = 'GBP', fee = 10 } = {}) {
+  const one = rows.length === 1 ? rows[0] : null;
+  const total = rows.reduce((n, r) => n + (r.fee ?? 0), 0);
+
+  if (one) {
+    return {
+      embeds: [{
+        author: authorBlock({ username: one.username, group: one.group }, null),
+        title: `Leaped — ${money(one.fee, currency)}`,
+        description: `**@${one.username}** has passed **${threshold.hours} LIVE hours** and `
+          + `**${n(threshold.diamonds)} diamonds**.\n`
+          + `They are on ${one.atHours}h and ${n(one.atDiamonds)} diamonds.`,
+        color: COLOR.recovered,
+        fields: [
+          { name: 'Earned by', value: one.name ?? 'unassigned', inline: true },
+          { name: 'Team', value: one.group ?? '—', inline: true },
+          {
+            name: 'Added to',
+            value: `${new Date(`${one.month}-01T00:00:00Z`)
+              .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' })} payroll`,
+            inline: true,
+          },
+        ],
+        footer: { text: `leaped ${one.on}` },
+        timestamp: new Date().toISOString(),
+      }],
+    };
+  }
+
+  return {
+    embeds: [{
+      title: `${rows.length} creators leaped — ${money(total, currency)}`,
+      description: `Past **${threshold.hours} LIVE hours** and **${n(threshold.diamonds)} diamonds**.`,
+      color: COLOR.recovered,
+      fields: [{
+        name: 'Who',
+        value: rows.slice(0, 25).map((r) =>
+          `**@${r.username}** — ${r.name ?? 'unassigned'} · ${r.atHours}h · ${n(r.atDiamonds)}`)
+          .join('\n').slice(0, 1024)
+          + (rows.length > 25 ? `\n… and ${rows.length - 25} more` : ''),
+      }],
+      footer: { text: `leaped ${rows[0]?.on ?? ''} · ${money(fee, currency)} each` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/** This month's leaped creators and what they are worth, per coach. */
+export function leapedOverviewEmbed(s) {
+  const monthName = new Date(`${s.month}-01T00:00:00Z`)
+    .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
+  const fields = [];
+
+  if (s.coaches.length) {
+    fields.push({
+      name: 'Earned this month',
+      value: s.coaches.map((c) =>
+        `\`${money(c.owed, s.currency).padStart(6)}\`  **${c.name}** — ${c.count} leaped`)
+        .join('\n').slice(0, 1024),
+    });
+  }
+
+  if (s.today.length) {
+    fields.push({
+      name: s.firstRun
+        ? `Caught up on ${s.today.length} who leaped earlier this month`
+        : `Leaped today — ${s.today.length}`,
+      value: s.today.slice(0, 15).map((r) =>
+        `**@${r.username}** · ${r.name} · ${r.atHours}h · ${n(r.atDiamonds)}`).join('\n').slice(0, 1024),
+    });
+  }
+
+  if (s.close.length) {
+    fields.push({
+      name: `Closest to leaping — ${s.close.length} within ${n(1500)} diamonds`,
+      value: s.close.slice(0, 10).map((r) => {
+        const need = [
+          r.needDiamonds > 0 ? `${n(r.needDiamonds)} diamonds` : null,
+          r.needHours > 0 ? `${r.needHours}h LIVE` : null,
+        ].filter(Boolean).join(' and ');
+        return `**@${r.username}** needs ${need} · ${r.name}`;
+      }).join('\n').slice(0, 1024),
+    });
+  }
+
+  fields.push({
+    name: 'How a creator leaps',
+    value: `Cumulative **${s.threshold.hours} LIVE hours** and **${n(s.threshold.diamonds)} diamonds**, `
+      + `at any point in their life with us — a creator who signed months ago and only clears it now `
+      + `leaps now, and this month's payroll carries it. It happens once per creator, `
+      + `and is worth ${money(s.fee, s.currency)}.`
+      + (s.carriedOverTotal
+        ? `\n\n**${s.carriedOverTotal}** creators were already past the line when this started. `
+          + 'They are recorded so nobody is paid for them twice, and are not in the figures above.'
+        : ''),
+  });
+
+  return {
+    embeds: [{
+      title: `Leaped creators — ${monthName}`,
+      description: `**${s.thisMonth.length}** leaped this month, worth **${money(s.owed, s.currency)}**.\n`
+        + `${s.totalLeaped} creators have leaped in total.`,
+      color: s.thisMonth.length ? COLOR.recovered : COLOR.neutral,
+      fields,
+      footer: { text: `as of ${s.asOf}` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
 /**
  * The coach growth board.
  *

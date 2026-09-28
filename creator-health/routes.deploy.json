@@ -19,6 +19,11 @@
     "_growthBoard": "Coach growth board, ranked on growth weighted for team size. Posted once a day.",
     "growthBoardWebhook": "env:DISCORD_WEBHOOK_GROWTH_BOARD",
     "growthBoardChannelId": "1554107822340440235",
+    "_leaped": "Leaped creators: the event channel as each one crosses, and the monthly payroll overview.",
+    "leapedWebhook": "env:DISCORD_WEBHOOK_LEAPED",
+    "leapedChannelId": "1554118989461065819",
+    "leapedOverviewWebhook": "env:DISCORD_WEBHOOK_LEAPED_OVERVIEW",
+    "leapedOverviewChannelId": "1554119444303974440",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",

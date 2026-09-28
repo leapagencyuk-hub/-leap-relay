@@ -8,6 +8,7 @@ import {
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
+  leapedEmbed, leapedOverviewEmbed,
 } from './discord.mjs';
 import { campaignGap, concentrationRisk, programmesDue, rosterDue, uploadStaleness } from './programmes.mjs';
 import { teamSummaries, teamSummaryDue } from './teamsummary.mjs';
@@ -16,6 +17,7 @@ import { activenessRows, activenessPings, recordPings, activenessSummary, active
 import { policyStanding } from './policy.mjs';
 import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
+import { leapedState, leapedDue } from './leaped.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -477,6 +479,44 @@ export async function dispatch({
         ? replaceLast('growth-board', '(growth)', growthRoute, card, 'growthBoard', gb.month)
         : send('growth-board', '(growth)', growthRoute, card));
       if (!dryRun) { recordGrowthBoard(store, gb); store.data.lastGrowthBoardOn = asOf; }
+    }
+  }
+
+  // --- leaped creators, and the wage bill ------------------------------------
+  // Payroll, so the state is worked out whether or not either channel is
+  // configured: a leap must be recorded the day it happens, not the day
+  // somebody remembers to set a webhook.
+  const leapedRoute = discordConfig.leapedWebhook
+    ? { webhook: discordConfig.leapedWebhook }
+    : (discordConfig.leapedChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.leapedChannelId } : null;
+  const leapedOverviewRoute = discordConfig.leapedOverviewWebhook
+    ? { webhook: discordConfig.leapedOverviewWebhook }
+    : (discordConfig.leapedOverviewChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.leapedOverviewChannelId } : null;
+
+  if (config.leaped?.enabled !== false && creators.length) {
+    const leaped = leapedState({ creators, asOf, store, config, persist: !dryRun });
+    leaped.carriedOverTotal = Object.values(store.data.leaped ?? {}).filter((r) => r.carriedOver).length;
+
+    if (leapedRoute && leaped.today.length) {
+      const max = config.leaped?.maxCardsPerRun ?? 1;
+      const opts = { threshold: leaped.threshold, currency: leaped.currency, fee: leaped.fee };
+      if (leaped.today.length <= max) {
+        for (const r of leaped.today) {
+          await send('leaped', r.name, leapedRoute, leapedEmbed([r], opts));
+        }
+      } else {
+        await send('leaped', '(leaped)', leapedRoute, leapedEmbed(leaped.today, opts));
+      }
+    }
+
+    if (leapedOverviewRoute && (again('leapedOverview') || leapedDue(config, store, asOf))) {
+      const card = leapedOverviewEmbed(leaped);
+      await (replaces('leapedOverview')
+        ? replaceLast('leaped-overview', '(leaped)', leapedOverviewRoute, card, 'leapedOverview')
+        : send('leaped-overview', '(leaped)', leapedOverviewRoute, card));
+      if (!dryRun) store.data.lastLeapedOn = asOf;
     }
   }
 

@@ -128,6 +128,10 @@ export function loadDiscordConfig(raw) {
     leaderboardChannelId: channelOrNull(fromEnv(raw.leaderboardChannelId)),
     growthBoardWebhook: webhookOrNull(fromEnv(raw.growthBoardWebhook)),
     growthBoardChannelId: channelOrNull(fromEnv(raw.growthBoardChannelId)),
+    leapedWebhook: webhookOrNull(fromEnv(raw.leapedWebhook)),
+    leapedChannelId: channelOrNull(fromEnv(raw.leapedChannelId)),
+    leapedOverviewWebhook: webhookOrNull(fromEnv(raw.leapedOverviewWebhook)),
+    leapedOverviewChannelId: channelOrNull(fromEnv(raw.leapedOverviewChannelId)),
     coaches,
   };
 }

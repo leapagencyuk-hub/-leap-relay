@@ -13,6 +13,7 @@
 //   node cli.mjs policy                      where the network stands on the 2026 rules
 //   node cli.mjs leaderboard                 this month's new-creator recruitment board
 //   node cli.mjs growthboard                 which coaches are growing, adjusted for team size
+//   node cli.mjs leaped [--who]              the wage bill from leaped creators
 //   node cli.mjs cases [--coach E] [--all]      the open caseload
 //   node cli.mjs case <id>                      one case and its history
 //   node cli.mjs effectiveness                  which interventions work
@@ -45,6 +46,7 @@ import { policyStanding } from './lib/policy.mjs';
 import { leaderboard } from './lib/leaderboard.mjs';
 import { growthBoard } from './lib/growthboard.mjs';
 import { coachName } from './lib/coaches.mjs';
+import { leapedState } from './lib/leaped.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -429,6 +431,8 @@ function cmdDiscordEnv() {
   lift(safe.discord, 'activenessPingWebhook', 'DISCORD_WEBHOOK_ACTIVENESS_PINGS');
   lift(safe.discord, 'leaderboardWebhook', 'DISCORD_WEBHOOK_LEADERBOARD');
   lift(safe.discord, 'growthBoardWebhook', 'DISCORD_WEBHOOK_GROWTH_BOARD');
+  lift(safe.discord, 'leapedWebhook', 'DISCORD_WEBHOOK_LEAPED');
+  lift(safe.discord, 'leapedOverviewWebhook', 'DISCORD_WEBHOOK_LEAPED_OVERVIEW');
   lift(safe.discord, 'botToken', 'DISCORD_BOT_TOKEN');
   for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
     lift(entry, 'webhook', varName(label));
@@ -508,6 +512,8 @@ function cmdDiscordCheck() {
     + `pings ${discord.activenessPingWebhook ? 'set' : 'MISSING'}`);
   console.log(`leaderboard: ${discord.leaderboardWebhook ? 'set' : 'MISSING'}`
     + ` · growth board: ${discord.growthBoardWebhook ? 'set' : 'MISSING'}`);
+  console.log(`leaped: ${discord.leapedWebhook ? 'set' : 'MISSING'}`
+    + ` · leaped overview: ${discord.leapedOverviewWebhook ? 'set' : 'MISSING'}`);
   console.log(discord.inactiveWebhook
     ? `\ncreators earning nothing: one shared channel, webhook …${discord.inactiveWebhook.slice(-6)}`
     : '\ncreators earning nothing: no shared channel set — they go to the team channels');
@@ -650,6 +656,36 @@ function cmdGrowthBoard() {
   if (b.unranked.length) console.log(`  not ranked (too little in both months): ${b.unranked.join(', ')}`);
 }
 
+/** The wage bill from leaped creators. Read-only: never records a leap. */
+function cmdLeaped() {
+  const { creators, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
+  const store = new CaseStore(config.dataDir);
+  const s = leapedState({ creators, asOf, store, config, persist: false });
+  const money = (x) => new Intl.NumberFormat('en-GB',
+    { style: 'currency', currency: s.currency, maximumFractionDigits: 0 }).format(x);
+
+  console.log(`Leaped creators as of ${asOf}`);
+  console.log(`  bar: ${s.threshold.hours} cumulative LIVE hours and ${s.threshold.diamonds.toLocaleString()} diamonds, once per creator\n`);
+  console.log(`  ${s.month}: ${s.thisMonth.length} leaped, ${money(s.owed)} owed`);
+  console.log(`  all time: ${s.totalLeaped} leaped\n`);
+  if (!s.coaches.length) return console.log('  nobody has leaped this month.');
+
+  console.log(`  ${'coach'.padEnd(20)}${'leaped'.padStart(8)}${'owed'.padStart(10)}`);
+  for (const c of s.coaches) {
+    console.log(`  ${c.name.padEnd(20)}${String(c.count).padStart(8)}${money(c.owed).padStart(10)}`);
+  }
+  console.log(`  ${'TOTAL'.padEnd(20)}${String(s.thisMonth.length).padStart(8)}${money(s.owed).padStart(10)}`);
+
+  if (flag('who')) {
+    console.log('\n  who leaped this month:');
+    for (const r of s.thisMonth.sort((a, b) => a.on.localeCompare(b.on))) {
+      console.log(`    ${r.on}  @${r.username.padEnd(24)} ${coachName(r.coach, config).padEnd(12)} ${r.atHours}h  ${r.atDiamonds.toLocaleString()}`);
+    }
+  }
+  const carried = Object.values(store.data.leaped ?? {}).filter((r) => r.carriedOver).length;
+  if (carried) console.log(`\n  ${carried} carried over from before tracking began — recorded, never paid.`);
+}
+
 function cmdTeams() {
   const store = new CaseStore(config.dataDir);
   const asOf = new SeriesStore(config.dataDir).readSeries().lastAsOf
@@ -704,6 +740,7 @@ const commands = {
   'discord-env': cmdDiscordEnv,
   teams: cmdTeams, graduation: cmdGraduation, policy: cmdPolicy,
   activeness: cmdActiveness, leaderboard: cmdLeaderboard, growthboard: cmdGrowthBoard,
+  leaped: cmdLeaped,
   snooze: cmdSnooze, close: cmdClose,
 };
 

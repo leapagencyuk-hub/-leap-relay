@@ -264,6 +264,8 @@ async function handleSelfTest(req, res, url) {
       activenessPings: discord.activenessPingWebhook ? 'set' : 'MISSING',
       leaderboard: discord.leaderboardWebhook ? 'set' : 'MISSING',
       growthBoard: discord.growthBoardWebhook ? 'set' : 'MISSING',
+      leaped: discord.leapedWebhook ? 'set' : 'MISSING',
+      leapedOverview: discord.leapedOverviewWebhook ? 'set' : 'MISSING',
       teamsResolved: teams.filter((t) => t.destination !== 'NONE').length,
       teamsMissing: teams.filter((t) => t.destination === 'NONE').map((t) => t.team),
     },
