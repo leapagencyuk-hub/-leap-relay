@@ -85,6 +85,21 @@ test('a rank-up pays 1% of the whole month, not of the part above the line', () 
   assert.ok(Math.abs(r.worth - 75.875894) < 0.005, `got ${r.worth}`);
 });
 
+test('no last month at all is tier 1, however TikTok spells it', () => {
+  // The export writes "-" for a creator who was not in the network last month;
+  // the normaliser turns that into null. Around a tenth of any given export is
+  // in this state, nearly all of them creators who joined this month.
+  for (const v of [null, undefined, NaN, 0]) {
+    assert.equal(tierOf(v, config).tier, 1, `${String(v)} is tier 1`);
+  }
+  const c = who('joined_this_month', { diamonds: 177552 });
+  c.obs[0].lastMonthDiamonds = null;
+  const r = rankUpFor(c, ASOF, config);
+  assert.equal(r.fromTier, 1);
+  assert.ok(r.rankedUp, 'and they can rank up out of it like anybody else');
+  assert.ok(r.worth > 0);
+});
+
 test('a creator in their first month starts at tier 1, like TikTok treats them', () => {
   const r = rankUpFor(who('newbie', { diamonds: 150000, lastMonth: 0 }), ASOF, config);
   assert.equal(r.fromTier, 1);

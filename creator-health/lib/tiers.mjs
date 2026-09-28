@@ -61,6 +61,39 @@
 //   belong to coaches with no rows in that block at all, so the sheet is
 //   unfinished there rather than the rule being narrower.
 //
+// WHY THIS NEEDS NO HISTORY, AND WHAT MAKES IT SAFE DAY TO DAY
+//
+//   Every export carries BOTH halves of the sum on every row: "Diamonds" is
+//   this month to date, "Diamonds last month" is the tier basis. So a rank-up
+//   is computable from a single file, on the first upload, with an empty
+//   store. Checked across the July, August and three September exports: the
+//   last-month column is present on every row of every one of them.
+//
+//   Three properties of the data make the daily number trustworthy, all
+//   checked rather than assumed:
+//
+//   1. The tier cannot move mid-month. The last-month column is byte for byte
+//      identical across 15, 16 and 21 September — 888 and 887 creators, zero
+//      changes. So a creator's target is fixed on the 1st and a coach chasing
+//      it is never chasing a moving line.
+//
+//   2. Month-to-date only goes up, so a rank-up cannot be taken back. Across
+//      the same three September exports, not one creator's diamonds fell. Once
+//      `rankedUp` is true it stays true for the rest of the month, which is
+//      why the card can say "banked" and mean it.
+//
+//   3. The month closes itself. Next month's last-month column equals this
+//      month's final figure exactly — 806 creators compared across the August
+//      and September exports, zero disagreements. So the 1st of the month both
+//      settles the month just gone and sets every new tier, in one file.
+//
+//   What this does NOT survive is a missed upload spanning a month boundary:
+//   the last export of a month is the settlement, and if the last one we hold
+//   is the 28th then the last three days are missing from the rank-ups we
+//   report. The next month's file still carries the true total in its
+//   last-month column, so the gap is visible and recoverable, but it has to be
+//   reingested rather than inferred.
+//
 // TIER MAINTENANCE IS NOT IMPLEMENTED
 //
 //   Backstage shows a second "Ratio for maintaining tiers" column, 0% for the
@@ -96,10 +129,20 @@ function tableOf(config) {
   return [...rows].sort((a, b) => b.min - a.min);
 }
 
-/** Which tier a month's diamonds put a creator in. */
+/**
+ * Which tier a month's diamonds put a creator in.
+ *
+ * Anything that is not a real number reads as 0, which is Tier 1. That is the
+ * right answer and not a fallback: TikTok writes "-" in the last-month column
+ * for a creator who was not in the network last month, the normaliser turns
+ * that into null, and a creator with no last month starts at the bottom. The
+ * August sheet pays on exactly those creators, so it matters that they land in
+ * Tier 1 deliberately rather than by where the table happens to be sorted.
+ */
 export function tierOf(diamonds, config = {}) {
+  const d = Number.isFinite(diamonds) ? diamonds : 0;
   const table = tableOf(config);
-  return table.find((t) => (diamonds ?? 0) >= t.min) ?? table[table.length - 1];
+  return table.find((t) => d >= t.min) ?? table[table.length - 1];
 }
 
 /** The tier above this one, or null at the top. */
