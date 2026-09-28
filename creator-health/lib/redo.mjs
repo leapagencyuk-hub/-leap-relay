@@ -48,6 +48,8 @@ export async function redoToday(config, configPath, { asOf = null } = {}) {
   const posted = delivery.sent.filter((x) => x.ok && !x.skipped);
   const failed = delivery.sent.filter((x) => !x.ok);
   const replaced = delivery.replaced ?? [];
+  // Older copies found by reading the channel, rather than from our own notes.
+  const swept = (delivery.swept ?? []).reduce((n, s) => n + s.removed, 0);
 
   const byLabel = new Map();
   for (const p of posted) byLabel.set(p.label, (byLabel.get(p.label) ?? 0) + 1);
@@ -56,6 +58,7 @@ export async function redoToday(config, configPath, { asOf = null } = {}) {
     asOf: result.asOf,
     posted: posted.length,
     replaced: replaced.length,
+    swept,
     failed: failed.map((f) => ({ label: f.label, coach: f.coach, error: f.error })),
     byLabel: [...byLabel].sort((a, b) => b[1] - a[1]),
     skipped: delivery.skipped ?? null,
@@ -67,7 +70,8 @@ export async function redoToday(config, configPath, { asOf = null } = {}) {
 export function redoSummary(r) {
   if (r.skipped) return `Nothing posted — ${r.skipped}`;
   const parts = [`${r.posted} card${r.posted === 1 ? '' : 's'} reposted for ${r.asOf}`];
-  if (r.replaced) parts.push(`${r.replaced} older ${r.replaced === 1 ? 'copy' : 'copies'} removed`);
+  const gone = (r.replaced ?? 0) + (r.swept ?? 0);
+  if (gone) parts.push(`${gone} older ${gone === 1 ? 'copy' : 'copies'} removed`);
   if (r.failed.length) parts.push(`${r.failed.length} failed`);
   return `${parts.join(', ')}.`;
 }

@@ -163,6 +163,21 @@ export class Discord {
     return res;
   }
 
+  /**
+   * The most recent messages in a channel, newest first.
+   *
+   * Needs the bot token and Read Message History. Used to find our own older
+   * copies of a card that the stored message id has lost track of.
+   */
+  listMessages(channelId, { limit = 100 } = {}) {
+    return request('GET', `/channels/${channelId}/messages?limit=${Math.min(limit, 100)}`, { token: this.token });
+  }
+
+  /** Who this bot is, so its own posts can be told from everyone else's. */
+  whoAmI() {
+    return request('GET', '/users/@me', { token: this.token });
+  }
+
   /** DM a coach. Discord requires opening the channel before posting to it. */
   async postToUser(userId, payload) {
     const dm = await request('POST', '/users/@me/channels', {

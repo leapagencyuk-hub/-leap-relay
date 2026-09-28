@@ -140,8 +140,17 @@ test('a slot that falls back from a missing webhook to a bot still cleans up', a
   const orig = globalThis.fetch;
   let nextId = 700;
   globalThis.fetch = async (url, opts) => {
-    calls.push(`${opts.method} ${String(url).replace('https://discord.com/api/v10', '')}`);
-    if (opts.method === 'DELETE') return new Response('', { status: 204 });
+    const route = String(url).replace('https://discord.com/api/v10', '');
+    calls.push(`${opts.method} ${route}`);
+    if (opts.method === 'DELETE') return new Response(null, { status: 204 });
+    // The sweep asks who the bot is, and reads the channel. An empty channel
+    // is the honest answer here: this test is about the stored-id cleanup.
+    if (opts.method === 'GET' && route === '/users/@me') {
+      return new Response(JSON.stringify({ id: 'bot-user' }), { status: 200, headers: { 'content-type': 'application/json' } });
+    }
+    if (opts.method === 'GET') {
+      return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    }
     return new Response(JSON.stringify({ id: String(++nextId), channel_id: '900000000000000001' }),
       { status: 200, headers: { 'content-type': 'application/json' } });
   };

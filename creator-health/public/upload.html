@@ -274,7 +274,7 @@ $('redoBtn').addEventListener('click', () => {
   return post('redo', 'Redo', (r) => `<h2>Today reposted</h2>`
     + row('Data up to', esc(r.asOf))
     + row('Cards posted', n(r.posted), r.posted ? 'ok' : 'warn')
-    + row('Older copies removed', n(r.replaced))
+    + row('Older copies removed', n((r.replaced ?? 0) + (r.swept ?? 0)))
     + (r.byLabel ?? []).map(([label, count]) => row(esc(label), n(count))).join('')
     + (r.skipped ? row('Nothing sent', `<span class="warn">${esc(r.skipped)}</span>`) : '')
     + (r.failed ?? []).map((f) => row('Failed', `<span class="bad">${esc(f.label)} — ${esc(f.error)}</span>`)).join(''));

@@ -21,6 +21,7 @@ import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mj
 import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
 import { rankUpBoard } from './tiers.mjs';
+import { sweeper, sweepDuplicates, titleOf } from './sweep.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -189,7 +190,7 @@ export async function dispatch({
   const again = (what) => forced.has(what) || forced.has('all');
 
   const check = preflight(discordConfig);
-  if (!dryRun && !check.ok) return { sent: [], previews: [], skipped: check.reason };
+  if (!dryRun && !check.ok) return { sent: [], previews: [], replaced: [], swept: [], skipped: check.reason };
   const client = new Discord({ token: discordConfig.botToken });
 
   // Discord resolves avatar URLs itself, so there is nothing to fetch here.
@@ -205,7 +206,7 @@ export async function dispatch({
   // DISCORD_WEBHOOK_INACTIVE would send every activation card at a channel we
   // cannot post to — so fall back to the team channels instead of losing them.
   const inactiveRoute = discordConfig.inactiveWebhook
-    ? { webhook: discordConfig.inactiveWebhook }
+    ? { webhook: discordConfig.inactiveWebhook, channelId: discordConfig.inactiveChannelId ?? null }
     : (discordConfig.inactiveChannelId && discordConfig.botToken)
       ? { channelId: discordConfig.inactiveChannelId } : null;
   // The coach is still named and still pinged — only the channel changes.
@@ -222,6 +223,13 @@ export async function dispatch({
   // redo button reports this back, so somebody pressing it can see the old
   // cards actually went rather than hoping they did.
   const replaced = [];
+  // Older copies of a card found in the channel itself rather than in our own
+  // notes. Anything posted while the cleanup was broken is orphaned, because
+  // the store only ever held the newest id.
+  const swept = [];
+  // Worked out once: reading a channel needs the bot token, and telling our
+  // posts from another bot's needs the bot's own id.
+  const sweep = dryRun ? null : await sweeper(discordConfig);
 
   const send = async (label, coach, route, payload, caseRecord = null) => {
     if (dryRun) {
@@ -278,6 +286,18 @@ export async function dispatch({
           : { ok: false, error: 'no webhook or channel to delete through' };
       if (gone.ok) replaced.push({ label, coach: who, slot, id: prev.id });
       else sent.push({ label: `${label}-cleanup`, coach: who, ok: false, error: gone.error });
+    }
+
+    // And then look at the channel, for the copies our notes never knew about.
+    // Narrow on purpose: our own posts, the exact title of the card just sent,
+    // and never the one just sent.
+    const channelId = route.channelId ?? null;
+    if (sweep && channelId && res.body?.id) {
+      const out = await sweepDuplicates(sweep.client, {
+        channelId, title: titleOf(payload), keepId: res.body.id, botUserId: sweep.botUserId,
+      });
+      if (out.ok && out.removed.length) swept.push({ label, coach: who, slot, removed: out.removed.length });
+      else if (!out.ok) sent.push({ label: `${label}-sweep`, coach: who, ok: false, error: out.reason });
     }
     return res;
   };
@@ -461,7 +481,7 @@ export async function dispatch({
   // more than once in a day — a retried upload, a manual re-run — and posting
   // the same summary each time is how a channel stops being read.
   const summaryRoute = discordConfig.summaryWebhook
-    ? { webhook: discordConfig.summaryWebhook }
+    ? { webhook: discordConfig.summaryWebhook, channelId: discordConfig.summaryChannelId ?? null }
     : discordConfig.summaryChannelId ? { channelId: discordConfig.summaryChannelId } : null;
 
   // --- the weekly network post ---------------------------------------------
@@ -482,7 +502,7 @@ export async function dispatch({
   // Daily, because the movement is the point: a board that only changes when
   // somebody remembers to look is not a competition.
   const boardRoute = discordConfig.leaderboardWebhook
-    ? { webhook: discordConfig.leaderboardWebhook }
+    ? { webhook: discordConfig.leaderboardWebhook, channelId: discordConfig.leaderboardChannelId ?? null }
     : (discordConfig.leaderboardChannelId && discordConfig.botToken)
       ? { channelId: discordConfig.leaderboardChannelId } : null;
   if (boardRoute && creators.length && (again('leaderboard') || leaderboardDue(config, store, asOf))) {
@@ -500,7 +520,7 @@ export async function dispatch({
 
   // --- the coach growth board ------------------------------------------------
   const growthRoute = discordConfig.growthBoardWebhook
-    ? { webhook: discordConfig.growthBoardWebhook }
+    ? { webhook: discordConfig.growthBoardWebhook, channelId: discordConfig.growthBoardChannelId ?? null }
     : (discordConfig.growthBoardChannelId && discordConfig.botToken)
       ? { channelId: discordConfig.growthBoardChannelId } : null;
   if (growthRoute && creators.length && (again('growth') || growthBoardDue(config, store, asOf))) {
@@ -520,11 +540,11 @@ export async function dispatch({
   // configured: a leap must be recorded the day it happens, not the day
   // somebody remembers to set a webhook.
   const leapedRoute = discordConfig.leapedWebhook
-    ? { webhook: discordConfig.leapedWebhook }
+    ? { webhook: discordConfig.leapedWebhook, channelId: discordConfig.leapedChannelId ?? null }
     : (discordConfig.leapedChannelId && discordConfig.botToken)
       ? { channelId: discordConfig.leapedChannelId } : null;
   const leapedOverviewRoute = discordConfig.leapedOverviewWebhook
-    ? { webhook: discordConfig.leapedOverviewWebhook }
+    ? { webhook: discordConfig.leapedOverviewWebhook, channelId: discordConfig.leapedOverviewChannelId ?? null }
     : (discordConfig.leapedOverviewChannelId && discordConfig.botToken)
       ? { channelId: discordConfig.leapedOverviewChannelId } : null;
 
@@ -593,5 +613,5 @@ export async function dispatch({
   }
 
   if (!dryRun) store.save();
-  return { sent, previews, replaced, warning: check.warning };
+  return { sent, previews, replaced, swept, warning: check.warning };
 }
