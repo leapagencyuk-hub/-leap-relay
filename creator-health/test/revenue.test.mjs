@@ -15,10 +15,13 @@ const config = {
 };
 const ASOF = '2026-09-20';
 
+// `lastMonth` is what the export's "Diamonds last month" column says, which is
+// what sets the creator's tier. Default 0 puts them in Tier 1, so any creator
+// given 100,000+ diamonds has ranked up — which is what these tests want.
 const who = (username, { coach = 'josh@leap', group = 'Team Alpha', joinDate = '2026-01-01',
-  diamonds = 0, quitOn = null } = {}) => ({
+  diamonds = 0, lastMonth = 0, quitOn = null } = {}) => ({
   key: username, username, quitOn, group, manager: coach, joinDate,
-  obs: [{ date: '2026-09-20', mtd: { diamonds } }],
+  obs: [{ date: '2026-09-20', mtd: { diamonds }, lastMonthDiamonds: lastMonth }],
 });
 const leapedFor = (pairs) => ({ thisMonth: pairs.map(([coach, username]) => ({ coach, username, fee: 10 })) });
 
@@ -61,31 +64,51 @@ test('a missing rank-up rate falls back to the sheet rate, not the manager one',
   assert.equal(rev.rankUpPerDiamond, rev.managerPerDiamond * 2);
 });
 
-test('it is paid on creators past the floor only', () => {
+test('it is paid on creators whose tier went up, not on a diamond floor', () => {
   const rev = coachRevenue({
     creators: [
-      who('big', { diamonds: 1000000 }),
-      who('under', { diamonds: 99999 }),
-      who('exactly_on', { diamonds: 100000 }),
+      // Tier 1 last month, Tier 7 now: ranked up.
+      who('climber', { diamonds: 1000000, lastMonth: 0 }),
+      // Huge, but Tier 7 last month and Tier 7 now: held, so pays nothing,
+      // even though a 100,000 floor would have paid on it.
+      who('plateaued', { diamonds: 1100000, lastMonth: 1050000 }),
+      // Big last month, far smaller now: dropped a tier, pays nothing.
+      who('slipped', { diamonds: 250000, lastMonth: 900000 }),
     ],
     asOf: ASOF, config,
   });
   const r = rev.rows[0];
-  assert.equal(r.diamonds, 1199999, 'the roster total is everyone');
-  assert.equal(r.rankUps, 2);
-  assert.equal(r.rankUpDiamonds, 1100000);
-  assert.equal(r.rankUpBonus, 1100000 * rev.rankUpPerDiamond);
-  assert.equal(r.managerShare, 1199999 * rev.managerPerDiamond, 'but the manager share is all of them');
+  assert.equal(r.diamonds, 2350000, 'the roster total is everyone');
+  assert.equal(r.rankUps, 1, 'only the one who moved up');
+  assert.equal(r.rankUpDiamonds, 1000000);
+  assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond);
+  assert.equal(r.managerShare, 2350000 * rev.managerPerDiamond, 'but the manager share is all of them');
+});
+
+test('ranking up pays on the creator\'s whole month, not the threshold crossed', () => {
+  // gdubz360streams, August: 1,006,213 diamonds off a July tier of 800,483, so
+  // Tier 6 to Tier 7. The sheet pays the full 1,006,213, not the 1,000,000.
+  const rev = coachRevenue({
+    creators: [who('gdubz360streams', { diamonds: 1006213, lastMonth: 800483 })],
+    asOf: ASOF,
+    config: { ...config, revenue: { ...config.revenue, usdToGbp: 0.754073884 } },
+  });
+  assert.equal(rev.rows[0].rankUps, 1);
+  assert.ok(Math.abs(rev.rows[0].rankUpBonus - 75.875894) < 0.005);
 });
 
 test('the two diamond shares use different populations', () => {
   const rev = coachRevenue({
-    creators: [who('big', { diamonds: 1000000 }), who('small', { diamonds: 50000 })],
+    creators: [
+      who('big', { diamonds: 1000000, lastMonth: 0 }),
+      who('small', { diamonds: 50000, lastMonth: 40000 }),
+    ],
     asOf: ASOF, config,
   });
   const r = rev.rows[0];
-  // The manager share is the whole roster; rank ups are only the creator past
-  // the floor. Using one population for both understates the month.
+  // The manager share is the whole roster; rank ups are only the creator who
+  // moved up. Using one population for both misses the month in both
+  // directions.
   assert.equal(r.managerShare, 1050000 * rev.managerPerDiamond);
   assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond);
   assert.equal(r.total, r.base + r.recruitBonus + r.managerShare + r.rankUpBonus);
@@ -189,7 +212,7 @@ test('the card calls it Rank ups, which is what the coaches call it', () => {
   // The card has to say which population each diamond line is, or the two
   // figures look like one of them is simply wrong.
   assert.match(body, /whole roster — \*\*940,000\*\* diamonds/);
-  assert.match(body, /Rank ups are only the \*\*1\*\* creators past 100,000/);
+  assert.match(body, /Rank ups are the \*\*1\*\* creators who moved up a tier/);
 });
 
 test('a team summary shows the coaches who work that team, not the whole network', () => {

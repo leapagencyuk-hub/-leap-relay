@@ -31,6 +31,25 @@ export const COLOR = {
 };
 
 const n = (x) => (x == null ? '—' : Math.round(x).toLocaleString('en-GB'));
+
+/**
+ * Join lines to fit a Discord field, cutting whole lines rather than mid-word.
+ *
+ * A plain slice is fine for a list of one-line entries. It is not fine where an
+ * entry wraps onto a second line, because the cut lands inside a sentence about
+ * somebody's money and reads as a bug.
+ */
+function fitLines(lines, max = 1024) {
+  const out = [];
+  let len = 0;
+  for (const line of lines) {
+    const add = (out.length ? 1 : 0) + line.length;
+    if (len + add > max) break;
+    out.push(line);
+    len += add;
+  }
+  return out.join('\n');
+}
 const pct = (x) => (x == null ? '—' : `${x >= 0 ? '+' : ''}${Math.round(x * 100)}%`);
 
 /**
@@ -1077,8 +1096,12 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
         ].join('\n')
         + '\n```'
         + `\nThe manager diamond share is your whole roster — **${n(r.diamonds)}** diamonds this month. `
-        + `Rank ups are only the **${r.rankUps}** creators past ${n(rev.floor)} `
+        + `Rank ups are the **${r.rankUps}** creators who moved up a tier `
         + `(**${n(r.rankUpDiamonds)}** between them), and land on the 15th of next month.`
+        + (r.closeToRankUp
+          ? `\n**${r.closeToRankUp}** more ${r.closeToRankUp === 1 ? 'is' : 'are'} in reach of a rank-up, `
+            + `worth about ${gbp(r.rankUpUpside)} on top — see the brackets below.`
+          : '')
         + `\nEveryone is on **10%**. Hitting your goals on Backstage unlocks **a further 10%**, `
         + `which would take the manager share to ~${gbp(r.managerWithGoals)}.`,
     });
@@ -1092,6 +1115,73 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
     });
   }
 
+  return fields;
+}
+
+/**
+ * The rank-up brackets: who is close, what crossing is worth, and by when.
+ *
+ * This is the one block on the card a coach can act on the same day. It is
+ * deliberately shaped as a chase rather than a report — a creator sitting
+ * below a tier line is worth nothing at all until they cross it, and then they
+ * are worth their whole month at once. That step is the entire motivation, so
+ * the money is stated against the name and not buried in a total.
+ *
+ * `board` is a rankUpBoard; `coaches` are the coach addresses this card is for.
+ */
+export function rankUpFields(board, coaches, { config = {}, limit = 6 } = {}) {
+  if (!board || !coaches?.length) return [];
+  const cur = config.leaped?.currency ?? 'GBP';
+  const money = (x) => {
+    try {
+      return new Intl.NumberFormat('en-GB', { style: 'currency', currency: cur }).format(x);
+    } catch { return `${cur} ${x.toFixed(2)}`; }
+  };
+  const fields = [];
+
+  for (const coach of coaches) {
+    const e = board.byCoach.get(coach);
+    if (!e || (!e.ranked.length && !e.close.length)) continue;
+
+    const lines = [];
+    if (e.ranked.length) {
+      lines.push(`**Banked** — ${e.ranked.length} ranked up, worth about ${money(e.worth)}`);
+      for (const r of e.ranked.slice(0, limit)) {
+        lines.push(`\`+\` **${r.username}** Tier ${r.fromTier} to ${r.toTier}`
+          + ` — ${n(r.diamonds)} diamonds, ~${money(r.worth)}`);
+      }
+      if (e.ranked.length > limit) lines.push(`   and ${e.ranked.length - limit} more.`);
+    }
+
+    if (e.close.length) {
+      if (lines.length) lines.push('');
+      lines.push(`**In reach** — ${e.close.length} more, worth about ${money(e.upside)} if they all land`);
+      for (const r of e.close.slice(0, limit)) {
+        const per = r.needPerDay == null ? null : Math.ceil(r.needPerDay);
+        lines.push(`\`>\` **${r.username}** Tier ${r.fromTier} to ${r.fromTier + 1}`
+          + ` — ${n(r.gap)} short of ${n(r.target)}, ~${money(r.worthIfCrossed)}`
+          + (per == null ? '' : `\n       ${n(per)} a day for the last ${r.daysLeft} ${r.daysLeft === 1 ? 'day' : 'days'}`
+            + (r.perDay > 0 ? `, against ${n(r.perDay)} a day so far` : '')));
+      }
+      if (e.close.length > limit) lines.push(`   and ${e.close.length - limit} more.`);
+    }
+
+    fields.push({
+      name: `Rank-up brackets — ${e.name}`,
+      value: fitLines(lines),
+    });
+  }
+
+  if (!fields.length) return [];
+  fields.push({
+    name: 'How the brackets pay',
+    value: 'A creator\'s tier is set by **last month\'s** diamonds and cannot move. '
+      + 'What they do this month decides whether they rank out of it. Crossing pays you '
+      + '**1% of their whole month**, not of the bit above the line — so a creator who '
+      + 'crosses on the last day is worth the same as one who crossed on the first. '
+      + 'Below the line they are worth nothing, which is why the near misses are the '
+      + 'ones to spend your week on.',
+  });
   return fields;
 }
 
@@ -1195,6 +1285,9 @@ export function teamSummaryEmbed(summary, { mention = null, config = {} } = {}) 
   // first would have the card read as a payslip with some creator notes
   // attached rather than the other way round.
   fields.push(...revenueFields(s.revenue, s.revenueCoaches, { config }));
+  // Straight after the money, because it is the same money: this is the part
+  // of it that has not been earned yet and still can be.
+  fields.push(...rankUpFields(s.rankUp, (s.revenueCoaches ?? []).map((r) => r.coach), { config }));
 
   const m = s.month;
   // Both halves of the comparison are the same creators, and the sentence says

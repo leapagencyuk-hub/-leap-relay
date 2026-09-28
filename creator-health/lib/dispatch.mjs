@@ -19,6 +19,7 @@ import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
 import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
+import { rankUpBoard } from './tiers.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
 
@@ -399,6 +400,11 @@ export async function dispatch({
   const revenue = (config.revenue?.enabled !== false && creators.length)
     ? coachRevenue({ creators, asOf, config, leaped: leapedForRevenue })
     : null;
+  // The rank-up brackets share the summary card with the pay block, so they
+  // are worked out here alongside it rather than inside the renderer.
+  const rankUp = (config.rankUp?.enabled !== false && creators.length)
+    ? rankUpBoard({ creators, asOf, config })
+    : null;
 
   // --- the daily picture of each team ---------------------------------------
   // Posted before the escalation and the overview, so a coach opening Discord
@@ -406,7 +412,7 @@ export async function dispatch({
   // wrong with it.
   if (Object.keys(discordConfig.teamSummaries ?? {}).length
     && (again('summaries') || teamSummaryDue(config, store, asOf))) {
-    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows, revenue });
+    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows, revenue, rankUp });
     for (const [team, summary] of summaries) {
       const entry = discordConfig.teamSummaries[groupKey(team)];
       // The channel id is only usable with a bot token. The ids are committed

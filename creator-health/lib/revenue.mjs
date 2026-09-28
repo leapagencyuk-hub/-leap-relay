@@ -15,66 +15,46 @@
 //                           leaped records so there is one definition of a
 //                           qualifying recruit, not two that can drift.
 //
-//   rank ups                VERIFIED row for row against the WAGES CALCUATOR
-//                           tab, which is the rank-up calculator. Its COACH
-//                           column is diamonds x $0.01 a diamond x a 1% share,
-//                           and its POUND column is that x the sheet's own FX
-//                           cell, 0.754073884. Recomputing all 174 creator rows
-//                           across February to July gives zero mismatches over
-//                           0.005 against either column.
-//
-//                           The 100,000 floor is the sheet's, not a guess: the
-//                           smallest creator it lists in any month is 100,175
-//                           (June), then 100,503, 100,805, 101,695, 103,421,
-//                           109,670. Nothing below 100,000 has ever appeared.
-//
-//                           Recruitment 26/27 calls this ALPHA GROUP TASK BONUS
-//                           and pays it a month in arrears: that tab's "Month M
-//                           Income" equals the WAGES CALCUATOR figure for month
-//                           M-1. Confirmed three times over on Sureshot —
-//                           May 196.90, June 167.30, July 339.19 appear as
-//                           June's, July's and August's income.
+//   rank ups                Paid on creators whose TIER went up against last
+//                           month. A flat 1% of the diamond dollar value,
+//                           diamonds x $0.01 x 1%, on their whole month.
+//                           The tier table, the verification and the reason
+//                           this is NOT a "past 100,000 diamonds" floor are
+//                           all in lib/tiers.mjs. Short version: the floor
+//                           paid on 66 creators in August where LEAP's own
+//                           sheet pays on 26.
 //
 //   manager diamond %       0.00005 USD a diamond, applied here across the
 //                           coach's WHOLE roster. This is the recruiter
 //                           commission formula: at roughly $1 to £0.75 it is
 //                           the 0.0000375 a diamond quoted in GBP.
 //
-//                           UNVERIFIED, unlike the rank-up bonus, and the
-//                           population is the open question. It is a separate
-//                           row in Recruitment 26/27 with its own values, so it
-//                           is certainly not the same calculation as rank ups —
-//                           the ratio between the two rows moves from 0.50 to
-//                           1.83 across coaches in a single month, so neither
-//                           is a fixed multiple of the other.
+//                           UNVERIFIABLE, unlike rank ups, and not for want of
+//                           trying. Each figure in Recruitment 26/27's MANAGER
+//                           DIAMOND % row appears exactly once in the whole
+//                           workbook, so they are typed in from Backstage
+//                           rather than computed from anything we hold.
 //
-//                           Working backwards from the sheet's July figures:
-//                           Sureshot's 218.79 implies 5.80M diamonds against
-//                           4.60M past the floor, a ratio of 1.26, which is
-//                           close to their actual August shape of 1.19. But
-//                           Unc Inc's 69.40 implies 1.84M against 1.87M past
-//                           the floor — a ratio below 1, which a whole roster
-//                           cannot produce. Restricting it to creators UNDER
-//                           the floor fits worse still: that would need ratios
-//                           of 1.26 to 3.58 where the actual August shapes are
-//                           0.14 to 1.03.
-//
-//                           Settling it needs a July creator export, which we
-//                           do not have — the earliest snapshot is 31 August.
-//                           Until then this is the stated formula applied to
-//                           the obvious population, and the card calls the
-//                           whole block an estimate.
+//                           Against August, the whole roster comes out 13% to
+//                           34% above what the sheet paid five of six coaches,
+//                           and within 3% for the sixth. Restricting it to the
+//                           creators who ranked up fits worse. Since the true
+//                           figures are hand-entered, no population will
+//                           reconcile exactly, so this stays the formula LEAP
+//                           gave us applied to the obvious population, on a
+//                           card whose first line calls it a rough estimate.
 //
 // The two diamond shares are not the same thing and do not use the same
-// population, which is the trap here: rank ups are paid on creators past
-// 100,000 in the month, and the manager share across everybody. Working one out
-// and calling it the other understates a coach's month by about a third.
+// population, which is the trap here: rank ups are paid on the creators who
+// ranked up, and the manager share across everybody. Working one out and
+// calling it the other misses a coach's month badly in both directions.
 //
 // Everybody is on the same 10% manager share, with a further 10% unlocked by
 // hitting goals on Backstage — so that share doubles, and nothing else moves.
 import { groupKey } from './notify.mjs';
 import { monthMtd } from './policy.mjs';
 import { coachName, offTheBoards } from './coaches.mjs';
+import { rankUpFor } from './tiers.mjs';
 
 /**
  * Per-coach earnings for the month, keyed by the coach's address.
@@ -98,7 +78,6 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const currency = config.leaped?.currency ?? 'GBP';
   const defaultBase = cfg.baseWage ?? 0;
   const perCoachBase = cfg.baseWageByCoach ?? {};
-  const floor = cfg.rankUpFloorDiamonds ?? 100000;
   // Rounded for the same reason as the rate above.
   const managerPerDiamond = Number(((cfg.managerPerDiamondUsd ?? 0.00005) * usdToGbp).toPrecision(6));
   // Everyone is on 10%; hitting Backstage goals unlocks a further 10%.
@@ -118,7 +97,8 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     const e = byCoach.get(key) ?? {
       coach: key, name: coachName(key, config),
       recruited: 0, onboardedAllTime: 0, roster: 0, diamonds: 0,
-      rankUps: 0, rankUpDiamonds: 0, teams: new Set(),
+      rankUps: 0, rankUpDiamonds: 0, closeToRankUp: 0, rankUpUpside: 0,
+      teams: new Set(),
     };
     // All-time includes creators who have since left: the coach still onboarded
     // them, and a number that shrinks when somebody quits reads as a penalty.
@@ -127,9 +107,16 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     if (c.joinDate?.slice(0, 7) === month) e.recruited++;
     const d = monthMtd(c, month)?.diamonds ?? 0;
     e.diamonds += d;
-    // The share is only paid on creators past the floor, so it is counted
-    // separately from the roster's total output.
-    if (d >= floor) { e.rankUps++; e.rankUpDiamonds += d; }
+    // Rank ups are paid on creators whose TIER went up against last month, not
+    // on creators past some diamond floor. See lib/tiers.mjs: the floor this
+    // replaces paid on two and a half times as many creators as LEAP's own
+    // sheet does.
+    const up = c.quitOn ? null : rankUpFor(c, asOf, config);
+    if (up?.rankedUp) { e.rankUps++; e.rankUpDiamonds += d; }
+    else if (up?.reachable && up.target != null && up.daysLeft > 0) {
+      e.closeToRankUp++;
+      e.rankUpUpside += up.worthIfCrossed;
+    }
     if (c.group) e.teams.add(c.group);
     byCoach.set(key, e);
   }
@@ -143,7 +130,7 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     // No default: a coach who is not on the sheet is not on a fixed amount, and
     // putting one on their card is worse than leaving the line off.
     const base = perCoachBase[e.coach] ?? defaultBase;
-    // Goals unlock a further 10% on the manager share; the alpha bonus is fixed.
+    // Goals unlock a further 10% on the manager share; rank ups do not move.
     const managerWithGoals = managerShare * goalsMultiplier;
     const total = base + recruitBonus + rankUpBonus + managerShare;
     return {
@@ -151,6 +138,7 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
       teams: [...e.teams],
       diamonds: Math.round(e.diamonds),
       rankUpDiamonds: Math.round(e.rankUpDiamonds),
+      rankUpUpside: e.rankUpUpside,
       leapedCount,
       recruitBonus,
       rankUpBonus,
@@ -164,7 +152,7 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   }).sort((a, b) => b.total - a.total);
 
   return {
-    month, asOf, currency, fee, rankUpPerDiamond, managerPerDiamond, usdToGbp, floor, goalsMultiplier,
+    month, asOf, currency, fee, rankUpPerDiamond, managerPerDiamond, usdToGbp, goalsMultiplier,
     rows,
     byCoach: new Map(rows.map((r) => [r.coach, r])),
     // The recruitment standing, which is the "all staff" board on the card. It

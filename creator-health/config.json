@@ -171,6 +171,79 @@
     "_excluded": "Partner agencies are not LEAP payroll, so monitoring.ignoreGroups applies here too.",
     "closeHoursWithin": 3
   },
+  "rankUp": {
+    "_note": "The rank-up task. A creator's tier is set by LAST month's diamonds and cannot move; ranking out of it this month pays the coach 1% of the creator's whole month. See lib/tiers.mjs for how the table and the rule were verified against the WAGES CALCUATOR tab.",
+    "enabled": true,
+    "_advanced": "Base or advanced ratio. Advanced is always base + 1%, and is earned by the NETWORK meeting TikTok's requirements, not by any one coach. LEAP's August rows are all on base, so this is false; earlier months used advanced. It does not change a coach's 1%, only what TikTok pays LEAP.",
+    "advanced": false,
+    "_coachSharePerDiamondUsd": "What the coach gets on a creator who ranks up: $0.01 a diamond at a 1% share. Same number as revenue.rankUpPerDiamondUsd, kept here so the chase figures and the pay block cannot drift apart.",
+    "coachSharePerDiamondUsd": 0.0001,
+    "_stretch": "A near-miss counts as in reach only if the daily rate needed is within this multiple of the creator's own rate so far. Two means we will ask somebody to double, not to triple.",
+    "stretch": 2,
+    "_tiers": "Tier thresholds and the rank-up ratio, from TikTok's own table. Tier 10 pays nothing, so there is nothing above it to chase. The maintenance ratios are NOT here: Backstage shows a second column for them and we have never been given it, so tier maintenance is reported and deliberately valued at zero.",
+    "tiers": [
+      {
+        "tier": 1,
+        "min": 0,
+        "base": 0.065,
+        "advanced": 0.075
+      },
+      {
+        "tier": 2,
+        "min": 100000,
+        "base": 0.065,
+        "advanced": 0.075
+      },
+      {
+        "tier": 3,
+        "min": 200000,
+        "base": 0.065,
+        "advanced": 0.075
+      },
+      {
+        "tier": 4,
+        "min": 300000,
+        "base": 0.065,
+        "advanced": 0.075
+      },
+      {
+        "tier": 5,
+        "min": 500000,
+        "base": 0.065,
+        "advanced": 0.075
+      },
+      {
+        "tier": 6,
+        "min": 700000,
+        "base": 0.055,
+        "advanced": 0.065
+      },
+      {
+        "tier": 7,
+        "min": 1000000,
+        "base": 0.045,
+        "advanced": 0.055
+      },
+      {
+        "tier": 8,
+        "min": 1600000,
+        "base": 0.035,
+        "advanced": 0.045
+      },
+      {
+        "tier": 9,
+        "min": 2500000,
+        "base": 0.03,
+        "advanced": 0.04
+      },
+      {
+        "tier": 10,
+        "min": 5000000,
+        "base": null,
+        "advanced": null
+      }
+    ]
+  },
   "revenue": {
     "_note": "Rough monthly earnings at the bottom of each team summary, using the component names from the Recruitment 26/27 sheet. Payments land on the 15th of the following month, so this is the month being built.",
     "enabled": true,
@@ -188,9 +261,7 @@
       "chavvyy26@hotmail.com": 150,
       "itsmalkintiktok@gmail.com": 150
     },
-    "_rankUpFloorDiamonds": "Rank ups are paid on creators past this in the month. The floor is the WAGES CALCUATOR tab's own, not a guess: the smallest creator it lists in any month is 100,175, then 100,503, 100,805, 101,695, 103,421, 109,670.",
-    "rankUpFloorDiamonds": 100000,
-    "_rankUpPerDiamondUsd": "Rank ups, which Recruitment 26/27 calls ALPHA GROUP TASK BONUS. The WAGES CALCUATOR tab's COACH column: diamonds x $0.01 a diamond x a 1% share. Recomputing all 174 creator rows across February to July reproduces both that column and its POUND column with zero mismatches.",
+    "_rankUpPerDiamondUsd": "Rank ups, which Recruitment 26/27 calls ALPHA GROUP TASK BONUS. The WAGES CALCUATOR tab's COACH column: diamonds x $0.01 a diamond x a 1% share. Recomputing all 174 creator rows across February to July reproduces both that column and its POUND column with zero mismatches. WHO it is paid on lives in the rankUp block below, not here.",
     "rankUpPerDiamondUsd": 0.0001,
     "_managerPerDiamondUsd": "The manager diamond share: the recruiter commission formula, 0.00005 USD a diamond, applied across the coach's whole roster. At roughly $1 to GBP 0.75 that is the 0.0000375 a diamond quoted in GBP. UNVERIFIED, unlike rank ups - the population is an open question and needs a July creator export to settle. See the header of lib/revenue.mjs.",
     "managerPerDiamondUsd": 5e-05,
