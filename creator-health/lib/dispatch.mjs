@@ -100,6 +100,10 @@ async function deliver(client, route, payload, label = '') {
 export function supersedes(previous, period, newId) {
   if (!previous?.id || !newId) return false;
   if (previous.id === newId) return false;
+  // A null period means there is no edition worth keeping — yesterday's daily
+  // summary is simply out of date. The boards pass their month, so the closing
+  // board of each month survives into the next.
+  if (period == null) return true;
   return previous.period === period;
 }
 
@@ -236,8 +240,16 @@ export async function dispatch({
    * still yesterday's board in the channel, which is wrong but readable. Delete
    * first and a failed post leaves the channel empty.
    */
-  const replaceLast = async (label, route, payload, slot, period) => {
-    const res = await send(label, `(${label})`, route, payload);
+  // Which recurring posts keep only their current version. A per-creator card
+  // is a work item and is never replaced; a summary that is re-posted every day
+  // is the same message with new numbers, and thirty of them is thirty stale
+  // copies and one useful one.
+  const replaces = (kind) => config.posts?.replacePrevious?.[kind] !== false;
+
+  // `who` is kept because the delivery record is read per team: a roster that
+  // reports itself as "(activation-roster)" tells nobody which team it was for.
+  const replaceLast = async (label, who, route, payload, slot, period = null) => {
+    const res = await send(label, who, route, payload);
     if (dryRun || !res?.ok) return res;
     const prev = store.data.lastMessage?.[slot] ?? null;
     if (res.body?.id) {
@@ -246,7 +258,7 @@ export async function dispatch({
     }
     if (supersedes(prev, period, res.body?.id) && route.webhook) {
       const gone = await client.deleteWebhookMessage(route.webhook, prev.id);
-      if (!gone.ok) sent.push({ label: `${label}-cleanup`, coach: `(${label})`, ok: false, error: gone.error });
+      if (!gone.ok) sent.push({ label: `${label}-cleanup`, coach: who, ok: false, error: gone.error });
     }
     return res;
   };
@@ -307,8 +319,10 @@ export async function dispatch({
       const sample = rows[0].creator;
       const route = activationRoute({ coach: sample.manager, group: team });
       if (!route.webhook && !route.channelId) continue;
-      await send('activation-roster', team, route,
-        activationRosterEmbed({ team, rows, asOf, config }));
+      const roster = activationRosterEmbed({ team, rows, asOf, config });
+      await (replaces('activationRoster')
+        ? replaceLast('activation-roster', team, route, roster, `roster:${groupKey(team)}`)
+        : send('activation-roster', team, route, roster));
     }
     if (!dryRun) store.data.lastRosterOn = asOf;
   }
@@ -364,8 +378,10 @@ export async function dispatch({
     }
 
     if (activenessRoute && rows.length && (again('activeness') || activenessDue(config, store, asOf))) {
-      await send('activeness-overview', '(activeness)', activenessRoute,
-        activenessOverviewEmbed(activeness, { config }));
+      const card = activenessOverviewEmbed(activeness, { config });
+      await (replaces('activenessOverview')
+        ? replaceLast('activeness-overview', '(activeness)', activenessRoute, card, 'activenessOverview')
+        : send('activeness-overview', '(activeness)', activenessRoute, card));
       if (!dryRun) store.data.lastActivenessOn = asOf;
     }
   }
@@ -388,8 +404,11 @@ export async function dispatch({
       // roster already covers it, and an empty card every morning is how a
       // channel stops being read.
       if (!summary.roster.earning) continue;
-      await send('team-summary', team, { webhook: entry.webhook, channelId: entry.channelId },
-        teamSummaryEmbed(summary));
+      const route = { webhook: entry.webhook, channelId: entry.channelId };
+      const card = teamSummaryEmbed(summary);
+      await (replaces('teamSummary')
+        ? replaceLast('team-summary', team, route, card, `summary:${groupKey(team)}`)
+        : send('team-summary', team, route, card));
     }
     if (!dryRun) store.data.lastTeamSummaryOn = asOf;
   }
@@ -434,8 +453,10 @@ export async function dispatch({
   if (boardRoute && creators.length && (again('leaderboard') || leaderboardDue(config, store, asOf))) {
     const board = leaderboard({ creators, asOf, store, config });
     if (board.total || board.lastMonthTotal) {
-      await (config.leaderboard?.replacePrevious === false ? send('leaderboard', '(leaderboard)', boardRoute, leaderboardEmbed(board, { config }))
-        : replaceLast('leaderboard', boardRoute, leaderboardEmbed(board, { config }), 'leaderboard', board.month));
+      const card = leaderboardEmbed(board, { config });
+      await (replaces('leaderboard')
+        ? replaceLast('leaderboard', '(leaderboard)', boardRoute, card, 'leaderboard', board.month)
+        : send('leaderboard', '(leaderboard)', boardRoute, card));
       // Recorded after rendering, so today's card shows movement against
       // yesterday rather than against itself.
       if (!dryRun) { recordBoard(store, board); store.data.lastLeaderboardOn = asOf; }
@@ -451,8 +472,10 @@ export async function dispatch({
     const gb = growthBoard({ creators, metricsByKey, asOf, store, config });
     // Nothing to rank in a network's first month; the card would be a heading.
     if (gb.rows.length) {
-      await (config.growthBoard?.replacePrevious === false ? send('growth-board', '(growth)', growthRoute, growthBoardEmbed(gb, { config }))
-        : replaceLast('growth-board', growthRoute, growthBoardEmbed(gb, { config }), 'growthBoard', gb.month));
+      const card = growthBoardEmbed(gb, { config });
+      await (replaces('growthBoard')
+        ? replaceLast('growth-board', '(growth)', growthRoute, card, 'growthBoard', gb.month)
+        : send('growth-board', '(growth)', growthRoute, card));
       if (!dryRun) { recordGrowthBoard(store, gb); store.data.lastGrowthBoardOn = asOf; }
     }
   }
@@ -461,14 +484,16 @@ export async function dispatch({
   // The two rates TikTok sets our benefits tier on. Management's channel, once
   // a day, beside the overview: no coach can move these directly.
   if (summaryRoute && creators.length && (again('policy') || store.data.lastPolicyOn !== asOf)) {
-    await send('policy', '(overview)', summaryRoute,
-      policyEmbed(policyStanding({ creators, asOf, config }), { asOf }));
+    const card = policyEmbed(policyStanding({ creators, asOf, config }), { asOf });
+    await (replaces('policy')
+      ? replaceLast('policy', '(overview)', summaryRoute, card, 'policy')
+      : send('policy', '(overview)', summaryRoute, card));
     if (!dryRun) store.data.lastPolicyOn = asOf;
   }
 
   const alreadyPosted = store.data.lastOverviewOn === asOf;
   if (summaryRoute && (!alreadyPosted || forceSummary || again('overview'))) {
-    await send('overview', '(overview)', summaryRoute, overviewEmbed({
+    const card = overviewEmbed({
       asOf, stats, caseStats: caseStats(store, asOf), alerts, ramp, spotlight,
       changes, sent, teams: teamOutcomes(store, { now: asOf }), health,
       openCases: store.all().filter(isOpen),
@@ -481,7 +506,10 @@ export async function dispatch({
         within100k: grad.rows.filter((r) => !r.done && r.remaining <= 100000).length,
         daysLeft: grad.rows[0]?.daysLeft ?? 0,
       } : null,
-    }));
+    });
+    await (replaces('overview')
+      ? replaceLast('overview', '(overview)', summaryRoute, card, 'overview')
+      : send('overview', '(overview)', summaryRoute, card));
     if (!dryRun) store.data.lastOverviewOn = asOf;
   } else if (summaryRoute && alreadyPosted) {
     sent.push({ label: 'overview', coach: '(overview)', ok: true, skipped: 'already posted today' });

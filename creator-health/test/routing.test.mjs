@@ -444,6 +444,18 @@ test('yesterday\'s board is replaced; last month\'s is kept', () => {
   assert.equal(supersedes(yesterday, '2026-09', '111'), false, 'never delete the message just posted');
 });
 
+test('a daily summary has no edition worth keeping, so it always replaces', () => {
+  // The boards pass a month and keep the closing one. A team summary, the
+  // overview and the activeness picture pass nothing: yesterday's is simply
+  // out of date, in every month.
+  assert.equal(supersedes({ id: '111', period: null }, null, '222'), true);
+  assert.equal(supersedes({ id: '111', period: '2026-08' }, null, '222'), true,
+    'even one left over from a previous month');
+  assert.equal(supersedes(null, null, '222'), false);
+  assert.equal(supersedes({ id: '111' }, null, null), false,
+    'a post that came back without an id still must not delete anything');
+});
+
 test('a board posts, records its message, and the next one replaces it', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-replace-'));
   const store = new CaseStore(dir);

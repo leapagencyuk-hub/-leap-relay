@@ -144,9 +144,7 @@
     "_note": "Monthly new-creator recruitment board, credited to the creator's Creator Network manager \u2014 the export has no separate recruiter column, and the manager is the person who has to make the signing work.",
     "enabled": true,
     "_show": "Coaches listed. Everyone is counted either way; this is only how many rows the card prints.",
-    "show": 10,
-    "_replacePrevious": "Each day's board removes the previous one, so the channel holds exactly one live board. Only within a month \u2014 the final board of a month is left as the result. Set false to keep every day's post.",
-    "replacePrevious": true
+    "show": 10
   },
   "growthBoard": {
     "_note": "Coach growth board. Ranked on month-on-month growth pulled toward the network average in proportion to how few creators it rests on, so a big percentage on a small team does not automatically lead.",
@@ -157,9 +155,7 @@
     "minComparable": 3,
     "show": 12,
     "_thinBelow": "Fewer comparable creators than this and the card marks the row as a small team.",
-    "thinBelow": 10,
-    "_replacePrevious": "Each day's board removes the previous one, so the channel holds exactly one live board. Only within a month \u2014 the final board of a month is left as the result. Set false to keep every day's post.",
-    "replacePrevious": true
+    "thinBelow": 10
   },
   "digest": {
     "maxAlertsPerCoach": 12,
@@ -190,6 +186,19 @@
       "Stay Social",
       "Team Ratty"
     ]
+  },
+  "posts": {
+    "_note": "Recurring posts that keep only their current version: each day's card removes the one before it, so a channel holds what is true now rather than a month of stale copies. Per-creator cards are work items and are never replaced. Set any of these false to keep every post.",
+    "_boards": "The two monthly boards replace within a month only \u2014 the closing board of each month is the result and survives into the next.",
+    "replacePrevious": {
+      "leaderboard": true,
+      "growthBoard": true,
+      "teamSummary": true,
+      "activenessOverview": true,
+      "activationRoster": true,
+      "overview": true,
+      "policy": true
+    }
   },
   "activation": {
     "_note": "Creators who never started. Excluded from decline rules by design, which otherwise leaves a third of the network invisible.",
