@@ -306,7 +306,8 @@ test('when nobody on the card is paid, the estimate block goes entirely', () => 
   // No warning either: there is no estimate left on the card to disclaim.
   assert.ok(!fields.some((f) => /rough estimate only/i.test(f.name)));
   assert.ok(!fields.some((f) => /ESTIMATED THIS MONTH/.test(f.value)));
-  // The all-staff recruitment standing is a count of signings, not pay, and is
-  // the same on every card, so it still goes out.
-  assert.deepEqual(fields.map((f) => f.name), ['Recruited this month — all staff']);
+  // Nothing at all, not an empty heading: the all-staff recruitment board that
+  // used to sit here has been replaced by the close-to-leaping list, which is
+  // per team and lives on the card rather than in this block.
+  assert.deepEqual(fields, []);
 });

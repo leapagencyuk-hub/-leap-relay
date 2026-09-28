@@ -105,7 +105,7 @@ function daysLeftInMonth(asOf) {
  * Teams the network is not coaching are left out, the same rule the cases and
  * the weekly roster use.
  */
-export function teamSummaries({ creators, metricsByKey, store, asOf, config, graduation = [], revenue = null, rankUp = null }) {
+export function teamSummaries({ creators, metricsByKey, store, asOf, config, graduation = [], revenue = null, rankUp = null, leaped = null }) {
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
   const target = config.growth?.liveDaysTarget ?? 15;
   const topN = config.growth?.topPerSection ?? 5;
@@ -187,6 +187,11 @@ export function teamSummaries({ creators, metricsByKey, store, asOf, config, gra
       // The rank-up brackets, for the same coaches and in the same order: the
       // block says what each of them can still go and win this month.
       rankUp,
+      // Their own creators who are nearly leaped, biggest gap last, so the
+      // card ends on a job rather than on a network scoreboard.
+      closeToLeaping: (leaped?.close ?? [])
+        .filter((r) => groupKey(r.group) === groupKey(team))
+        .sort((a, b) => (a.needDiamonds - b.needDiamonds) || (a.needHours - b.needHours)),
       // The habit, not a person: how much of the team is live often enough.
       frequency: {
         target,

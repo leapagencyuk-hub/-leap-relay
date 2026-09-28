@@ -181,3 +181,29 @@ test('the overview posts once a day, however often the run is repeated', () => {
   assert.equal(leapedDue({ leaped: { enabled: false } }, s, '2026-09-21'), false);
   fs.rmSync(s.path, { force: true });
 });
+
+test('the team card ends on who is close to leaping, not on a network scoreboard', async () => {
+  const { closeToLeapingFields } = await import('../lib/discord.mjs');
+  const config = { leaped: { fee: 10, currency: 'GBP', hours: 5, diamonds: 5000 } };
+  const rows = [
+    { username: 'needsboth', needDiamonds: 450, needHours: 1.9 },
+    { username: 'needsdiamonds', needDiamonds: 183, needHours: 0 },
+    { username: 'needshours', needDiamonds: 0, needHours: 0.2 },
+  ];
+  const [field] = closeToLeapingFields(rows, { config });
+  assert.match(field.name, /Closest to leaping — 3 in your team/);
+  // The exact gap, so a coach knows what to ask for.
+  assert.match(field.value, /\*\*@needsboth\*\* needs 450 diamonds and 1\.9h LIVE/);
+  assert.match(field.value, /\*\*@needsdiamonds\*\* needs 183 diamonds$/m);
+  assert.match(field.value, /\*\*@needshours\*\* needs 0\.2h LIVE$/m);
+  // And what it is worth, since that is the reason to bother.
+  assert.match(field.value, /£10\b.*5 LIVE hours.*5,000 diamonds/s);
+  // The all-staff recruitment board it replaced is gone.
+  assert.doesNotMatch(field.value, /Recruited this month/);
+});
+
+test('no close creators means no card, rather than an empty heading', async () => {
+  const { closeToLeapingFields } = await import('../lib/discord.mjs');
+  assert.deepEqual(closeToLeapingFields([], { config: {} }), []);
+  assert.deepEqual(closeToLeapingFields(null, { config: {} }), []);
+});

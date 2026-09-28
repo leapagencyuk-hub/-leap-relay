@@ -43,7 +43,7 @@ import { coverage, routeFor } from './lib/dispatch.mjs';
 import { groupKey } from './lib/notify.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
 import { redoToday, redoSummary } from './lib/redo.mjs';
-import { readManualLeaps, importManualLeaps, importSummary } from './lib/leapedimport.mjs';
+import { readManualLeaps, importManualLeaps, importSummary, restoreCorrectedLeaps } from './lib/leapedimport.mjs';
 import { graduationEvents } from './lib/graduation.mjs';
 import { activenessRows, activenessSummary } from './lib/activeness.mjs';
 import { policyStanding } from './lib/policy.mjs';
@@ -264,6 +264,18 @@ function cmdLeapedImport() {
     console.log(`\nNot in the creator data — they have left, so there is nothing to carry:`);
     for (const u of out.unmatched) console.log(`  @${u}`);
   }
+}
+
+/** Put back leap credits an earlier version of the import took off. */
+function cmdLeapedRestore() {
+  const store = new CaseStore(config.dataDir);
+  const out = restoreCorrectedLeaps(store, { persist: !flag('dry') });
+  if (!flag('dry')) store.save();
+  const cur = config.leaped?.currency ?? 'GBP';
+  const amount = new Intl.NumberFormat('en-GB', { style: 'currency', currency: cur }).format(out.value);
+  console.log(`${out.restored.length} leap credits restored, worth ${amount}`
+    + (flag('dry') ? '  (dry run, nothing written)' : ''));
+  for (const [m, n] of Object.entries(out.byMonth)) console.log(`  ${m}: ${n}`);
 }
 
 /** Post every daily card again with the current numbers. */
@@ -780,6 +792,7 @@ const commands = {
   ingest: cmdIngest, report: cmdReport, coach: cmdCoach,
   creator: cmdCreator, rebuild: cmdRebuild, status: cmdStatus,
   run: cmdRun, redo: cmdRedo, 'leaped-import': cmdLeapedImport,
+  'leaped-restore': cmdLeapedRestore,
   cases: cmdCases, case: cmdCase,
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,

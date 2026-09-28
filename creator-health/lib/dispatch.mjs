@@ -447,7 +447,7 @@ export async function dispatch({
   // wrong with it.
   if (Object.keys(discordConfig.teamSummaries ?? {}).length
     && (again('summaries') || teamSummaryDue(config, store, asOf))) {
-    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows, revenue, rankUp });
+    const summaries = teamSummaries({ creators, metricsByKey, store, asOf, config, graduation: grad.rows, revenue, rankUp, leaped: leapedForRevenue });
     for (const [team, summary] of summaries) {
       const entry = discordConfig.teamSummaries[groupKey(team)];
       // The channel id is only usable with a bot token. The ids are committed

@@ -25,27 +25,27 @@
 // cleared the bar before its first run, so nothing downstream needs to know
 // where a record came from.
 //
-// THE ONE PLACE IT OVERRIDES THE FREEZE RULE, AND ONLY ONCE
+// A MARK CONFIRMS A LEAP. IT NEVER VOIDS ONE.
 //
-// A leap record is frozen on first sight, because a leap that has been paid
-// must not change value because a file was re-read. This breaks that in
-// exactly one case: the FIRST import, on a record we credited for a creator
-// LEAP had already marked by hand.
+// This started out treating a mark on a credited record as a correction, on
+// the reasoning that LEAP had already paid it by hand. That was wrong, and it
+// took £670 off a month that had earned it.
 //
-// That record is not a payment, it is a mistake — we billed for a leap that
-// happened before we were watching and was settled outside this system. LEAP's
-// mark is the authority there, because it predates anything here.
+// The mark and our own record are two people noticing the same thing. LEAP
+// writes LEAP against a creator when they leap; we credit the coach when we
+// watch that creator cross the bar. Where both happened, the coach is owed
+// once — and the record we made, which knows the month and the fee, is the one
+// that can say when. Deleting it loses that and pays nobody.
 //
-// After that first import the authority flips, and this is the part that
-// matters going forward. LEAP will keep marking creators by hand as they leap.
-// From now on we have watched those creators cross the bar ourselves, so a
-// mark on somebody we credited this month is LEAP agreeing with us, not
-// correcting us. Treating it as a correction would quietly delete a real £10
-// every time somebody uploads the management export.
+// So a mark on a record we credited leaves the credit exactly as it is.
 //
-// So the first import backfills and corrects; every one after it only adds
-// creators we have never seen leap, and leaves our own credits alone.
-// `leapedImportedOn` is what remembers which of the two this is.
+// What a mark still does is carry in the creators we have NO record of. Those
+// leaped before this system was watching, in a month whose payroll is long
+// closed. They go on the books worth nothing, so they can never leap again and
+// no month of ours bills for them.
+//
+// Records are frozen on first sight either way, so re-running is safe and does
+// nothing the second time.
 import { readSheetRows } from './xlsx.mjs';
 
 /** The note that means "already leaped". LEAP write it a few different ways. */
@@ -114,9 +114,6 @@ export function readManualLeaps(filePath) {
 export function importManualLeaps({ marks, creators, store, exportedAt = null, persist = true }) {
   store.data.leaped ??= {};
   const records = store.data.leaped;
-  // The first import backfills a history we never saw. Every later one is a
-  // routine top-up against records we made ourselves.
-  const firstImport = !store.data.leapedImportedOn;
 
   const byId = new Map();
   const byName = new Map();
@@ -139,23 +136,9 @@ export function importManualLeaps({ marks, creators, store, exportedAt = null, p
     if (existing) {
       // Already carried over, or already correct: nothing to do.
       if (!existing.credited) { already.push(c.username); continue; }
-      // We watched this one cross the bar and billed for it. A mark on them is
-      // LEAP agreeing, not correcting, so the credit stands.
-      if (!firstImport) { kept.push(c.username); continue; }
-      // First import only: we billed for a leap LEAP had already paid. Correct
-      // it, and keep what it claimed so the correction is legible afterwards.
-      const fixed = {
-        ...existing,
-        month: null,
-        credited: false,
-        carriedOver: true,
-        fee: 0,
-        source: 'manual',
-        correctedOn: exportedAt,
-        wasCredited: { month: existing.month, fee: existing.fee },
-      };
-      if (persist) records[c.key] = fixed;
-      corrected.push(fixed);
+      // We watched this one cross the bar and credited it. The mark is LEAP
+      // noticing the same leap, not a correction, so the credit stands.
+      kept.push(c.username);
       continue;
     }
 
@@ -185,7 +168,44 @@ export function importManualLeaps({ marks, creators, store, exportedAt = null, p
   if (persist) {
     store.data.leapedImportedOn = exportedAt ?? new Date().toISOString().slice(0, 10);
   }
-  return { added, corrected, kept, already, unmatched, exportedAt, firstImport };
+  return { added, corrected, kept, already, unmatched, exportedAt };
+}
+
+/**
+ * Put back the credits an earlier version of this took off.
+ *
+ * That version read a mark as "LEAP already paid this" and zeroed the record.
+ * It kept what the record used to claim in `wasCredited`, which is the only
+ * reason this is exact rather than a guess: the month and the fee come back as
+ * they were, not as something reconstructed from today's data.
+ *
+ * Safe to run on a store that was never corrected — there is simply nothing
+ * carrying `wasCredited` — and safe to run twice, since a restored record no
+ * longer carries it.
+ */
+export function restoreCorrectedLeaps(store, { persist = true } = {}) {
+  const records = store.data.leaped ?? {};
+  const restored = [];
+  for (const [key, r] of Object.entries(records)) {
+    if (!r.wasCredited) continue;
+    const { wasCredited, correctedOn, ...rest } = r;
+    const back = {
+      ...rest,
+      month: wasCredited.month,
+      fee: wasCredited.fee,
+      credited: true,
+      carriedOver: false,
+      // It is still true that LEAP marked them; that is not what was wrong.
+      source: 'manual-confirmed',
+    };
+    if (persist) records[key] = back;
+    restored.push(back);
+  }
+  return {
+    restored,
+    value: restored.reduce((n, r) => n + (r.fee ?? 0), 0),
+    byMonth: restored.reduce((m, r) => ({ ...m, [r.month]: (m[r.month] ?? 0) + 1 }), {}),
+  };
 }
 
 /** One line a person can read. */

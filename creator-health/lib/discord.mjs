@@ -1138,7 +1138,7 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
   // With nobody left to pay, the warning has nothing to disclaim and the
   // header would sit above an empty space. The all-staff recruitment board is
   // not earnings and is the same on every card, so it still goes out below.
-  if (!shown.length) return recruitBoardFields(rev, fields);
+  if (!shown.length) return fields;
 
   fields.push({
     name: 'Your revenue — rough estimate only',
@@ -1169,19 +1169,38 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
     });
   }
 
-  return recruitBoardFields(rev, fields);
+  return fields;
 }
 
-/** The all-staff recruitment standing, which is a count of signings, not pay. */
-function recruitBoardFields(rev, fields = []) {
-  if (rev.recruitBoard.length) {
-    fields.push({
-      name: 'Recruited this month — all staff',
-      value: fitJoin(rev.recruitBoard.slice(0, 12).map((r, i) =>
-        `\`${String(i + 1).padStart(2)}\`  **${r.name}** — ${r.recruited}`)),
-    });
-  }
-  return fields;
+/**
+ * Who in this team is nearly leaped, and what each one still needs.
+ *
+ * This replaced the all-staff recruitment board on the team card. That board
+ * was the same nine lines on all ten cards and named nobody a coach could do
+ * anything about; this names their own creators and the exact gap, so the card
+ * ends on a job rather than on a scoreboard.
+ *
+ * Each one is £10 to the coach and a creator properly started, so it is worth
+ * saying what is missing rather than only that something is.
+ */
+export function closeToLeapingFields(rows, { config = {}, limit = 10 } = {}) {
+  if (!rows?.length) return [];
+  const bar = config.leaped ?? {};
+  const need = (r) => {
+    const parts = [];
+    if (r.needDiamonds > 0) parts.push(`${n(r.needDiamonds)} diamonds`);
+    if (r.needHours > 0) parts.push(`${r.needHours}h LIVE`);
+    return parts.length ? parts.join(' and ') : 'nothing — they are over the bar';
+  };
+  return [{
+    name: `Closest to leaping — ${rows.length} in your team`,
+    value: fitJoin([
+      ...rows.slice(0, limit).map((r) => `**@${r.username}** needs ${need(r)}`),
+      '',
+      `Each one is **${money(bar.fee ?? 10, bar.currency ?? 'GBP')}** once they pass `
+        + `**${bar.hours ?? 5} LIVE hours** and **${n(bar.diamonds ?? 5000)} diamonds**, counted over their whole time with us.`,
+    ], { total: rows.length + 2 }),
+  }];
 }
 
 /**
@@ -1339,6 +1358,8 @@ export function teamSummaryEmbed(summary, { mention = null, config = {} } = {}) 
   // Straight after the money, because it is the same money: this is the part
   // of it that has not been earned yet and still can be.
   fields.push(...rankUpFields(s.rankUp, (s.revenueCoaches ?? []).map((r) => r.coach), { config }));
+  // Last: the shortest job on the card, and the one that pays today.
+  fields.push(...closeToLeapingFields(s.closeToLeaping, { config }));
 
   const m = s.month;
   // Both halves of the comparison are the same creators, and the sentence says

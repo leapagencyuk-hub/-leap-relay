@@ -1,6 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { importManualLeaps, importSummary } from '../lib/leapedimport.mjs';
+import { importManualLeaps, importSummary, restoreCorrectedLeaps } from '../lib/leapedimport.mjs';
+
+const require_restore = () => ({ restoreCorrectedLeaps });
 
 const creators = [
   { key: 'id:1', creatorId: '1', username: 'alreadypaid', group: 'Team Alpha', manager: 'josh@leap' },
@@ -10,7 +12,7 @@ const creators = [
 ];
 const storeWith = (leaped) => ({ data: { leaped } });
 
-test('a creator we billed but LEAP had already paid is corrected, not left', () => {
+test('a mark on a leap we credited confirms it, and never voids it', () => {
   const store = storeWith({
     'id:1': { creatorKey: 'id:1', username: 'alreadypaid', credited: true, carriedOver: false, month: '2026-09', fee: 10 },
     'id:3': { creatorKey: 'id:3', username: 'genuinelynew', credited: true, carriedOver: false, month: '2026-09', fee: 10 },
@@ -20,14 +22,15 @@ test('a creator we billed but LEAP had already paid is corrected, not left', () 
     creators, store, exportedAt: '2026-09-28',
   });
 
-  assert.equal(out.corrected.length, 1);
-  const fixed = store.data.leaped['id:1'];
-  assert.equal(fixed.credited, false, 'no longer bills');
-  assert.equal(fixed.carriedOver, true);
-  assert.equal(fixed.fee, 0);
-  assert.equal(fixed.month, null, 'and belongs to no month, so no payroll claims it');
-  assert.deepEqual(fixed.wasCredited, { month: '2026-09', fee: 10 });
-  assert.equal(fixed.source, 'manual');
+  // LEAP writing LEAP against a creator and us crediting the coach are two
+  // people noticing the same leap. The coach is owed once, and our record is
+  // the one that knows which month.
+  assert.equal(out.corrected.length, 0);
+  assert.deepEqual(out.kept, ['alreadypaid']);
+  const same = store.data.leaped['id:1'];
+  assert.equal(same.credited, true, 'the credit stands');
+  assert.equal(same.fee, 10);
+  assert.equal(same.month, '2026-09');
 
   // The one LEAP did NOT mark is untouched: that is a real leap we found.
   assert.deepEqual(store.data.leaped['id:3'], {
@@ -58,7 +61,7 @@ test('running it twice changes nothing the second time', () => {
   assert.deepEqual(second.already, ['newmark']);
 });
 
-test('a dry run reports the bill it would correct without writing it', () => {
+test('a dry run reports what it would add without writing it', () => {
   const store = storeWith({
     'id:1': { creatorKey: 'id:1', username: 'alreadypaid', credited: true, carriedOver: false, month: '2026-09', fee: 10 },
   });
@@ -68,9 +71,9 @@ test('a dry run reports the bill it would correct without writing it', () => {
     creators, store, exportedAt: '2026-09-28', persist: false,
   });
   assert.equal(JSON.stringify(store.data.leaped), before, 'nothing written');
-  assert.equal(out.corrected.length, 1, 'but the correction is still reported');
   assert.equal(out.added.length, 1);
-  assert.match(importSummary(out), /1 carried over, 1 corrected off this month's bill/);
+  assert.deepEqual(out.kept, ['alreadypaid']);
+  assert.match(importSummary(out), /1 carried over, 1 we billed ourselves, left alone/);
 });
 
 test('matching survives a rename, and says who it could not place', () => {
@@ -110,45 +113,43 @@ test('a Manage creators export is told apart from the daily one', async () => {
   assert.equal(isManageExport('/nope/missing.xlsx'), false);
 });
 
-test('the correction happens once, and never eats a credit we earned later', () => {
-  // The bug this covers: LEAP keeps marking creators by hand as they leap.
-  // Without this, every later upload of the management export would quietly
-  // delete a real £10 for every creator we had legitimately billed.
+test('no number of imports ever takes money off a month that earned it', () => {
+  // LEAP keeps marking creators by hand as they leap. An earlier version read
+  // that as "already paid" and zeroed the record, which took £670 off a month
+  // that had earned it.
   const store = storeWith({
     'id:1': { creatorKey: 'id:1', username: 'alreadypaid', credited: true, carriedOver: false, month: '2026-09', fee: 10 },
+    'id:3': { creatorKey: 'id:3', username: 'genuinelynew', credited: true, carriedOver: false, month: '2026-10', fee: 10 },
   });
-
-  // First import: backfills, and corrects what we billed in ignorance.
-  const first = importManualLeaps({
-    marks: [{ username: 'alreadypaid', creatorId: '1' }], creators, store, exportedAt: '2026-09-28',
-  });
-  assert.equal(first.firstImport, true);
-  assert.equal(first.corrected.length, 1);
-  assert.equal(store.data.leapedImportedOn, '2026-09-28', 'and remembers that it ran');
-
-  // Now we watch somebody cross the bar ourselves and bill for it.
-  store.data.leaped['id:3'] = {
-    creatorKey: 'id:3', username: 'genuinelynew', credited: true, carriedOver: false, month: '2026-10', fee: 10,
-  };
-
-  // LEAP marks them too, as they would. That is agreement, not a correction.
-  const second = importManualLeaps({
-    marks: [{ username: 'genuinelynew', creatorId: '3' }], creators, store, exportedAt: '2026-10-31',
-  });
-  assert.equal(second.firstImport, false);
-  assert.equal(second.corrected.length, 0, 'nothing corrected on a later import');
-  assert.deepEqual(second.kept, ['genuinelynew']);
-  assert.equal(store.data.leaped['id:3'].credited, true, 'the credit stands');
-  assert.equal(store.data.leaped['id:3'].fee, 10);
+  const marks = [{ username: 'alreadypaid', creatorId: '1' }, { username: 'genuinelynew', creatorId: '3' }];
+  for (const on of ['2026-09-28', '2026-10-31', '2026-11-30']) {
+    const out = importManualLeaps({ marks, creators, store, exportedAt: on });
+    assert.equal(out.corrected.length, 0, `nothing voided on the ${on} import`);
+  }
+  const owed = Object.values(store.data.leaped).filter((r) => r.credited).reduce((n, r) => n + r.fee, 0);
+  assert.equal(owed, 20, 'both credits still stand after three imports');
 });
 
-test('a later import still picks up creators we have never seen leap', () => {
-  const store = storeWith({});
-  store.data.leapedImportedOn = '2026-09-28';
-  const out = importManualLeaps({
-    marks: [{ username: 'newmark', creatorId: '2' }], creators, store, exportedAt: '2026-10-31',
+test('restoring puts back exactly what the old correction took, month and fee', () => {
+  const { restoreCorrectedLeaps } = require_restore();
+  const store = storeWith({
+    'id:1': {
+      creatorKey: 'id:1', username: 'was_zeroed', credited: false, carriedOver: true,
+      month: null, fee: 0, source: 'manual', correctedOn: '2026-09-28',
+      wasCredited: { month: '2026-09', fee: 10 },
+    },
+    'id:2': { creatorKey: 'id:2', username: 'untouched', credited: true, carriedOver: false, month: '2026-09', fee: 10 },
   });
-  assert.equal(out.firstImport, false);
-  assert.equal(out.added.length, 1, 'a top-up still works');
-  assert.equal(store.data.leaped['id:2'].fee, 0);
+  const out = restoreCorrectedLeaps(store);
+  assert.equal(out.restored.length, 1, 'only the one that was corrected');
+  assert.equal(out.value, 10);
+  const back = store.data.leaped['id:1'];
+  assert.equal(back.credited, true);
+  assert.equal(back.month, '2026-09');
+  assert.equal(back.fee, 10);
+  assert.equal(back.wasCredited, undefined, 'and stops looking corrected');
+  assert.equal(back.source, 'manual-confirmed');
+  // Running it again finds nothing, and the untouched record never moved.
+  assert.equal(restoreCorrectedLeaps(store).restored.length, 0);
+  assert.equal(store.data.leaped['id:2'].fee, 10);
 });
