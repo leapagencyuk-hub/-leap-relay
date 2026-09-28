@@ -157,16 +157,51 @@ export function leapedState({ creators, asOf, store, config, persist = true }) {
     byCoach.set(k, e);
   }
 
+  // A month LEAP worked out by hand, because this could not: a leap is a
+  // LIFETIME 5 hours and 5,000 diamonds, and for a month before there was a
+  // full history here, the records cannot tell who crossed the bar THAT month
+  // from who crossed it long ago. Where the sheet has the answer it is the
+  // answer, and it has to be the answer HERE too — the overview and the wage
+  // block on every team card read from this, and two numbers for one month is
+  // worse than either of them being wrong.
+  const override = config.leaped?.monthOverride?.[month] ?? null;
+  const coaches = [...byCoach.values()];
+  if (override) {
+    const seen = new Set(coaches.map((c) => c.coach));
+    for (const [coach, owed] of Object.entries(override)) {
+      const e = coaches.find((c) => c.coach === coach)
+        ?? { coach, name: coachName(coach, config), count: 0, owed: 0, creators: [] };
+      e.owed = owed;
+      // The count has to match the money, or the card contradicts itself.
+      e.count = Math.round(owed / (fee || 10));
+      if (!seen.has(coach)) coaches.push(e);
+    }
+    // A coach the sheet does not list earned nothing that month.
+    for (const e of coaches) {
+      if (!(e.coach in override)) { e.owed = 0; e.count = 0; }
+    }
+  }
+  const owed = override
+    ? coaches.reduce((n, c) => n + c.owed, 0)
+    : thisMonth.reduce((n, r) => n + r.fee, 0);
+
   return {
     asOf, month, fee, currency, firstRun,
+    // Where this month's figures came from, so the card can say so.
+    fromSheet: Boolean(override),
     // Leaped today, and worth paying for.
     today: newlyLeaped.filter((r) => r.on === asOf),
     // Already past the bar when this started. Recorded so they are never paid
     // for twice, never counted as this month's work.
     carriedOver,
     thisMonth,
-    owed: thisMonth.reduce((n, r) => n + r.fee, 0),
-    coaches: [...byCoach.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
+    owed,
+    leapedThisMonth: override
+      ? coaches.reduce((n, c) => n + c.count, 0)
+      : thisMonth.length,
+    coaches: coaches
+      .filter((c) => c.count > 0 || c.owed > 0)
+      .sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)),
     totalLeaped: merged.size,
     // Sorted by how little is left to do.
     close: close.sort((a, b) => a.needDiamonds - b.needDiamonds),

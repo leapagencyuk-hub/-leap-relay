@@ -746,9 +746,11 @@ export function leapedOverviewEmbed(s) {
 
   if (s.today.length) {
     fields.push({
-      name: s.firstRun
-        ? `Caught up on ${s.today.length} who leaped earlier this month`
-        : `Leaped today — ${s.today.length}`,
+      name: s.fromSheet
+        ? `Crossed the bar today — ${s.today.length}`
+        : s.firstRun
+          ? `Caught up on ${s.today.length} who leaped earlier this month`
+          : `Leaped today — ${s.today.length}`,
       value: s.today.slice(0, 15).map((r) =>
         `**@${r.username}** · ${r.name} · ${r.atHours}h · ${n(r.atDiamonds)}`).join('\n').slice(0, 1024),
     });
@@ -782,9 +784,14 @@ export function leapedOverviewEmbed(s) {
   return {
     embeds: [{
       title: `Leaped creators — ${monthName}`,
-      description: `**${s.thisMonth.length}** leaped this month, worth **${money(s.owed, s.currency)}**.\n`
-        + `${s.totalLeaped} creators have leaped in total.`,
-      color: s.thisMonth.length ? COLOR.recovered : COLOR.neutral,
+      description: `**${s.leapedThisMonth ?? s.thisMonth.length}** leaped this month, `
+        + `worth **${money(s.owed, s.currency)}**.\n`
+        + `${s.totalLeaped} creators have leaped in total.`
+        + (s.fromSheet
+          ? `\n_This month's figures are LEAP's own, from the Recruitment sheet — `
+            + `the same numbers as the wage block on your team card._`
+          : ''),
+      color: (s.leapedThisMonth ?? s.thisMonth.length) ? COLOR.recovered : COLOR.neutral,
       fields,
       footer: { text: `as of ${s.asOf}` },
       timestamp: new Date().toISOString(),

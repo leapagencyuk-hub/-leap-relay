@@ -207,3 +207,58 @@ test('no close creators means no card, rather than an empty heading', async () =
   assert.deepEqual(closeToLeapingFields([], { config: {} }), []);
   assert.deepEqual(closeToLeapingFields(null, { config: {} }), []);
 });
+
+test('the overview and the wage block read the same month, to the pound', async () => {
+  // They disagreed: the overview computed its own figure while the wage block
+  // used the sheet's, so one channel said £90 and another said £390 for the
+  // same month. Two numbers for one month is worse than either being wrong.
+  const { leapedState } = await import('../lib/leaped.mjs');
+  const { coachRevenue } = await import('../lib/revenue.mjs');
+  const { leapedOverviewEmbed } = await import('../lib/discord.mjs');
+
+  const config = {
+    leaped: {
+      fee: 10, currency: 'GBP', hours: 5, diamonds: 5000,
+      monthOverride: { '2026-09': { 'josh@leap': 110, 'amy@leap': 0 } },
+    },
+    revenue: { enabled: true, baseWage: 0, rankUpPerDiamondUsd: 0.0001, incrementalPerDiamondGbp: 0.0000375, usdToGbp: 0.754074, goalsMultiplier: 2 },
+    coaches: { names: { 'josh@leap': 'Sur3shot', 'amy@leap': 'Amy' } },
+    monitoring: { ignoreGroups: [] }, rankUp: {},
+  };
+  const mk = (u, coach) => ({
+    key: `id:${u}`, username: u, quitOn: null, group: 'Team Alpha', manager: coach, joinDate: '2026-01-01',
+    obs: [{ date: '2026-09-20', mtd: { diamonds: 9000, liveHours: 9 }, lastMonthDiamonds: 0 }],
+  });
+  const creators = [mk('a', 'josh@leap'), mk('b', 'amy@leap')];
+  const store = { data: {}, all: () => [] };
+
+  const st = leapedState({ creators, asOf: '2026-09-20', store, config, persist: false });
+  assert.equal(st.fromSheet, true);
+  assert.equal(st.owed, 110, 'the sheet total, not the computed one');
+  assert.equal(st.leapedThisMonth, 11, 'and a count that matches the money');
+
+  const rev = coachRevenue({ creators, asOf: '2026-09-20', config, leaped: st });
+  for (const r of rev.rows) {
+    const o = st.coaches.find((c) => c.coach === r.coach);
+    assert.equal(r.recruitBonus, o?.owed ?? 0, `${r.name} must read the same on both`);
+  }
+
+  // And the card says where the number came from, so nobody has to guess.
+  const e = leapedOverviewEmbed(st).embeds[0];
+  assert.match(e.description, /11\*\* leaped this month, worth \*\*£110/);
+  assert.match(e.description, /LEAP's own, from the Recruitment sheet/);
+  // A coach the sheet lists at zero is not on the earned list at all.
+  assert.doesNotMatch(e.fields[0]?.value ?? '', /Amy/);
+});
+
+test('without an override the overview is computed exactly as before', async () => {
+  const { leapedState } = await import('../lib/leaped.mjs');
+  const config = { leaped: { fee: 10, currency: 'GBP', hours: 5, diamonds: 5000 }, coaches: { names: {} }, monitoring: { ignoreGroups: [] } };
+  const creators = [{
+    key: 'id:a', username: 'a', quitOn: null, group: 'Team Alpha', manager: 'josh@leap', joinDate: '2026-01-01',
+    obs: [{ date: '2026-10-05', mtd: { diamonds: 9000, liveHours: 9 }, lastMonthDiamonds: 0 }],
+  }];
+  const st = leapedState({ creators, asOf: '2026-10-05', store: { data: {}, all: () => [] }, config, persist: false });
+  assert.equal(st.fromSheet, false);
+  assert.equal(st.owed, st.thisMonth.reduce((n, r) => n + r.fee, 0));
+});
