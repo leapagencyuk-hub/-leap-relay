@@ -24,33 +24,40 @@
 //                           paid on 66 creators in August where LEAP's own
 //                           sheet pays on 26.
 //
-//   manager diamond %       0.00005 USD a diamond, applied here across the
-//                           coach's WHOLE roster. This is the recruiter
-//                           commission formula: at roughly $1 to £0.75 it is
-//                           the 0.0000375 a diamond quoted in GBP.
+//   incremental share       LEAP's own formula, taken as given:
 //
-//                           UNVERIFIABLE, unlike rank ups, and not for want of
-//                           trying. Each figure in Recruitment 26/27's MANAGER
-//                           DIAMOND % row appears exactly once in the whole
-//                           workbook, so they are typed in from Backstage
-//                           rather than computed from anything we hold.
+//                             recruiter_commission_usd = diamonds x 0.00005
+//                             recruiter_commission_gbp = diamonds x 0.0000375
 //
-//                           Against August, the whole roster comes out 13% to
-//                           34% above what the sheet paid five of six coaches,
-//                           and within 3% for the sixth. Restricting it to the
-//                           creators who ranked up fits worse. Since the true
-//                           figures are hand-entered, no population will
-//                           reconcile exactly, so this stays the formula LEAP
-//                           gave us applied to the obvious population, on a
-//                           card whose first line calls it a rough estimate.
+//                           at roughly $1 to £0.75, across the coach's WHOLE
+//                           roster. Recruitment 26/27 calls the row MANAGER
+//                           DIAMOND %; it is the same thing.
 //
-// The two diamond shares are not the same thing and do not use the same
+//                           This one is NOT reconciled against the sheet, on
+//                           purpose. Each figure in that row appears exactly
+//                           once in the whole workbook, so they are typed in
+//                           from Backstage rather than computed from anything
+//                           we hold, and no formula here will ever match them.
+//                           Against August the whole roster comes out 13% to
+//                           34% above what five of six coaches were paid, and
+//                           within 3% for the sixth.
+//
+//                           So the GBP rate is stored outright rather than
+//                           derived from the sheet's FX cell — deriving it
+//                           gives £0.0000377 and disagrees with the number the
+//                           recruiters were handed, which is a worse kind of
+//                           wrong on a line that is explicitly a rough
+//                           estimate. It is a visual for recruiters, and the
+//                           card says so twice before the figure appears.
+//
+// The two diamond lines are not the same thing and do not use the same
 // population, which is the trap here: rank ups are paid on the creators who
-// ranked up, and the manager share across everybody. Working one out and
+// ranked up, and the incremental share across everybody. Working one out and
 // calling it the other misses a coach's month badly in both directions.
 //
-// Everybody is on the same 10% manager share, with a further 10% unlocked by
-// hitting goals on Backstage — so that share doubles, and nothing else moves.
+// Everybody is on the same 10% incremental share, with a further 10% unlocked
+// by hitting goals on Backstage — so that share doubles, and nothing else
+// moves.
 import { groupKey } from './notify.mjs';
 import { monthMtd } from './policy.mjs';
 import { coachName, offTheBoards } from './coaches.mjs';
@@ -78,8 +85,15 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const currency = config.leaped?.currency ?? 'GBP';
   const defaultBase = cfg.baseWage ?? 0;
   const perCoachBase = cfg.baseWageByCoach ?? {};
-  // Rounded for the same reason as the rate above.
-  const managerPerDiamond = Number(((cfg.managerPerDiamondUsd ?? 0.00005) * usdToGbp).toPrecision(6));
+  // Taken as given rather than derived. LEAP quoted both sides of this —
+  // $0.00005 a diamond, and £0.0000375 at roughly $1 to £0.75 — so the GBP
+  // figure is the spec, not something to recompute from the sheet's own FX
+  // cell. Deriving it would give £0.0000377 and disagree with the number the
+  // recruiters were actually handed, over a line that is explicitly a rough
+  // estimate. The USD rate is carried for the card to quote.
+  const incrementalUsdPerDiamond = cfg.incrementalPerDiamondUsd ?? 0.00005;
+  const incrementalPerDiamond = cfg.incrementalPerDiamondGbp
+    ?? Number((incrementalUsdPerDiamond * (cfg.incrementalUsdToGbp ?? 0.75)).toPrecision(6));
   // Everyone is on 10%; hitting Backstage goals unlocks a further 10%.
   const goalsMultiplier = cfg.goalsMultiplier ?? 2;
   const month = asOf.slice(0, 7);
@@ -125,14 +139,14 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     const leapedCount = leapedByCoach.get(e.coach) ?? 0;
     const recruitBonus = leapedCount * fee;
     const rankUpBonus = e.rankUpDiamonds * rankUpPerDiamond;
-    // Across the whole roster, not only the creators past the floor.
-    const managerShare = e.diamonds * managerPerDiamond;
+    // Across the whole roster, not only the creators who ranked up.
+    const incrementalShare = e.diamonds * incrementalPerDiamond;
     // No default: a coach who is not on the sheet is not on a fixed amount, and
     // putting one on their card is worse than leaving the line off.
     const base = perCoachBase[e.coach] ?? defaultBase;
     // Goals unlock a further 10% on the manager share; rank ups do not move.
-    const managerWithGoals = managerShare * goalsMultiplier;
-    const total = base + recruitBonus + rankUpBonus + managerShare;
+    const incrementalWithGoals = incrementalShare * goalsMultiplier;
+    const total = base + recruitBonus + rankUpBonus + incrementalShare;
     return {
       ...e,
       teams: [...e.teams],
@@ -142,17 +156,18 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
       leapedCount,
       recruitBonus,
       rankUpBonus,
-      managerShare,
-      managerWithGoals,
+      incrementalShare,
+      incrementalWithGoals,
       base,
       total,
       // Not earned yet, so it is a second line and never the figure.
-      totalWithGoals: total + (managerWithGoals - managerShare),
+      totalWithGoals: total + (incrementalWithGoals - incrementalShare),
     };
   }).sort((a, b) => b.total - a.total);
 
   return {
-    month, asOf, currency, fee, rankUpPerDiamond, managerPerDiamond, usdToGbp, goalsMultiplier,
+    month, asOf, currency, fee, rankUpPerDiamond,
+    incrementalPerDiamond, incrementalUsdPerDiamond, usdToGbp, goalsMultiplier,
     rows,
     byCoach: new Map(rows.map((r) => [r.coach, r])),
     // The recruitment standing, which is the "all staff" board on the card. It

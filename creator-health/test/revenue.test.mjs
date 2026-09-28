@@ -7,7 +7,7 @@ const config = {
   revenue: {
     enabled: true, baseWage: 0, baseWageByCoach: { 'josh@leap': 350, 'amy@leap': 100 },
     rankUpFloorDiamonds: 100000, rankUpPerDiamondUsd: 0.0001,
-    managerPerDiamondUsd: 0.00005, goalsMultiplier: 2, usdToGbp: 0.754074,
+    incrementalPerDiamondUsd: 0.00005, goalsMultiplier: 2, usdToGbp: 0.754074,
   },
   leaped: { fee: 10, currency: 'GBP' },
   coaches: { names: { 'josh@leap': 'Sur3shot' }, excludeFromBoards: ['amy@leap'] },
@@ -53,15 +53,26 @@ test('rank ups reproduce real WAGES CALCUATOR rows across months and rates', () 
   }
 });
 
-test('a missing rank-up rate falls back to the sheet rate, not the manager one', () => {
-  // The two rates differ by a factor of two. A fallback of 0.00005 here would
-  // silently halve every coach's rank-up line rather than failing loudly.
+test('a missing rank-up rate falls back to the sheet rate, not the incremental one', () => {
+  // The two USD rates differ by a factor of two. A fallback of 0.00005 here
+  // would silently halve every coach's rank-up line rather than failing loudly.
   const { rankUpPerDiamondUsd, ...noRate } = config.revenue;
   const rev = coachRevenue({
     creators: [who('c', { diamonds: 1000000 })], asOf: ASOF,
     config: { ...config, revenue: noRate },
   });
-  assert.equal(rev.rankUpPerDiamond, rev.managerPerDiamond * 2);
+  assert.equal(rev.rankUpPerDiamond, Number((0.0001 * rev.usdToGbp).toPrecision(6)));
+  assert.equal(rev.incrementalUsdPerDiamond * 2, 0.0001);
+});
+
+test('the incremental rate is the figure LEAP quoted, not one derived from it', () => {
+  // recruiter_commission_gbp = diamonds x 0.0000375. Deriving it from the
+  // sheet's own FX cell would give 0.0000377 and disagree with the number the
+  // recruiters were handed, on a line that is explicitly a rough estimate.
+  const rev = coachRevenue({ creators: [who('c', { diamonds: 1000000 })], asOf: ASOF, config });
+  assert.equal(rev.incrementalPerDiamond, 0.0000375);
+  assert.equal(rev.incrementalUsdPerDiamond, 0.00005);
+  assert.equal(rev.rows[0].incrementalShare, 37.5, 'a round million is a round GBP 37.50');
 });
 
 test('it is paid on creators whose tier went up, not on a diamond floor', () => {
@@ -82,7 +93,7 @@ test('it is paid on creators whose tier went up, not on a diamond floor', () => 
   assert.equal(r.rankUps, 1, 'only the one who moved up');
   assert.equal(r.rankUpDiamonds, 1000000);
   assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond);
-  assert.equal(r.managerShare, 2350000 * rev.managerPerDiamond, 'but the manager share is all of them');
+  assert.equal(r.incrementalShare, 2350000 * rev.incrementalPerDiamond, 'but the manager share is all of them');
 });
 
 test('ranking up pays on the creator\'s whole month, not the threshold crossed', () => {
@@ -109,9 +120,9 @@ test('the two diamond shares use different populations', () => {
   // The manager share is the whole roster; rank ups are only the creator who
   // moved up. Using one population for both misses the month in both
   // directions.
-  assert.equal(r.managerShare, 1050000 * rev.managerPerDiamond);
+  assert.equal(r.incrementalShare, 1050000 * rev.incrementalPerDiamond);
   assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond);
-  assert.equal(r.total, r.base + r.recruitBonus + r.managerShare + r.rankUpBonus);
+  assert.equal(r.total, r.base + r.recruitBonus + r.incrementalShare + r.rankUpBonus);
 });
 
 test('the GBP rate the recruiters were given comes out of the USD one', () => {
@@ -120,8 +131,8 @@ test('the GBP rate the recruiters were given comes out of the USD one', () => {
     creators: [who('a', { diamonds: 1000000 })], asOf: ASOF,
     config: { ...config, revenue: { ...config.revenue, usdToGbp: 0.75 } },
   });
-  assert.equal(rev.managerPerDiamond, 0.0000375);
-  assert.equal(rev.rows[0].managerShare, 37.5);
+  assert.equal(rev.incrementalPerDiamond, 0.0000375);
+  assert.equal(rev.rows[0].incrementalShare, 37.5);
 });
 
 test('each coach gets their own fixed amount, and nobody gets an invented one', () => {
@@ -145,8 +156,8 @@ test('each coach gets their own fixed amount, and nobody gets an invented one', 
 test('Backstage goals double the manager share, and sit on a second line', () => {
   const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000 })], asOf: ASOF, config });
   const r = rev.rows[0];
-  assert.equal(r.managerWithGoals, r.managerShare * 2);
-  assert.equal(r.totalWithGoals, r.total + r.managerShare);
+  assert.equal(r.incrementalWithGoals, r.incrementalShare * 2);
+  assert.equal(r.totalWithGoals, r.total + r.incrementalShare);
   assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond, 'the alpha bonus does not move');
   const block = revenueFields(rev, rev.rows, { config })[1].value;
   assert.match(block, /ESTIMATED THIS MONTH/);
@@ -186,6 +197,25 @@ test('the all-staff board honours the leaderboard exclusions, but the pay block 
   assert.deepEqual(rev.recruitBoard.map((r) => r.name), ['Sur3shot'],
     'amy is off the boards');
   assert.ok(rev.byCoach.has('amy@leap'), 'but still has earnings of her own — pay is not a contest');
+});
+
+test('the card says rough estimate twice before any figure appears', () => {
+  const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000, lastMonth: 0 })], asOf: ASOF, config });
+  const fields = revenueFields(rev, rev.rows, { config });
+  assert.match(fields[0].value, /ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT/);
+  assert.match(fields[0].value, /rounded, estimated, and struck at an approximate exchange rate/);
+  assert.match(fields[0].value, /never as an amount you are owed/);
+  // And the incremental line, the roughest of them, says so again on the spot.
+  assert.match(fields[1].value, /roughest number here/);
+  assert.match(fields[1].value, /expect it to move/);
+});
+
+test('the card calls it the incremental share, and says the sheet\'s name for it', () => {
+  const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000, lastMonth: 0 })], asOf: ASOF, config });
+  const body = revenueFields(rev, rev.rows, { config })[1].value;
+  assert.match(body, /Incremental share\s+~/);
+  assert.match(body, /MANAGER DIAMOND %/, 'so it can be matched against the sheet');
+  assert.match(body, /0\.00005 a diamond in dollars, about 0\.0000375 in pounds/);
 });
 
 test('the warning is the first thing in the block, and says what it has to', () => {

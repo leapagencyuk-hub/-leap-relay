@@ -1075,7 +1075,9 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
       + 'FOR EXACT FIGURES TALK TO THE DIRECTORS** — the percentages behind this move '
       + 'through the month, so this can only ever be an indication of where you are. '
       + 'Payments are made on the 15th of the following month, so this is the month you are '
-      + 'building rather than the money about to land.',
+      + 'building rather than the money about to land.'
+      + '\n_Every figure below is rounded, estimated, and struck at an approximate exchange '
+      + 'rate. Treat it as a direction of travel, never as an amount you are owed._',
   });
 
   for (const r of coaches) {
@@ -1087,7 +1089,7 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
           ...(r.base ? [line('Extra revenue (fixed)', gbp(r.base))] : []),
           line('Recruits this month', String(r.recruited)),
           line('New recruit bonus', `${r.leapedCount} x ${gbp(rev.fee)}  =  ${gbp(r.recruitBonus)}`),
-          line('Manager diamond %', `~${gbp(r.managerShare)}`),
+          line('Incremental share', `~${gbp(r.incrementalShare)}`),
           line('Rank ups', `~${gbp(r.rankUpBonus)}`),
           line('Onboarded all time', String(r.onboardedAllTime)),
           '',
@@ -1095,7 +1097,10 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
           line('with Backstage goals', `~${gbp(r.totalWithGoals)}`),
         ].join('\n')
         + '\n```'
-        + `\nThe manager diamond share is your whole roster — **${n(r.diamonds)}** diamonds this month. `
+        + `\nThe incremental share is your whole roster — **${n(r.diamonds)}** diamonds this month, `
+        + `at ${rev.incrementalUsdPerDiamond} a diamond in dollars, about ${rev.incrementalPerDiamond} in pounds. `
+        + `The sheet calls this line MANAGER DIAMOND %. It is the roughest number here: the exchange `
+        + `rate is approximate and the real figure is settled by Backstage, so expect it to move. `
         + `Rank ups are the **${r.rankUps}** creators who moved up a tier `
         + `(**${n(r.rankUpDiamonds)}** between them), and land on the 15th of next month.`
         + (r.closeToRankUp
@@ -1103,7 +1108,7 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
             + `worth about ${gbp(r.rankUpUpside)} on top — see the brackets below.`
           : '')
         + `\nEveryone is on **10%**. Hitting your goals on Backstage unlocks **a further 10%**, `
-        + `which would take the manager share to ~${gbp(r.managerWithGoals)}.`,
+        + `which would take the incremental share to ~${gbp(r.incrementalWithGoals)}.`,
     });
   }
 

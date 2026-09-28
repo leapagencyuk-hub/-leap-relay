@@ -264,7 +264,6 @@
     "_rankUpPerDiamondUsd": "Rank ups, which Recruitment 26/27 calls ALPHA GROUP TASK BONUS. The WAGES CALCUATOR tab's COACH column: diamonds x $0.01 a diamond x a 1% share. Recomputing all 174 creator rows across February to July reproduces both that column and its POUND column with zero mismatches. WHO it is paid on lives in the rankUp block below, not here.",
     "rankUpPerDiamondUsd": 0.0001,
     "_managerPerDiamondUsd": "The manager diamond share: the recruiter commission formula, 0.00005 USD a diamond, applied across the coach's whole roster. At roughly $1 to GBP 0.75 that is the 0.0000375 a diamond quoted in GBP. UNVERIFIED, unlike rank ups - the population is an open question and needs a July creator export to settle. See the header of lib/revenue.mjs.",
-    "managerPerDiamondUsd": 5e-05,
     "_goalsMultiplier": "Everyone is on 10%. Hitting goals on Backstage unlocks a further 10%, so the share doubles. Shown as a second line, never folded in, because it is not earned yet.",
     "goalsMultiplier": 2,
     "_usdToGbp": "The finance sheet's own FX cell, read off the WAGES CALCUATOR tab. Its per-row POUND column reproduces exactly at this rate; the frozen monthly totals in Recruitment 26/27 were each struck at the FX of their own day, so they drift from it by up to 2 percent.",
