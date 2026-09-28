@@ -153,17 +153,16 @@ test('each coach gets their own fixed amount, and nobody gets an invented one', 
   assert.ok(!/Extra revenue/.test(block));
 });
 
-test('Backstage goals double the manager share, and sit on a second line', () => {
-  const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000 })], asOf: ASOF, config });
+test('Backstage goals double the incremental share, and sit on a second line', () => {
+  const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000, lastMonth: 0 })], asOf: ASOF, config });
   const r = rev.rows[0];
   assert.equal(r.incrementalWithGoals, r.incrementalShare * 2);
   assert.equal(r.totalWithGoals, r.total + r.incrementalShare);
-  assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond, 'the alpha bonus does not move');
+  assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond, 'rank ups do not move');
+  // The goals line is a figure on the card, not a paragraph explaining itself.
   const block = revenueFields(rev, rev.rows, { config })[1].value;
   assert.match(block, /ESTIMATED THIS MONTH/);
   assert.match(block, /with Backstage goals/);
-  assert.match(block, /Everyone is on \*\*10%\*\*/);
-  assert.match(block, /a further 10%/);
 });
 
 test('all-time onboarded counts creators who have since left', () => {
@@ -199,23 +198,21 @@ test('the all-staff board honours the leaderboard exclusions, but the pay block 
   assert.ok(rev.byCoach.has('amy@leap'), 'but still has earnings of her own — pay is not a contest');
 });
 
-test('the card says rough estimate twice before any figure appears', () => {
-  const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000, lastMonth: 0 })], asOf: ASOF, config });
-  const fields = revenueFields(rev, rev.rows, { config });
-  assert.match(fields[0].value, /ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT/);
-  assert.match(fields[0].value, /rounded, estimated, and struck at an approximate exchange rate/);
-  assert.match(fields[0].value, /never as an amount you are owed/);
-  // And the incremental line, the roughest of them, says so again on the spot.
-  assert.match(fields[1].value, /roughest number here/);
-  assert.match(fields[1].value, /expect it to move/);
-});
-
-test('the card calls it the incremental share, and says the sheet\'s name for it', () => {
-  const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000, lastMonth: 0 })], asOf: ASOF, config });
+test('the card is figures, not workings — the prose is gone', () => {
+  const rev = coachRevenue({
+    creators: [who('a', { diamonds: 1000000, lastMonth: 0 }), who('b', { diamonds: 80000, lastMonth: 38000 })],
+    asOf: ASOF, config,
+  });
   const body = revenueFields(rev, rev.rows, { config })[1].value;
   assert.match(body, /Incremental share\s+~/);
-  assert.match(body, /MANAGER DIAMOND %/, 'so it can be matched against the sheet');
-  assert.match(body, /0\.00005 a diamond in dollars, about 0\.0000375 in pounds/);
+  // The rates, the sheet's column name and the explanation of how each line is
+  // worked out belong in the code, not on a coach's morning card.
+  for (const workings of [/0\.0000375/, /MANAGER DIAMOND/, /whole roster/, /roughest number/,
+    /Everyone is on/, /a further 10%/, /15th of next month/]) {
+    assert.doesNotMatch(body, workings, `${workings} is workings-out, not a figure`);
+  }
+  // What is left is the summary line: diamonds, rank-ups, what is still winnable.
+  assert.match(body, /1,080,000 diamonds · 1 rank-up · 1 more in reach, ~£\d/);
 });
 
 test('the warning is the first thing in the block, and says what it has to', () => {
@@ -225,7 +222,8 @@ test('the warning is the first thing in the block, and says what it has to', () 
   const warning = fields[0].value.toUpperCase();
   assert.match(warning, /ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT/);
   assert.match(warning, /TALK TO THE DIRECTORS/);
-  assert.match(fields[0].value, /move\s+through the month/);
+  // It is the only prose left on the block, so it stays short enough to read.
+  assert.ok(fields[0].value.length < 220, `warning is ${fields[0].value.length} chars`);
 });
 
 test('the card calls it Rank ups, which is what the coaches call it', () => {
@@ -239,11 +237,7 @@ test('the card calls it Rank ups, which is what the coaches call it', () => {
   const body = revenueFields(rev, rev.rows, { config }).map((f) => f.value).join('\n');
   assert.match(body, /Rank ups\s+~/, 'the line is labelled Rank ups');
   assert.doesNotMatch(body, /alpha/i, 'and nothing on the card says alpha');
-  // The card has to say which population each diamond line is, or the two
-  // figures look like one of them is simply wrong.
-  assert.match(body, /whole roster — \*\*940,000\*\* diamonds/);
-  assert.match(body, /Rank ups are the \*\*1\*\* creator who moved up a tier/,
-    'one creator, not "1 creators"');
+  assert.match(body, /940,000 diamonds · 1 rank-up/, 'one rank-up, not "1 rank-ups"');
 });
 
 test('a team summary shows the coaches who work that team, not the whole network', () => {

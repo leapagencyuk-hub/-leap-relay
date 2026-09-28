@@ -164,7 +164,7 @@ test('close is ordered by what it is worth, not by how near it looks', () => {
   assert.deepEqual(board.close.map((r) => r.username), ['big_prize', 'tiny_gap']);
 });
 
-test('the bracket card names the creator, the gap, the money and the pace', () => {
+test('the bracket card is one line a creator: tier, gap, money, pace', () => {
   const board = rankUpBoard({
     creators: [
       who('banked', { diamonds: 400000, lastMonth: 120000 }),
@@ -172,13 +172,16 @@ test('the bracket card names the creator, the gap, the money and the pace', () =
     ],
     asOf: ASOF, config,
   });
-  const body = rankUpFields(board, ['josh@leap'], { config }).map((f) => f.value).join('\n');
-  assert.match(body, /banked/);
-  assert.match(body, /Tier 2 to 4/);
-  assert.match(body, /nearly/);
-  assert.match(body, /40,000 short of 300,000/);
-  assert.match(body, /4,000 a day for the last 10 days/);
-  assert.match(body, /1% of their whole month/, 'and says how it pays');
+  const fields = rankUpFields(board, ['josh@leap'], { config });
+  assert.match(fields[0].name, /Rank-ups — Sur3shot  ·  10 days left/);
+  const lines = fields[0].value.split('\n').filter(Boolean);
+  assert.match(lines[0], /^\*\*Banked  £30\.16\*\*$/);
+  assert.match(lines[1], /^`\+` \*\*banked\*\*  T2>4  400,000  £30\.16$/);
+  assert.match(lines[2], /^\*\*In reach  £22\.62\*\*$/);
+  assert.match(lines[3], /^`>` \*\*nearly\*\*  T3>4  40,000 to go  £22\.62  4,000\/day$/);
+  // No explainer field: the coaches know how they are paid, and a card that
+  // re-teaches it every morning is a card they stop reading.
+  assert.equal(fields.length, 1);
 });
 
 test('a long bracket list is cut on whole lines, never mid-sentence', () => {

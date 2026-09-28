@@ -1088,12 +1088,8 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
   fields.push({
     name: 'Your revenue — rough estimate only',
     value: '**THIS IS FOR VISUAL PURPOSES AND A ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT. '
-      + 'FOR EXACT FIGURES TALK TO THE DIRECTORS** — the percentages behind this move '
-      + 'through the month, so this can only ever be an indication of where you are. '
-      + 'Payments are made on the 15th of the following month, so this is the month you are '
-      + 'building rather than the money about to land.'
-      + '\n_Every figure below is rounded, estimated, and struck at an approximate exchange '
-      + 'rate. Treat it as a direction of travel, never as an amount you are owed._',
+      + 'FOR EXACT FIGURES TALK TO THE DIRECTORS**\n'
+      + '_Paid on the 15th of next month._',
   });
 
   for (const r of coaches) {
@@ -1113,21 +1109,8 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
           line('with Backstage goals', `~${gbp(r.totalWithGoals)}`),
         ].join('\n')
         + '\n```'
-        + `\nThe incremental share is your whole roster — **${n(r.diamonds)}** diamonds this month, `
-        + `at ${rev.incrementalUsdPerDiamond} a diamond in dollars, about ${rev.incrementalPerDiamond} in pounds. `
-        + `The sheet calls this line MANAGER DIAMOND %. It is the roughest number here: the exchange `
-        + `rate is approximate and the real figure is settled by Backstage, so expect it to move. `
-        + (r.rankUps === 1
-          ? `Rank ups are the **1** creator who moved up a tier `
-            + `(**${n(r.rankUpDiamonds)}** diamonds), and land on the 15th of next month.`
-          : `Rank ups are the **${r.rankUps}** creators who moved up a tier `
-            + `(**${n(r.rankUpDiamonds)}** between them), and land on the 15th of next month.`)
-        + (r.closeToRankUp
-          ? `\n**${r.closeToRankUp}** more ${r.closeToRankUp === 1 ? 'is' : 'are'} in reach of a rank-up, `
-            + `worth about ${gbp(r.rankUpUpside)} on top — see the brackets below.`
-          : '')
-        + `\nEveryone is on **10%**. Hitting your goals on Backstage unlocks **a further 10%**, `
-        + `which would take the incremental share to ~${gbp(r.incrementalWithGoals)}.`,
+        + `\n${n(r.diamonds)} diamonds · ${plural(r.rankUps, 'rank-up')}`
+        + (r.closeToRankUp ? ` · ${r.closeToRankUp} more in reach, ~${gbp(r.rankUpUpside)}` : ''),
     });
   }
 
@@ -1169,43 +1152,30 @@ export function rankUpFields(board, coaches, { config = {}, limit = 6 } = {}) {
 
     const lines = [];
     if (e.ranked.length) {
-      lines.push(`**Banked** — ${e.ranked.length} ranked up, worth about ${money(e.worth)}`);
+      lines.push(`**Banked  ${money(e.worth)}**`);
       for (const r of e.ranked.slice(0, limit)) {
-        lines.push(`\`+\` **${r.username}** Tier ${r.fromTier} to ${r.toTier}`
-          + ` — ${n(r.diamonds)} diamonds, ~${money(r.worth)}`);
+        lines.push(`\`+\` **${r.username}**  T${r.fromTier}>${r.toTier}  ${n(r.diamonds)}  ${money(r.worth)}`);
       }
-      if (e.ranked.length > limit) lines.push(`   and ${e.ranked.length - limit} more.`);
+      if (e.ranked.length > limit) lines.push(`   +${e.ranked.length - limit} more`);
     }
 
     if (e.close.length) {
       if (lines.length) lines.push('');
-      lines.push(`**In reach** — ${e.close.length} more, worth about ${money(e.upside)} if they all land`);
+      lines.push(`**In reach  ${money(e.upside)}**`);
       for (const r of e.close.slice(0, limit)) {
-        const per = r.needPerDay == null ? null : Math.ceil(r.needPerDay);
-        lines.push(`\`>\` **${r.username}** Tier ${r.fromTier} to ${r.fromTier + 1}`
-          + ` — ${n(r.gap)} short of ${n(r.target)}, ~${money(r.worthIfCrossed)}`
-          + (per == null ? '' : `\n       ${n(per)} a day for the last ${r.daysLeft} ${r.daysLeft === 1 ? 'day' : 'days'}`
-            + (r.perDay > 0 ? `, against ${n(r.perDay)} a day so far` : '')));
+        const per = r.needPerDay == null ? null : `  ${n(Math.ceil(r.needPerDay))}/day`;
+        lines.push(`\`>\` **${r.username}**  T${r.fromTier}>${r.fromTier + 1}`
+          + `  ${n(r.gap)} to go  ${money(r.worthIfCrossed)}${per ?? ''}`);
       }
-      if (e.close.length > limit) lines.push(`   and ${e.close.length - limit} more.`);
+      if (e.close.length > limit) lines.push(`   +${e.close.length - limit} more`);
     }
 
     fields.push({
-      name: `Rank-up brackets — ${e.name}`,
+      name: `Rank-ups — ${e.name}  ·  ${board.daysLeft} days left`,
       value: fitJoin(lines),
     });
   }
 
-  if (!fields.length) return [];
-  fields.push({
-    name: 'How the brackets pay',
-    value: 'A creator\'s tier is set by **last month\'s** diamonds and cannot move. '
-      + 'What they do this month decides whether they rank out of it. Crossing pays you '
-      + '**1% of their whole month**, not of the bit above the line — so a creator who '
-      + 'crosses on the last day is worth the same as one who crossed on the first. '
-      + 'Below the line they are worth nothing, which is why the near misses are the '
-      + 'ones to spend your week on.',
-  });
   return fields;
 }
 
@@ -1292,15 +1262,14 @@ export function teamSummaryEmbed(summary, { mention = null, config = {} } = {}) 
 
   const f = s.frequency;
   const habit = [
-    `**${f.meeting} of ${s.roster.earning}** earning creators went live ${f.target}+ days in the last 28.`,
-    'Across the network, creators above that line grew 59% of the time last month. Below it, 31%.',
-    'It is how often they go live, not how long — session length barely differs between the two.',
+    `**${f.meeting} of ${s.roster.earning}** went live ${f.target}+ days in the last 28.`
+      + ` Above that line **59%** grew last month, below it **31%**.`,
   ];
   if (f.closest.length) {
-    habit.push(`\nClosest to the line, biggest first: ${
+    habit.push(`Closest: ${
       f.closest.map((r) => `@${r.username} (${Math.round(r.liveDays28)}d)`).join(' · ')}`);
   }
-  fields.push({ name: `The habit that decides the rest`, value: habit.join('\n').slice(0, 1024) });
+  fields.push({ name: `Live ${f.target}+ days in 28`, value: fitJoin(habit) });
 
   // Last, deliberately: it is the part a coach will look for, and putting it
   // first would have the card read as a payslip with some creator notes
