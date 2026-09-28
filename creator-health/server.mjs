@@ -537,13 +537,36 @@ function startDailySchedule() {
     }
   };
 
-  tick();
-  return setInterval(tick, 10 * 60 * 1000).unref?.() ?? null;
+  // Not immediately. Scoring 820 creators blocks the event loop for over a
+  // second, and the rest of the run then posts twenty cards and reads as many
+  // channels. Doing that in the same breath as binding the port means the
+  // host's first health check lands on a busy process, and a host that decides
+  // a service is unhealthy restarts it — which starts the whole thing again.
+  // Nothing here is urgent to the second: the schedule is a safety net for a
+  // day nobody uploaded.
+  const settle = Number(process.env.CH_BOOT_DELAY_MS ?? 30000);
+  setTimeout(() => { tick().catch((err) => console.error(`[daily] ${err.message}`)); }, settle).unref?.();
+  return setInterval(() => {
+    tick().catch((err) => console.error(`[daily] ${err.message}`));
+  }, 10 * 60 * 1000).unref?.() ?? null;
 }
+
+// A long-running service must not die of something it could have logged. Node
+// treats an unhandled rejection as fatal, so one stray promise anywhere - a
+// Discord call, a webhook, a background write - would take the whole thing down
+// and leave a bad gateway with no explanation. Log it and keep serving; a
+// broken card is better than a dead service, and the log says which.
+process.on('unhandledRejection', (reason) => {
+  console.error('unhandled rejection:', reason instanceof Error ? reason.stack : reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('uncaught exception:', err?.stack ?? err);
+});
 
 server.listen(PORT, '0.0.0.0', () => {
   console.log(`creator-health listening on :${PORT}  (data: ${config.dataDir})`);
   if (!TOKEN) console.log('warning: UPLOAD_TOKEN is not set — /upload and /notify are open');
   startDailySchedule();
-  console.log(`daily safety-net run at ${process.env.CH_DAILY_HOUR ?? 9}:00 UTC`);
+  console.log(`daily safety-net run at ${process.env.CH_DAILY_HOUR ?? 9}:00 UTC`
+    + ` (first check ${Math.round(Number(process.env.CH_BOOT_DELAY_MS ?? 30000) / 1000)}s after boot)`);
 });
