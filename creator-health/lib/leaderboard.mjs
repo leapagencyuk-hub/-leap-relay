@@ -17,6 +17,7 @@
 // and the board should let anyone see that without being told.
 import { groupKey } from './notify.mjs';
 import { monthMtd } from './policy.mjs';
+import { coachName, offTheBoards } from './coaches.mjs';
 
 const daysInMonth = (month) =>
   new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
@@ -60,15 +61,19 @@ export function leaderboard({ creators, asOf, store = null, config = {} }) {
   const dayOfMonth = Number(asOf.slice(8, 10));
   const monthLength = daysInMonth(month);
 
-  // Teams nobody coaches are partner agencies, not LEAP coaches competing.
-  const mine = creators.filter((c) => !ignored.has(groupKey(c.group)));
+  // Teams nobody coaches are partner agencies, not LEAP coaches competing, and
+  // some individuals are in the network without being in the competition.
+  // Filtered here rather than when the rows are built, so every total on the
+  // card adds up to the rows printed under it.
+  const mine = creators.filter((c) =>
+    !ignored.has(groupKey(c.group)) && !offTheBoards(c.manager, config));
   const recruits = mine.filter((c) => joinedIn(c, month)).map((c) => recruitRow(c, month));
 
   const byCoach = new Map();
   for (const r of recruits) {
     const key = r.coach ?? 'unassigned';
     const e = byCoach.get(key) ?? {
-      coach: key, name: key.split('@')[0], count: 0, started: 0, earning: 0,
+      coach: key, name: coachName(key, config), count: 0, started: 0, earning: 0,
       diamonds: 0, teams: new Set(), best: null,
     };
     e.count++;
@@ -137,6 +142,7 @@ export function leaderboard({ creators, asOf, store = null, config = {} }) {
     // The month's best signing, whoever brought them in. A leaderboard of counts
     // says nothing about whether anyone found somebody good.
     standout: recruits.filter((r) => r.diamonds > 0)
+      .map((r) => ({ ...r, coachName: coachName(r.coach, config) }))
       .sort((a, b) => b.diamonds - a.diamonds)[0] ?? null,
     // Signed but still not LIVE, newest last: the list the winner has to work.
     notStarted: recruits.filter((r) => !r.started).sort((a, b) => a.joinDate.localeCompare(b.joinDate)),

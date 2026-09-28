@@ -198,14 +198,14 @@ export async function dispatch({
     if (c.kind === 'decline') {
       const alert = alertByKey.get(c.creatorKey);
       if (!alert) continue;
-      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig }), c);
+      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config }), c);
     } else if (c.kind === 'activation') {
       const r = activationRoute(c);
-      await send('activation-opened', c.coach, r, activationEmbed(c, { mention: r.mention, buttons, avatar: avatarConfig, metrics: metricsByKey.get(c.creatorKey) }), c);
+      await send('activation-opened', c.coach, r, activationEmbed(c, { mention: r.mention, buttons, avatar: avatarConfig, metrics: metricsByKey.get(c.creatorKey), config }), c);
     } else {
       const row = spotlightByKey.get(c.creatorKey);
       if (!row) continue;
-      await send('opportunity-opened', c.coach, route, opportunityEmbed(c, row, { mention: route.mention, buttons, avatar: avatarConfig }), c);
+      await send('opportunity-opened', c.coach, route, opportunityEmbed(c, row, { mention: route.mention, buttons, avatar: avatarConfig, config }), c);
     }
   }
 
@@ -218,7 +218,7 @@ export async function dispatch({
     const alert = alertByKey.get(c.creatorKey);
     if (!alert) continue;
     const route = routeFor(c, discordConfig);
-    const payload = declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig });
+    const payload = declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config });
     payload.embeds[0].title = `${payload.embeds[0].title} (getting worse)`;
     await send('case-worsened', c.coach, route, payload, c);
   }
@@ -226,7 +226,7 @@ export async function dispatch({
   // --- follow-ups that came due --------------------------------------------
   for (const c of changes.dueFollowUps) {
     const route = c.kind === 'activation' ? activationRoute(c) : routeFor(c, discordConfig);
-    await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention, buttons, avatar: avatarConfig }), c);
+    await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention, buttons, avatar: avatarConfig, config }), c);
   }
 
   // --- the weekly activation roster, per team -------------------------------
@@ -272,7 +272,7 @@ export async function dispatch({
     const route = routeFor({ coach: p.coach, group: p.group }, discordConfig);
     if (!route.webhook && !route.channelId) continue;
     await send(isPush ? 'graduation-push' : 'graduation-milestone', p.coach, route,
-      graduationEmbed(p, { mention: route.mention, finalPush: isPush }));
+      graduationEmbed(p, { mention: route.mention, finalPush: isPush, config }));
   }
 
   // --- the activeness gate ---------------------------------------------------
@@ -299,7 +299,7 @@ export async function dispatch({
       for (const r of due) {
         const coachRoute = routeFor({ coach: r.coach, group: r.group }, discordConfig);
         await send('activeness-ping', r.coach, { ...pingRoute, mention: coachRoute.mention },
-          activenessPingEmbed(r, { mention: coachRoute.mention }));
+          activenessPingEmbed(r, { mention: coachRoute.mention, config }));
       }
       if (!dryRun && due.length) recordPings(store, asOf, due);
     }
@@ -339,7 +339,7 @@ export async function dispatch({
     ? { webhook: discordConfig.escalationWebhook }
     : discordConfig.escalationChannelId ? { channelId: discordConfig.escalationChannelId } : null;
   if (changes.escalated.length && escalationRoute) {
-    await send('escalation', '(managers)', escalationRoute, escalationEmbed(changes.escalated, asOf));
+    await send('escalation', '(managers)', escalationRoute, escalationEmbed(changes.escalated, asOf, config));
   }
 
   // --- daily roll-up --------------------------------------------------------

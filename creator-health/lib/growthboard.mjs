@@ -30,6 +30,7 @@
 // the same day so a mid-month board compares like with like.
 import { groupKey } from './notify.mjs';
 import { monthMtd, previousMonth } from './policy.mjs';
+import { coachName, offTheBoards } from './coaches.mjs';
 
 const daysInMonth = (month) =>
   new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
@@ -60,9 +61,12 @@ export function growthBoard({ creators, metricsByKey = new Map(), asOf, store = 
   const byCoach = new Map();
   for (const c of creators) {
     if (c.quitOn || ignored.has(groupKey(c.group))) continue;
+    // Off the boards means off them entirely: out of the rows, out of the
+    // call-outs, and out of the network figure everyone else is ranked against.
+    if (offTheBoards(c.manager, config)) continue;
     const key = c.manager ?? 'unassigned';
     const e = byCoach.get(key) ?? {
-      coach: key, name: key.split('@')[0],
+      coach: key, name: coachName(key, config),
       roster: 0, earning: 0, comparable: 0,
       // `now` is the whole team, for context. `comparableNow` is the only
       // figure the growth ratio may use — see below.

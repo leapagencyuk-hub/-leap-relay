@@ -14,6 +14,7 @@ import { ACTIVATION_PLAYBOOK } from './activation.mjs';
 import { profileUrl, avatarUrl } from './profile.mjs';
 import { sparkline, progressBar, monthlyTrend } from './spark.mjs';
 import { MILESTONES } from './graduation.mjs';
+import { coachName } from './coaches.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -288,8 +289,8 @@ function heldLine(deferred) {
   return `${deferred.length} queued (${parts.join(', ')})${risk > 0 ? ` · ~${n(risk)} at risk` : ''}`;
 }
 
-function footerText(c) {
-  const coach = c.coach && c.coach !== 'unassigned' ? c.coach.split('@')[0] : null;
+function footerText(c, config = {}) {
+  const coach = c.coach && c.coach !== 'unassigned' ? coachName(c.coach, config) : null;
   return [c.id, coach, statusLine(c)].filter(Boolean).join(' · ');
 }
 
@@ -303,7 +304,7 @@ function statusLine(c) {
 }
 
 /** The card a coach sees when a creator starts slipping. */
-export function declineEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null } = {}) {
+export function declineEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null, config = {} } = {}) {
   const m = alert.metrics;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
 
@@ -352,7 +353,7 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
         trafficField(m),
         { name: `Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
       ].filter(Boolean),
-      footer: { text: footerText(caseRecord) },
+      footer: { text: footerText(caseRecord, config) },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -360,7 +361,7 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
 }
 
 /** The card for a creator who can still land a 200k month. */
-export function opportunityEmbed(caseRecord, row, { mention = null, buttons = true, avatar = null } = {}) {
+export function opportunityEmbed(caseRecord, row, { mention = null, buttons = true, avatar = null, config = {} } = {}) {
   const short = Math.max(0, 200000 - row.projected);
   const monthName = new Date(`${row.month}-01T00:00:00Z`)
     .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
@@ -395,7 +396,7 @@ export function opportunityEmbed(caseRecord, row, { mention = null, buttons = tr
         ...causeFields(caseRecord),
         { name: 'Check back in 14 days', value: PLAYBOOK.OPPORTUNITY.success },
       ].filter(Boolean),
-      footer: { text: footerText(caseRecord) },
+      footer: { text: footerText(caseRecord, config) },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -403,7 +404,7 @@ export function opportunityEmbed(caseRecord, row, { mention = null, buttons = tr
 }
 
 /** The card for a creator who has not started. */
-export function activationEmbed(caseRecord, { mention = null, buttons = true, avatar = null, metrics = null } = {}) {
+export function activationEmbed(caseRecord, { mention = null, buttons = true, avatar = null, metrics = null, config = {} } = {}) {
   const book = ACTIVATION_PLAYBOOK[caseRecord.stage] ?? {};
   const ctx = caseRecord.context ?? {};
 
@@ -429,7 +430,7 @@ export function activationEmbed(caseRecord, { mention = null, buttons = true, av
         ...(book.check ? [{ name: 'Worth knowing', value: String(book.check).slice(0, 1024), inline: true }] : []),
         { name: 'Done when', value: book.success ?? 'Any activity.', inline: true },
       ].filter(Boolean),
-      footer: { text: footerText(caseRecord) },
+      footer: { text: footerText(caseRecord, config) },
       timestamp: new Date().toISOString(),
     }],
     components: caseButtons(caseRecord, { enabled: buttons }),
@@ -488,7 +489,7 @@ export function activationRosterEmbed({ team, rows, asOf, config }) {
  * change today. So the numbers are the gap, the rate they are on, and the rate
  * they need — nothing that does not bear on that.
  */
-export function graduationEmbed(p, { mention = null, finalPush = false } = {}) {
+export function graduationEmbed(p, { mention = null, finalPush = false, config = {} } = {}) {
   const done = p.done;
   const urgent = finalPush || (p.daysLeft <= 5 && !done);
 
@@ -564,7 +565,7 @@ export function graduationEmbed(p, { mention = null, finalPush = false } = {}) {
       description,
       color: done ? COLOR.recovered : urgent ? COLOR.urgent : COLOR.opportunity,
       fields,
-      footer: { text: `day ${p.day} of 90 · ${p.group ?? 'no team'}${p.coach ? ` · ${p.coach.split('@')[0]}` : ''}` },
+      footer: { text: `day ${p.day} of 90 · ${p.group ?? 'no team'}${p.coach ? ` · ${coachName(p.coach, config)}` : ''}` },
       timestamp: new Date().toISOString(),
     }],
   };
@@ -672,7 +673,7 @@ export function leaderboardEmbed(b, { config = {} } = {}) {
     fields.push({
       name: 'Best signing of the month so far',
       value: `**@${b.standout.username}** — ${n(b.standout.diamonds)} diamonds in ${b.standout.liveDays} LIVE days`
-        + `\nSigned ${b.standout.joinDate} by **${(b.standout.coach ?? 'unassigned').split('@')[0]}**`
+        + `\nSigned ${b.standout.joinDate} by **${b.standout.coachName ?? coachName(b.standout.coach, config)}**`
         + `${b.standout.group ? ` · ${b.standout.group}` : ''}`,
     });
   }
@@ -724,7 +725,7 @@ export function leaderboardEmbed(b, { config = {} } = {}) {
  * month, or the rank-up incentive pays nothing on them at all. So the card
  * leads with the two gaps and the days left, and says what it is worth.
  */
-export function activenessPingEmbed(r, { mention = null } = {}) {
+export function activenessPingEmbed(r, { mention = null, config = {} } = {}) {
   const gaps = [
     r.daysShort > 0 ? `**${r.daysShort} more LIVE day${r.daysShort === 1 ? '' : 's'}**` : null,
     r.hoursShort > 0 ? `**${r.hoursShort} more hour${r.hoursShort === 1 ? '' : 's'}**` : null,
@@ -756,7 +757,7 @@ export function activenessPingEmbed(r, { mention = null } = {}) {
           ? [{ name: 'Tight', value: `They have to go LIVE **every remaining day** to clear it.` }]
           : []),
       ],
-      footer: { text: `${r.group ?? 'no team'}${r.coach ? ` · ${r.coach.split('@')[0]}` : ''} · activeness gate` },
+      footer: { text: `${r.group ?? 'no team'}${r.coach ? ` · ${coachName(r.coach, config)}` : ''} · activeness gate` },
       timestamp: new Date().toISOString(),
     }],
   };
@@ -1065,7 +1066,7 @@ export function programmesEmbed({ asOf, campaign, concentration, config, totals 
 }
 
 /** Posted when a follow-up window closes, so the coach learns what their call did. */
-export function followUpEmbed(caseRecord, { mention = null, buttons = true, avatar = null } = {}) {
+export function followUpEmbed(caseRecord, { mention = null, buttons = true, avatar = null, config = {} } = {}) {
   const o = caseRecord.outcome;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
   const good = o.verdict === 'recovered';
@@ -1096,7 +1097,7 @@ export function followUpEmbed(caseRecord, { mention = null, buttons = true, avat
           inline: true,
         },
       ],
-      footer: { text: footerText(caseRecord) },
+      footer: { text: footerText(caseRecord, config) },
       timestamp: new Date().toISOString(),
     }],
     components: good ? [] : caseButtons(caseRecord, { enabled: buttons }),
@@ -1104,9 +1105,9 @@ export function followUpEmbed(caseRecord, { mention = null, buttons = true, avat
 }
 
 /** Sent to the managers' channel when nobody has picked a case up. */
-export function escalationEmbed(cases, asOf) {
+export function escalationEmbed(cases, asOf, config = {}) {
   const lines = cases.slice(0, 20).map((c) =>
-    `• **@${c.username}** (${c.coach}) — open since ${c.openedOn}, ~${n(c.valueAtRisk)} at risk · \`${c.id}\``);
+    `• **@${c.username}** (${coachName(c.coach, config)}) — open since ${c.openedOn}, ~${n(c.valueAtRisk)} at risk · \`${c.id}\``);
   return {
     embeds: [{
       title: `${cases.length} case${cases.length === 1 ? '' : 's'} nobody has picked up`,

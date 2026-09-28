@@ -1,6 +1,25 @@
 {
   "dataDir": "./data",
   "timezone": "UTC",
+  "coaches": {
+    "_note": "What to call each coach. The export keys everything to an email address; this is the only place that decides what gets printed. A coach with no entry falls back to the part of their address before the @, so a new hire is readable on day one.",
+    "names": {
+      "joshbates93@hotmail.com": "Sur3shot",
+      "mujustreamer@gmail.com": "Muju",
+      "alex_593@hotmail.co.uk": "Bean",
+      "colesygaming007@gmail.com": "Colesy",
+      "chavvyy26@hotmail.com": "Chavy",
+      "sherif.begain@gmail.com": "Reefman",
+      "itsmalkintiktok@gmail.com": "Malkin",
+      "bigbamc.tt@gmail.com": "Cam",
+      "tiktokphil@icloud.com": "Unc",
+      "leapagencyuk@gmail.com": "Slow"
+    },
+    "_excludeFromBoards": "Coaches in the network but not in the internal competition. Separate from monitoring.ignoreGroups, which is about whole teams nobody coaches.",
+    "excludeFromBoards": [
+      "amykinsincolour@gmail.com"
+    ]
+  },
   "tiers": {
     "core": 100000,
     "growing": 20000,

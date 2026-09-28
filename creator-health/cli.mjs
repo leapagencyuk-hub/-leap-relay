@@ -44,6 +44,7 @@ import { activenessRows, activenessSummary } from './lib/activeness.mjs';
 import { policyStanding } from './lib/policy.mjs';
 import { leaderboard } from './lib/leaderboard.mjs';
 import { growthBoard } from './lib/growthboard.mjs';
+import { coachName } from './lib/coaches.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const argv = process.argv.slice(2);
@@ -616,7 +617,7 @@ function cmdLeaderboard() {
   }
   if (b.standout) {
     console.log(`\n  best signing: @${b.standout.username} — ${b.standout.diamonds.toLocaleString()} diamonds`
-      + ` (${(b.standout.coach ?? 'unassigned').split('@')[0]}, signed ${b.standout.joinDate})`);
+      + ` (${b.standout.coachName ?? coachName(b.standout.coach, config)}, signed ${b.standout.joinDate})`);
   }
   if (b.notStarted.length) {
     console.log(`\n  ${b.notStarted.length} signed but never LIVE: `
