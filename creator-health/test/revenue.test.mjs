@@ -6,8 +6,8 @@ import { revenueFields, teamSummaryEmbed } from '../lib/discord.mjs';
 const config = {
   revenue: {
     enabled: true, baseWage: 0, baseWageByCoach: { 'josh@leap': 350, 'amy@leap': 100 },
-    alphaFloorDiamonds: 100000, incrementalPerDiamondUsd: 0.0001, goalsMultiplier: 2,
-    usdToGbp: 0.754074,
+    alphaFloorDiamonds: 100000, incrementalPerDiamondUsd: 0.0001,
+    managerPerDiamondUsd: 0.00005, goalsMultiplier: 2, usdToGbp: 0.754074,
   },
   leaped: { fee: 10, currency: 'GBP' },
   coaches: { names: { 'josh@leap': 'Sur3shot' }, excludeFromBoards: ['amy@leap'] },
@@ -44,18 +44,31 @@ test('it is paid on creators past the floor only', () => {
   assert.equal(r.diamonds, 1199999, 'the roster total is everyone');
   assert.equal(r.qualifying, 2);
   assert.equal(r.qualifyingDiamonds, 1100000);
-  assert.equal(r.alphaBonus, 1100000 * 0.0001 * 0.754074);
+  assert.equal(r.alphaBonus, 1100000 * rev.perDiamond);
+  assert.equal(r.managerShare, 1199999 * rev.managerPerDiamond, 'but the manager share is all of them');
 });
 
-test('the manager diamond share is left out rather than invented', () => {
-  const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000 })], asOf: ASOF, config });
+test('the two diamond shares use different populations', () => {
+  const rev = coachRevenue({
+    creators: [who('big', { diamonds: 1000000 }), who('small', { diamonds: 50000 })],
+    asOf: ASOF, config,
+  });
   const r = rev.rows[0];
-  assert.equal(r.managerDiamondShare, null);
-  assert.equal(r.accountedFor, r.base + r.recruitBonus + r.alphaBonus,
-    'the total is a floor, and only of what this data can account for');
-  const block = revenueFields(rev, rev.rows, { config });
-  assert.match(block[1].value, /not calculated/);
-  assert.match(block[0].value, /floor, not a total/);
+  // The manager share is the whole roster; the alpha bonus is only the creator
+  // past the floor. Using one population for both understates the month.
+  assert.equal(r.managerShare, 1050000 * rev.managerPerDiamond);
+  assert.equal(r.alphaBonus, 1000000 * rev.perDiamond);
+  assert.equal(r.total, r.base + r.recruitBonus + r.managerShare + r.alphaBonus);
+});
+
+test('the GBP rate the recruiters were given comes out of the USD one', () => {
+  // recruiter_commission_gbp = diamonds x 0.0000375, at roughly $1 to GBP 0.75.
+  const rev = coachRevenue({
+    creators: [who('a', { diamonds: 1000000 })], asOf: ASOF,
+    config: { ...config, revenue: { ...config.revenue, usdToGbp: 0.75 } },
+  });
+  assert.equal(rev.managerPerDiamond, 0.0000375);
+  assert.equal(rev.rows[0].managerShare, 37.5);
 });
 
 test('each coach gets their own fixed amount, and nobody gets an invented one', () => {
@@ -76,14 +89,14 @@ test('each coach gets their own fixed amount, and nobody gets an invented one', 
   assert.ok(!/Extra revenue/.test(block));
 });
 
-test('Backstage goals double the alpha share, and sit on a second line', () => {
+test('Backstage goals double the manager share, and sit on a second line', () => {
   const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000 })], asOf: ASOF, config });
   const r = rev.rows[0];
-  assert.equal(r.alphaWithGoals, r.alphaBonus * 2);
-  assert.equal(r.accountedForWithGoals, r.accountedFor + r.alphaBonus);
-  assert.ok(r.accountedForWithGoals > r.accountedFor);
+  assert.equal(r.managerWithGoals, r.managerShare * 2);
+  assert.equal(r.totalWithGoals, r.total + r.managerShare);
+  assert.equal(r.alphaBonus, 1000000 * rev.perDiamond, 'the alpha bonus does not move');
   const block = revenueFields(rev, rev.rows, { config })[1].value;
-  assert.match(block, /ACCOUNTED FOR SO FAR/);
+  assert.match(block, /ESTIMATED THIS MONTH/);
   assert.match(block, /with Backstage goals/);
   assert.match(block, /Everyone is on \*\*10%\*\*/);
   assert.match(block, /a further 10%/);

@@ -1055,7 +1055,6 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
     value: '**THIS IS FOR VISUAL PURPOSES AND A ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT. '
       + 'FOR EXACT FIGURES TALK TO THE DIRECTORS** — the percentages behind this move '
       + 'through the month, so this can only ever be an indication of where you are. '
-      + 'It also leaves out the manager diamond share entirely, so it is a floor, not a total. '
       + 'Payments are made on the 15th of the following month, so this is the month you are '
       + 'building rather than the money about to land.',
   });
@@ -1069,20 +1068,19 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
           ...(r.base ? [line('Extra revenue (fixed)', gbp(r.base))] : []),
           line('Recruits this month', String(r.recruited)),
           line('New recruit bonus', `${r.leapedCount} x ${gbp(rev.fee)}  =  ${gbp(r.recruitBonus)}`),
+          line('Manager diamond %', `~${gbp(r.managerShare)}`),
           line('Alpha group task bonus', `~${gbp(r.alphaBonus)}`),
-          line('Manager diamond %', 'not calculated'),
           line('Onboarded all time', String(r.onboardedAllTime)),
           '',
-          line('ACCOUNTED FOR SO FAR', `~${gbp(r.accountedFor)}`),
-          line('with Backstage goals', `~${gbp(r.accountedForWithGoals)}`),
+          line('ESTIMATED THIS MONTH', `~${gbp(r.total)}`),
+          line('with Backstage goals', `~${gbp(r.totalWithGoals)}`),
         ].join('\n')
         + '\n```'
-        + `\n**${r.qualifying}** of your creators are past ${n(rev.floor)} diamonds this month `
-        + `(${n(r.qualifyingDiamonds)} between them), which is what the alpha group task bonus pays on.`
+        + `\nThe manager diamond share is your whole roster — **${n(r.diamonds)}** diamonds this month. `
+        + `The alpha group task bonus is only the **${r.qualifying}** creators past ${n(rev.floor)} `
+        + `(**${n(r.qualifyingDiamonds)}** between them), and lands on the 15th of next month.`
         + `\nEveryone is on **10%**. Hitting your goals on Backstage unlocks **a further 10%**, `
-        + `which would take that bonus to ~${gbp(r.alphaWithGoals)}.`
-        + `\nThe manager diamond share is **not in either figure** — it is not something this data `
-        + `can work out, so treat both as a floor rather than the whole.`,
+        + `which would take the manager share to ~${gbp(r.managerWithGoals)}.`,
     });
   }
 

@@ -23,17 +23,20 @@
 //                           data, and one row reads 1,006,213 diamonds to
 //                           £75.8758945 where this gives £75.8759.
 //
-//   manager diamond %       NOT REPRODUCIBLE from the creator export. It is a
-//                           share of a base this data does not contain: the
-//                           ratio against the wages sheet's own figures comes
-//                           out at 10% for one coach and 26% for another on the
-//                           same month, so it is not a percentage of anything
-//                           here. The card says the figure is missing rather
-//                           than inventing one.
+//   manager diamond %       0.00005 USD a diamond, across the coach's WHOLE
+//                           roster rather than only the creators past the
+//                           floor. This is the recruiter commission formula:
+//                           at roughly $1 to £0.75 it is the 0.0000375 a
+//                           diamond quoted in GBP.
 //
-// Everybody is on the same 10% share, with a further 10% unlocked by hitting
-// goals on Backstage. The sheet also carries a recruiter tier table, which is a
-// different thing and is deliberately not read here.
+// The two diamond shares are not the same thing and do not use the same
+// population, which is the trap here: the alpha group task bonus is paid on
+// creators past 100,000 in the month, and the manager share is paid across
+// everybody. Working one out and calling it the other understates a coach's
+// month by a third.
+//
+// Everybody is on the same 10% manager share, with a further 10% unlocked by
+// hitting goals on Backstage — so that share doubles, and nothing else moves.
 import { groupKey } from './notify.mjs';
 import { monthMtd } from './policy.mjs';
 import { coachName, offTheBoards } from './coaches.mjs';
@@ -57,6 +60,10 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const defaultBase = cfg.baseWage ?? 0;
   const perCoachBase = cfg.baseWageByCoach ?? {};
   const floor = cfg.alphaFloorDiamonds ?? 100000;
+  // Rounded for the same reason as the rate above: 0.00005 * 0.75 is
+  // 0.000037500000000000003 in binary floating point, and 0.0000375 is the
+  // number the recruiters were actually given.
+  const managerPerDiamond = Number(((cfg.managerPerDiamondUsd ?? 0.00005) * usdToGbp).toPrecision(6));
   // Everyone is on 10%; hitting Backstage goals unlocks a further 10%.
   const goalsMultiplier = cfg.goalsMultiplier ?? 2;
   const month = asOf.slice(0, 7);
@@ -94,13 +101,14 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     const leapedCount = leapedByCoach.get(e.coach) ?? 0;
     const recruitBonus = leapedCount * fee;
     const alphaBonus = e.qualifyingDiamonds * perDiamond;
+    // Across the whole roster, not only the creators past the floor.
+    const managerShare = e.diamonds * managerPerDiamond;
     // No default: a coach who is not on the sheet is not on a fixed amount, and
     // putting one on their card is worse than leaving the line off.
     const base = perCoachBase[e.coach] ?? defaultBase;
-    const alphaWithGoals = alphaBonus * goalsMultiplier;
-    // Everything this data can actually account for. The manager diamond share
-    // is deliberately absent rather than guessed at, so the total is a floor.
-    const accountedFor = base + recruitBonus + alphaBonus;
+    // Goals unlock a further 10% on the manager share; the alpha bonus is fixed.
+    const managerWithGoals = managerShare * goalsMultiplier;
+    const total = base + recruitBonus + alphaBonus + managerShare;
     return {
       ...e,
       teams: [...e.teams],
@@ -109,18 +117,17 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
       leapedCount,
       recruitBonus,
       alphaBonus,
-      alphaWithGoals,
+      managerShare,
+      managerWithGoals,
       base,
-      accountedFor,
+      total,
       // Not earned yet, so it is a second line and never the figure.
-      accountedForWithGoals: accountedFor + (alphaWithGoals - alphaBonus),
-      // What the sheet calls MANAGER DIAMOND %, which this cannot compute.
-      managerDiamondShare: null,
+      totalWithGoals: total + (managerWithGoals - managerShare),
     };
-  }).sort((a, b) => b.accountedFor - a.accountedFor);
+  }).sort((a, b) => b.total - a.total);
 
   return {
-    month, asOf, currency, fee, perDiamond, usdToGbp, floor, goalsMultiplier,
+    month, asOf, currency, fee, perDiamond, managerPerDiamond, usdToGbp, floor, goalsMultiplier,
     rows,
     byCoach: new Map(rows.map((r) => [r.coach, r])),
     // The recruitment standing, which is the "all staff" board on the card. It
@@ -129,6 +136,6 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     recruitBoard: [...rows]
       .filter((r) => r.recruited > 0 && !offTheBoards(r.coach, config))
       .sort((a, b) => b.recruited - a.recruited || a.name.localeCompare(b.name)),
-    networkTotal: rows.reduce((n, r) => n + r.accountedFor, 0),
+    networkTotal: rows.reduce((n, r) => n + r.total, 0),
   };
 }
