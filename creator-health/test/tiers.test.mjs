@@ -230,3 +230,32 @@ test('a coach whose earnings are withheld gets no bracket card either', () => {
   assert.equal(board.ranked.length, 1, 'still computed');
   assert.deepEqual(rankUpFields(board, ['josh@leap'], { config: cfg }), []);
 });
+
+test('TikTok\'s own tier status wins over comparing tiers ourselves', () => {
+  // Our comparison is close but consistently generous: across July, August and
+  // September its "Ranked up" list was a strict subset of ours every month.
+  // We never missed one; we added 4, 3 and 2 it does not pay for.
+  const c = who('ours_says_up', { diamonds: 250000, lastMonth: 120000 });
+  assert.ok(rankUpFor(c, ASOF, config).rankedUp, 'tier 2 to 3 by our own reading');
+
+  c.obs[0].tierStatus = 'Not maintained';
+  const r = rankUpFor(c, ASOF, config);
+  assert.equal(r.rankedUp, false, 'but TikTok says no, so no');
+  assert.equal(r.maintained, false);
+  assert.equal(r.worth, 0, 'and the coach is not billed for it');
+});
+
+test('and it can rank somebody up that our own reading would not', () => {
+  const c = who('flat', { diamonds: 120000, lastMonth: 118000 });
+  assert.equal(rankUpFor(c, ASOF, config).rankedUp, false);
+  c.obs[0].tierStatus = 'Ranked up';
+  assert.ok(rankUpFor(c, ASOF, config).rankedUp);
+});
+
+test('a status TikTok has no opinion on falls back to comparing tiers', () => {
+  for (const v of ['-', '', null, undefined, 'Something new']) {
+    const c = who('fallback', { diamonds: 250000, lastMonth: 120000 });
+    c.obs[0].tierStatus = v;
+    assert.ok(rankUpFor(c, ASOF, config).rankedUp, `"${String(v)}" falls back`);
+  }
+});

@@ -157,6 +157,10 @@ export function applySnapshot(series, snapshot) {
       // Kept for the ramp tracker: on a creator's first snapshot this is the
       // only window we get onto the month before we started watching them.
       lastMonthDiamonds: row.lastMonth.diamonds ?? null,
+      // TikTok's own verdict on the rank-up task this month. Stored per
+      // observation rather than only on the creator, so asking about a past
+      // month gets that month's answer instead of today's.
+      tierStatus: row.tierStatus ?? null,
     });
     c.levels[asOf] = {
       totalFans: row.level.totalFans,

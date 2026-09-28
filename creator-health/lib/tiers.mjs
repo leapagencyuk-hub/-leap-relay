@@ -168,6 +168,25 @@ export function lastMonthDiamonds(creator, month) {
 }
 
 /**
+ * TikTok's own verdict for the month, if the export carried one.
+ *
+ * "Ranked up", "Maintained", "Not maintained", or "-" for a creator it has no
+ * opinion on. Read off the observation so a question about a past month gets
+ * that month's answer rather than today's.
+ */
+export function tierStatusFor(creator, month) {
+  const obs = creator?.obs;
+  if (!obs?.length) return null;
+  for (let i = obs.length - 1; i >= 0; i--) {
+    if (obs[i].date.slice(0, 7) === month) {
+      const v = String(obs[i].tierStatus ?? '').trim();
+      return ['Ranked up', 'Maintained', 'Not maintained'].includes(v) ? v : null;
+    }
+  }
+  return null;
+}
+
+/**
  * One creator's rank-up standing for the month.
  *
  * `null` for a creator we have no reading on this month. A creator at the top
@@ -189,8 +208,14 @@ export function rankUpFor(creator, asOf, config = {}) {
   const now = tierOf(diamonds, config);
   const next = nextTier(from, config);
 
-  const rankedUp = now.tier > from.tier;
-  const maintained = now.tier === from.tier;
+  // TikTok's own answer wins wherever it exists. Comparing tiers ourselves is
+  // close but consistently generous: across July, August and September its
+  // "Ranked up" list was a strict subset of ours every month — we never missed
+  // one, and we added 4, 3 and 2 that it does not pay for. Those are creators
+  // we would have billed a coach for, so the column is not a nicety.
+  const stated = tierStatusFor(creator, month);
+  const rankedUp = stated ? stated === 'Ranked up' : now.tier > from.tier;
+  const maintained = stated ? stated === 'Maintained' : now.tier === from.tier;
   const ratio = (cfg.advanced ? from.advanced : from.base) ?? null;
 
   const monthLength = daysInMonth(month);
