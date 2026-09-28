@@ -1074,12 +1074,15 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
           line('Onboarded all time', String(r.onboardedAllTime)),
           '',
           line('ACCOUNTED FOR SO FAR', `~${gbp(r.accountedFor)}`),
+          line('with Backstage goals', `~${gbp(r.accountedForWithGoals)}`),
         ].join('\n')
         + '\n```'
         + `\n**${r.qualifying}** of your creators are past ${n(rev.floor)} diamonds this month `
         + `(${n(r.qualifyingDiamonds)} between them), which is what the alpha group task bonus pays on.`
-        + `\nThe manager diamond share is **not in this figure** — it is not something this data can `
-        + `work out, so treat the total as a floor rather than the whole.`,
+        + `\nHitting your Backstage goals takes that share from 10% to 20% — it doubles, to `
+        + `~${gbp(r.alphaWithGoals)}.`
+        + `\nThe manager diamond share is **not in either figure** — it is not something this data `
+        + `can work out, so treat both as a floor rather than the whole.`,
     });
   }
 

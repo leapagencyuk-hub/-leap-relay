@@ -58,6 +58,8 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const perCoachBase = cfg.baseWageByCoach ?? {};
   const floor = cfg.alphaFloorDiamonds ?? 100000;
   const tiers = cfg.recruitTiers ?? [[10, 0.20], [5, 0.15], [1, 0.10]];
+  // Hitting Backstage goals takes the share from 10% to 20%, so it doubles.
+  const goalsMultiplier = cfg.goalsMultiplier ?? 2;
   const month = asOf.slice(0, 7);
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
 
@@ -93,7 +95,10 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     const leapedCount = leapedByCoach.get(e.coach) ?? 0;
     const recruitBonus = leapedCount * fee;
     const alphaBonus = e.qualifyingDiamonds * perDiamond;
+    // No default: a coach who is not on the sheet is not on a fixed amount, and
+    // putting one on their card is worse than leaving the line off.
     const base = perCoachBase[e.coach] ?? defaultBase;
+    const alphaWithGoals = alphaBonus * goalsMultiplier;
     // Everything this data can actually account for. The manager diamond share
     // is deliberately absent rather than guessed at, so the total is a floor.
     const accountedFor = base + recruitBonus + alphaBonus;
@@ -106,16 +111,19 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
       leapedCount,
       recruitBonus,
       alphaBonus,
+      alphaWithGoals,
       base,
       tier,
       accountedFor,
+      // Not earned yet, so it is a second line and never the figure.
+      accountedForWithGoals: accountedFor + (alphaWithGoals - alphaBonus),
       // What the sheet calls MANAGER DIAMOND %, which this cannot compute.
       managerDiamondShare: null,
     };
   }).sort((a, b) => b.accountedFor - a.accountedFor);
 
   return {
-    month, asOf, currency, fee, perDiamond, usdToGbp, floor, tiers,
+    month, asOf, currency, fee, perDiamond, usdToGbp, floor, tiers, goalsMultiplier,
     rows,
     byCoach: new Map(rows.map((r) => [r.coach, r])),
     // The recruitment standing, which is the "all staff" board on the card. It

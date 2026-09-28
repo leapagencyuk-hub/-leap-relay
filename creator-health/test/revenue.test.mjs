@@ -5,8 +5,8 @@ import { revenueFields, teamSummaryEmbed } from '../lib/discord.mjs';
 
 const config = {
   revenue: {
-    enabled: true, baseWage: 150, baseWageByCoach: { 'josh@leap': 350 },
-    alphaFloorDiamonds: 100000, incrementalPerDiamondUsd: 0.0001,
+    enabled: true, baseWage: 0, baseWageByCoach: { 'josh@leap': 350, 'amy@leap': 100 },
+    alphaFloorDiamonds: 100000, incrementalPerDiamondUsd: 0.0001, goalsMultiplier: 2,
     usdToGbp: 0.754074, recruitTiers: [[10, 0.20], [5, 0.15], [1, 0.10]],
   },
   leaped: { fee: 10, currency: 'GBP' },
@@ -73,13 +73,34 @@ test('the unlocked tier comes from recruits in the month', () => {
   assert.equal(at(40), 0.20);
 });
 
-test('a coach on a different fixed amount gets theirs', () => {
+test('each coach gets their own fixed amount, and nobody gets an invented one', () => {
   const rev = coachRevenue({
-    creators: [who('a', { coach: 'josh@leap' }), who('b', { coach: 'amy@leap' })],
+    creators: [
+      who('a', { coach: 'josh@leap' }),
+      who('b', { coach: 'amy@leap' }),
+      who('c', { coach: 'notonthesheet@leap' }),
+    ],
     asOf: ASOF, config,
   });
   assert.equal(rev.byCoach.get('josh@leap').base, 350);
-  assert.equal(rev.byCoach.get('amy@leap').base, 150);
+  assert.equal(rev.byCoach.get('amy@leap').base, 100);
+  assert.equal(rev.byCoach.get('notonthesheet@leap').base, 0,
+    'not on the sheet is not on a fixed amount');
+  // And the line does not appear at all for them.
+  const block = revenueFields(rev, [rev.byCoach.get('notonthesheet@leap')], { config })[1].value;
+  assert.ok(!/Extra revenue/.test(block));
+});
+
+test('Backstage goals double the alpha share, and sit on a second line', () => {
+  const rev = coachRevenue({ creators: [who('a', { diamonds: 1000000 })], asOf: ASOF, config });
+  const r = rev.rows[0];
+  assert.equal(r.alphaWithGoals, r.alphaBonus * 2);
+  assert.equal(r.accountedForWithGoals, r.accountedFor + r.alphaBonus);
+  assert.ok(r.accountedForWithGoals > r.accountedFor);
+  const block = revenueFields(rev, rev.rows, { config })[1].value;
+  assert.match(block, /ACCOUNTED FOR SO FAR/);
+  assert.match(block, /with Backstage goals/);
+  assert.match(block, /from 10% to 20%/);
 });
 
 test('all-time onboarded counts creators who have since left', () => {
