@@ -25,22 +25,27 @@
 // cleared the bar before its first run, so nothing downstream needs to know
 // where a record came from.
 //
-// THE ONE PLACE IT OVERRIDES THE FREEZE RULE
+// THE ONE PLACE IT OVERRIDES THE FREEZE RULE, AND ONLY ONCE
 //
 // A leap record is frozen on first sight, because a leap that has been paid
 // must not change value because a file was re-read. This breaks that in
-// exactly one case: a record WE credited, for a creator LEAP had already
-// marked by hand.
+// exactly one case: the FIRST import, on a record we credited for a creator
+// LEAP had already marked by hand.
 //
 // That record is not a payment, it is a mistake — we billed for a leap that
 // happened before we were watching and was settled outside this system. LEAP's
-// mark is the authority on what has been paid, and it predates anything here.
-// So the record is converted to carried over and what it used to claim is kept
-// on it, so the correction can be read back later rather than having to be
-// taken on trust.
+// mark is the authority there, because it predates anything here.
 //
-// Records already carried over are left alone, so re-running is safe and does
-// nothing the second time.
+// After that first import the authority flips, and this is the part that
+// matters going forward. LEAP will keep marking creators by hand as they leap.
+// From now on we have watched those creators cross the bar ourselves, so a
+// mark on somebody we credited this month is LEAP agreeing with us, not
+// correcting us. Treating it as a correction would quietly delete a real £10
+// every time somebody uploads the management export.
+//
+// So the first import backfills and corrects; every one after it only adds
+// creators we have never seen leap, and leaves our own credits alone.
+// `leapedImportedOn` is what remembers which of the two this is.
 import { readSheetRows } from './xlsx.mjs';
 
 /** The note that means "already leaped". LEAP write it a few different ways. */
@@ -109,6 +114,9 @@ export function readManualLeaps(filePath) {
 export function importManualLeaps({ marks, creators, store, exportedAt = null, persist = true }) {
   store.data.leaped ??= {};
   const records = store.data.leaped;
+  // The first import backfills a history we never saw. Every later one is a
+  // routine top-up against records we made ourselves.
+  const firstImport = !store.data.leapedImportedOn;
 
   const byId = new Map();
   const byName = new Map();
@@ -119,6 +127,7 @@ export function importManualLeaps({ marks, creators, store, exportedAt = null, p
 
   const added = [];
   const corrected = [];
+  const kept = [];
   const already = [];
   const unmatched = [];
 
@@ -130,8 +139,11 @@ export function importManualLeaps({ marks, creators, store, exportedAt = null, p
     if (existing) {
       // Already carried over, or already correct: nothing to do.
       if (!existing.credited) { already.push(c.username); continue; }
-      // We billed for a leap LEAP had already paid. Correct it, and keep what
-      // it claimed so the correction is legible afterwards.
+      // We watched this one cross the bar and billed for it. A mark on them is
+      // LEAP agreeing, not correcting, so the credit stands.
+      if (!firstImport) { kept.push(c.username); continue; }
+      // First import only: we billed for a leap LEAP had already paid. Correct
+      // it, and keep what it claimed so the correction is legible afterwards.
       const fixed = {
         ...existing,
         month: null,
@@ -170,16 +182,20 @@ export function importManualLeaps({ marks, creators, store, exportedAt = null, p
     added.push(record);
   }
 
-  return { added, corrected, already, unmatched, exportedAt };
+  if (persist) {
+    store.data.leapedImportedOn = exportedAt ?? new Date().toISOString().slice(0, 10);
+  }
+  return { added, corrected, kept, already, unmatched, exportedAt, firstImport };
 }
 
 /** One line a person can read. */
-export function importSummary({ added, corrected, already, unmatched }) {
+export function importSummary({ added, corrected, kept, already, unmatched }) {
   const parts = [`${added.length} carried over`];
   if (corrected?.length) {
     const money = corrected.reduce((n, r) => n + (r.wasCredited?.fee ?? 0), 0);
     parts.push(`${corrected.length} corrected off this month's bill (£${money.toFixed(2)})`);
   }
+  if (kept?.length) parts.push(`${kept.length} we billed ourselves, left alone`);
   if (already.length) parts.push(`${already.length} already on the books`);
   if (unmatched.length) parts.push(`${unmatched.length} not in the creator data`);
   return `${parts.join(', ')}.`;

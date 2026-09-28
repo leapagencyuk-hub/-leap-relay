@@ -168,12 +168,15 @@ function report(data) {
       + (data.corrected
         ? row('Taken off this month\'s bill', `${n(data.corrected)} (£${Number(data.correctedValue).toFixed(2)})`, 'ok')
         : '')
+      + (data.kept ? row('We billed these ourselves', `${n(data.kept)} — left alone`) : '')
       + row('Already correct', n(data.already))
       + ((data.unmatched ?? []).length
         ? row('Not in the creator data', `${n(data.unmatched.length)} — they have left`, 'muted')
         : '')
       + `<p class="muted" style="margin:10px 0 0">A leap happens once per creator. Anyone marked LEAP is `
-      + `on the books as already leaped, so they can never leap again and no month bills for them.</p>`;
+      + `on the books as already leaped, so they can never leap again and no month bills for them. `
+      + `Safe to drop this file again any time — after the first one it only adds creators we have `
+      + `never seen leap, and never touches a leap we watched and billed ourselves.</p>`;
     return;
   }
   let html = `<h2>Uploaded</h2>`

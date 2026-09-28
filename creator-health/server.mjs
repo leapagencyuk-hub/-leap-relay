@@ -141,6 +141,8 @@ async function handleUpload(req, res, url) {
         added: out.added.length,
         corrected: out.corrected.length,
         correctedValue: out.corrected.reduce((n, r) => n + (r.wasCredited?.fee ?? 0), 0),
+        kept: out.kept.length,
+        firstImport: out.firstImport,
         already: out.already.length,
         unmatched: out.unmatched,
         message: importSummary(out),

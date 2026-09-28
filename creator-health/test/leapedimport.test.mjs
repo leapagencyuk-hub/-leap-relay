@@ -109,3 +109,46 @@ test('a Manage creators export is told apart from the daily one', async () => {
   assert.equal(isManageExport(daily), false, 'the daily export must not be read as leap marks');
   assert.equal(isManageExport('/nope/missing.xlsx'), false);
 });
+
+test('the correction happens once, and never eats a credit we earned later', () => {
+  // The bug this covers: LEAP keeps marking creators by hand as they leap.
+  // Without this, every later upload of the management export would quietly
+  // delete a real £10 for every creator we had legitimately billed.
+  const store = storeWith({
+    'id:1': { creatorKey: 'id:1', username: 'alreadypaid', credited: true, carriedOver: false, month: '2026-09', fee: 10 },
+  });
+
+  // First import: backfills, and corrects what we billed in ignorance.
+  const first = importManualLeaps({
+    marks: [{ username: 'alreadypaid', creatorId: '1' }], creators, store, exportedAt: '2026-09-28',
+  });
+  assert.equal(first.firstImport, true);
+  assert.equal(first.corrected.length, 1);
+  assert.equal(store.data.leapedImportedOn, '2026-09-28', 'and remembers that it ran');
+
+  // Now we watch somebody cross the bar ourselves and bill for it.
+  store.data.leaped['id:3'] = {
+    creatorKey: 'id:3', username: 'genuinelynew', credited: true, carriedOver: false, month: '2026-10', fee: 10,
+  };
+
+  // LEAP marks them too, as they would. That is agreement, not a correction.
+  const second = importManualLeaps({
+    marks: [{ username: 'genuinelynew', creatorId: '3' }], creators, store, exportedAt: '2026-10-31',
+  });
+  assert.equal(second.firstImport, false);
+  assert.equal(second.corrected.length, 0, 'nothing corrected on a later import');
+  assert.deepEqual(second.kept, ['genuinelynew']);
+  assert.equal(store.data.leaped['id:3'].credited, true, 'the credit stands');
+  assert.equal(store.data.leaped['id:3'].fee, 10);
+});
+
+test('a later import still picks up creators we have never seen leap', () => {
+  const store = storeWith({});
+  store.data.leapedImportedOn = '2026-09-28';
+  const out = importManualLeaps({
+    marks: [{ username: 'newmark', creatorId: '2' }], creators, store, exportedAt: '2026-10-31',
+  });
+  assert.equal(out.firstImport, false);
+  assert.equal(out.added.length, 1, 'a top-up still works');
+  assert.equal(store.data.leaped['id:2'].fee, 0);
+});
