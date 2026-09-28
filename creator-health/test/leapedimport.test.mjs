@@ -153,3 +153,59 @@ test('restoring puts back exactly what the old correction took, month and fee', 
   assert.equal(restoreCorrectedLeaps(store).restored.length, 0);
   assert.equal(store.data.leaped['id:2'].fee, 10);
 });
+
+test('a month can hand its leap bonus to the sheet, per coach and to the pound', async () => {
+  const { standDownMonth } = await import('../lib/leapedimport.mjs');
+  const { coachRevenue } = await import('../lib/revenue.mjs');
+  const store = storeWith({
+    'id:1': { creatorKey: 'id:1', username: 'a', coach: 'josh@leap', credited: true, carriedOver: false, month: '2026-09', fee: 10 },
+    'id:2': { creatorKey: 'id:2', username: 'b', coach: 'josh@leap', credited: true, carriedOver: false, month: '2026-09', fee: 10 },
+    'id:9': { creatorKey: 'id:9', username: 'z', coach: 'josh@leap', credited: true, carriedOver: false, month: '2026-08', fee: 10 },
+  });
+
+  const out = standDownMonth(store, '2026-09');
+  assert.equal(out.moved.length, 2, 'only September');
+  assert.equal(out.value, 20);
+  assert.equal(store.data.leaped['id:1'].fee, 0, 'stops claiming a fee');
+  assert.equal(store.data.leaped['id:1'].credited, false);
+  // The record stays, so the creator can never leap again.
+  assert.ok(store.data.leaped['id:1'].carriedOver);
+  assert.equal(store.data.leaped['id:9'].fee, 10, 'August is untouched');
+
+  // And the card bills the sheet's figure instead of a computed one.
+  const cfg = {
+    revenue: { enabled: true, baseWage: 0, rankUpPerDiamondUsd: 0.0001, incrementalPerDiamondGbp: 0.0000375, usdToGbp: 0.754074, goalsMultiplier: 2 },
+    leaped: { fee: 10, currency: 'GBP', monthOverride: { '2026-09': { 'josh@leap': 110 } } },
+    coaches: { names: { 'josh@leap': 'Sur3shot' } }, monitoring: { ignoreGroups: [] }, rankUp: {},
+  };
+  const creator = {
+    key: 'id:1', username: 'a', quitOn: null, group: 'Team Alpha', manager: 'josh@leap', joinDate: '2026-01-01',
+    obs: [{ date: '2026-09-20', mtd: { diamonds: 1000 }, lastMonthDiamonds: 0 }],
+  };
+  const rev = coachRevenue({
+    creators: [creator], asOf: '2026-09-20', config: cfg,
+    // Two computed leaps that the sheet does not agree with.
+    leaped: { thisMonth: [{ coach: 'josh@leap' }, { coach: 'josh@leap' }] },
+  });
+  assert.equal(rev.rows[0].recruitBonus, 110, 'the sheet wins');
+  assert.equal(rev.rows[0].leapedCount, 11, 'and the count shown matches the money shown');
+});
+
+test('a month with no override is computed as normal', async () => {
+  const { coachRevenue } = await import('../lib/revenue.mjs');
+  const cfg = {
+    revenue: { enabled: true, baseWage: 0, rankUpPerDiamondUsd: 0.0001, incrementalPerDiamondGbp: 0.0000375, usdToGbp: 0.754074, goalsMultiplier: 2 },
+    leaped: { fee: 10, currency: 'GBP', monthOverride: { '2026-09': { 'josh@leap': 110 } } },
+    coaches: { names: {} }, monitoring: { ignoreGroups: [] }, rankUp: {},
+  };
+  const creator = {
+    key: 'id:1', username: 'a', quitOn: null, group: 'Team Alpha', manager: 'josh@leap', joinDate: '2026-01-01',
+    obs: [{ date: '2026-10-05', mtd: { diamonds: 1000 }, lastMonthDiamonds: 0 }],
+  };
+  const rev = coachRevenue({
+    creators: [creator], asOf: '2026-10-05', config: cfg,
+    leaped: { thisMonth: [{ coach: 'josh@leap' }, { coach: 'josh@leap' }] },
+  });
+  assert.equal(rev.rows[0].recruitBonus, 20, 'October computes its own');
+  assert.equal(rev.rows[0].leapedCount, 2);
+});

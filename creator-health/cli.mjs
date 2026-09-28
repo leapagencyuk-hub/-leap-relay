@@ -43,7 +43,7 @@ import { coverage, routeFor } from './lib/dispatch.mjs';
 import { groupKey } from './lib/notify.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
 import { redoToday, redoSummary } from './lib/redo.mjs';
-import { readManualLeaps, importManualLeaps, importSummary, restoreCorrectedLeaps } from './lib/leapedimport.mjs';
+import { readManualLeaps, importManualLeaps, importSummary, restoreCorrectedLeaps, standDownMonth } from './lib/leapedimport.mjs';
 import { graduationEvents } from './lib/graduation.mjs';
 import { activenessRows, activenessSummary } from './lib/activeness.mjs';
 import { policyStanding } from './lib/policy.mjs';
@@ -276,6 +276,19 @@ function cmdLeapedRestore() {
   console.log(`${out.restored.length} leap credits restored, worth ${amount}`
     + (flag('dry') ? '  (dry run, nothing written)' : ''));
   for (const [m, n] of Object.entries(out.byMonth)) console.log(`  ${m}: ${n}`);
+}
+
+/** Hand a month's leap bonus over to the sheet's own figures. */
+function cmdLeapedStandDown() {
+  const month = option('month') ?? new Date().toISOString().slice(0, 7);
+  const store = new CaseStore(config.dataDir);
+  const out = standDownMonth(store, month, { persist: !flag('dry') });
+  if (!flag('dry')) store.save();
+  const override = config.leaped?.monthOverride?.[month];
+  const sheet = override ? Object.values(override).reduce((n, v) => n + v, 0) : null;
+  console.log(`${month}: ${out.moved.length} computed credits stood down (was £${out.value})`
+    + (sheet == null ? '' : `, the sheet bills £${sheet}`)
+    + (flag('dry') ? '  (dry run, nothing written)' : ''));
 }
 
 /** Post every daily card again with the current numbers. */
@@ -792,7 +805,7 @@ const commands = {
   ingest: cmdIngest, report: cmdReport, coach: cmdCoach,
   creator: cmdCreator, rebuild: cmdRebuild, status: cmdStatus,
   run: cmdRun, redo: cmdRedo, 'leaped-import': cmdLeapedImport,
-  'leaped-restore': cmdLeapedRestore,
+  'leaped-restore': cmdLeapedRestore, 'leaped-standdown': cmdLeapedStandDown,
   cases: cmdCases, case: cmdCase,
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,
   'discord-scaffold': cmdDiscordScaffold, 'discord-check': cmdDiscordCheck,

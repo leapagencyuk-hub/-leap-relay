@@ -208,6 +208,33 @@ export function restoreCorrectedLeaps(store, { persist = true } = {}) {
   };
 }
 
+/**
+ * Move a month's computed leap credits to carried over.
+ *
+ * For a month whose figures come from the sheet instead. The records stay —
+ * a leap still happened once per creator and they must never leap again — but
+ * they stop claiming a fee, so the sheet's number is the only one billing.
+ */
+export function standDownMonth(store, month, { persist = true } = {}) {
+  const records = store.data.leaped ?? {};
+  const moved = [];
+  for (const [key, r] of Object.entries(records)) {
+    if (!r.credited || r.month !== month) continue;
+    const back = {
+      ...r,
+      month: null,
+      credited: false,
+      carriedOver: true,
+      fee: 0,
+      countedBySheet: month,
+      wasCredited: r.wasCredited ?? { month: r.month, fee: r.fee },
+    };
+    if (persist) records[key] = back;
+    moved.push(back);
+  }
+  return { moved, value: moved.reduce((n, r) => n + (r.wasCredited?.fee ?? 0), 0) };
+}
+
 /** One line a person can read. */
 export function importSummary({ added, corrected, kept, already, unmatched }) {
   const parts = [`${added.length} carried over`];

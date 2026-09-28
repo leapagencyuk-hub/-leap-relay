@@ -11,9 +11,19 @@
 //   extra revenue           a fixed monthly amount, per coach. Most are on 150;
 //                           the sheet has Sureshot on 350 and CamB on 100.
 //
-//   new recruit bonus       10 for each recruit who qualifies. Read from the
-//                           leaped records so there is one definition of a
-//                           qualifying recruit, not two that can drift.
+//   new recruit bonus       10 for each creator who leaps. Read from the leaped
+//                           records so there is one definition of a qualifying
+//                           recruit, not two that can drift.
+//
+//                           EXCEPT where config.leaped.monthOverride names the
+//                           month. A leap is a LIFETIME 5 hours and 5,000
+//                           diamonds, and this system started watching on 31
+//                           August, so for a month before it had a full history
+//                           it cannot tell who crossed the bar THAT month from
+//                           who had crossed it long ago. It credited 73 leaps
+//                           to September where LEAP's own sheet says 40. The
+//                           sheet wins, per coach. From October on there is
+//                           enough history to compute it.
 //
 //   rank ups                Paid on creators whose TIER went up against last
 //                           month. A flat 1% of the diamond dollar value,
@@ -103,6 +113,9 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   for (const r of leaped?.thisMonth ?? []) {
     leapedByCoach.set(r.coach, (leapedByCoach.get(r.coach) ?? 0) + 1);
   }
+  // A month LEAP worked out by hand, because we could not. Amounts, not
+  // counts, so what lands on the card is exactly what the sheet says.
+  const override = config.leaped?.monthOverride?.[month] ?? null;
 
   const byCoach = new Map();
   for (const c of creators) {
@@ -136,8 +149,12 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   }
 
   const rows = [...byCoach.values()].map((e) => {
-    const leapedCount = leapedByCoach.get(e.coach) ?? 0;
-    const recruitBonus = leapedCount * fee;
+    const computedCount = leapedByCoach.get(e.coach) ?? 0;
+    const overridden = override ? (override[e.coach] ?? 0) : null;
+    const recruitBonus = overridden == null ? computedCount * fee : overridden;
+    // The count shown has to match the money shown, or the card contradicts
+    // itself in the same line.
+    const leapedCount = overridden == null ? computedCount : Math.round(overridden / fee);
     const rankUpBonus = e.rankUpDiamonds * rankUpPerDiamond;
     // Across the whole roster, not only the creators who ranked up.
     const incrementalShare = e.diamonds * incrementalPerDiamond;

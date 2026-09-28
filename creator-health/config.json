@@ -163,6 +163,20 @@
     "hours": 5,
     "diamonds": 5000,
     "fee": 10,
+    "_monthOverride": "Months whose leap bonus is taken from the Recruitment 26/27 sheet instead of computed. This system started watching on 31 August and a leap is a LIFETIME 5 hours and 5,000 diamonds, so for any month before it had a full history it cannot tell who crossed the bar THAT month from who had crossed it long ago. LEAP worked September out by hand and the sheet's own figures are the answer: per coach, in pounds, summing to the 400 in its September column. From October on there is enough history to compute it, so no month should need an entry here again.",
+    "monthOverride": {
+      "2026-09": {
+        "joshbates93@hotmail.com": 110,
+        "bigbamc.tt@gmail.com": 150,
+        "tiktokphil@icloud.com": 40,
+        "sherif.begain@gmail.com": 30,
+        "alex_593@hotmail.co.uk": 30,
+        "itsmalkintiktok@gmail.com": 20,
+        "mujustreamer@gmail.com": 10,
+        "colesygaming007@gmail.com": 0,
+        "chavvyy26@hotmail.com": 0
+      }
+    },
     "currency": "GBP",
     "_closeWithin": "Creators this near the diamond half of the bar are named on the overview, so a coach can push them over it.",
     "closeWithin": 1500,
