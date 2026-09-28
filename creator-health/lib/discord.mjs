@@ -1069,7 +1069,7 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
           line('Recruits this month', String(r.recruited)),
           line('New recruit bonus', `${r.leapedCount} x ${gbp(rev.fee)}  =  ${gbp(r.recruitBonus)}`),
           line('Manager diamond %', `~${gbp(r.managerShare)}`),
-          line('Alpha group task bonus', `~${gbp(r.alphaBonus)}`),
+          line('Rank ups', `~${gbp(r.rankUpBonus)}`),
           line('Onboarded all time', String(r.onboardedAllTime)),
           '',
           line('ESTIMATED THIS MONTH', `~${gbp(r.total)}`),
@@ -1077,8 +1077,8 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
         ].join('\n')
         + '\n```'
         + `\nThe manager diamond share is your whole roster — **${n(r.diamonds)}** diamonds this month. `
-        + `The alpha group task bonus is only the **${r.qualifying}** creators past ${n(rev.floor)} `
-        + `(**${n(r.qualifyingDiamonds)}** between them), and lands on the 15th of next month.`
+        + `Rank ups are only the **${r.rankUps}** creators past ${n(rev.floor)} `
+        + `(**${n(r.rankUpDiamonds)}** between them), and land on the 15th of next month.`
         + `\nEveryone is on **10%**. Hitting your goals on Backstage unlocks **a further 10%**, `
         + `which would take the manager share to ~${gbp(r.managerWithGoals)}.`,
     });

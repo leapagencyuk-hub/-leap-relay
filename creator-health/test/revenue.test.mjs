@@ -6,7 +6,7 @@ import { revenueFields, teamSummaryEmbed } from '../lib/discord.mjs';
 const config = {
   revenue: {
     enabled: true, baseWage: 0, baseWageByCoach: { 'josh@leap': 350, 'amy@leap': 100 },
-    alphaFloorDiamonds: 100000, incrementalPerDiamondUsd: 0.0001,
+    rankUpFloorDiamonds: 100000, rankUpPerDiamondUsd: 0.0001,
     managerPerDiamondUsd: 0.00005, goalsMultiplier: 2, usdToGbp: 0.754074,
   },
   leaped: { fee: 10, currency: 'GBP' },
@@ -22,13 +22,43 @@ const who = (username, { coach = 'josh@leap', group = 'Team Alpha', joinDate = '
 });
 const leapedFor = (pairs) => ({ thisMonth: pairs.map(([coach, username]) => ({ coach, username, fee: 10 })) });
 
-test('the alpha group task bonus reproduces the wages sheet, to the penny', () => {
+test('the rank-up bonus reproduces the wages sheet, to the penny', () => {
   // WAGES CALCUATOR, July, SHOTTY / gdubz360streams: 1,006,213 diamonds shows
   // 100.6213 USD and 75.8758945 GBP. That row is the spec.
   const rev = coachRevenue({
     creators: [who('gdubz360streams', { diamonds: 1006213 })], asOf: ASOF, config,
   });
-  assert.equal(Math.round(rev.rows[0].alphaBonus * 10000) / 10000, 75.8759);
+  assert.equal(Math.round(rev.rows[0].rankUpBonus * 10000) / 10000, 75.8759);
+});
+
+test('rank ups reproduce real WAGES CALCUATOR rows across months and rates', () => {
+  // Real rows off the tab, spanning February to July and three different
+  // TIKTOK % tiers, to pin that the rate does NOT vary with that column. Each
+  // pair is the sheet's own DIAMONDS and its own POUND cell, at the sheet's own
+  // FX cell of 0.754073884.
+  const sheet = [
+    [1743923, 131.504679],   // Feb, MUJU / BOOSTY, 4.5%
+    [1366305, 103.029492],   // Mar, MUJU / casperchronicles, 7.5%
+    [1006213, 75.875894],    // Jul, SHOTTY / gdubz360streams
+    [102320, 7.715684],      // Mar, MUJU / kosmicx_, the smallest row that month
+  ];
+  const exact = { ...config, revenue: { ...config.revenue, usdToGbp: 0.754073884 } };
+  for (const [diamonds, pounds] of sheet) {
+    const rev = coachRevenue({ creators: [who('c', { diamonds })], asOf: ASOF, config: exact });
+    assert.ok(Math.abs(rev.rows[0].rankUpBonus - pounds) < 0.005,
+      `${diamonds} diamonds: got ${rev.rows[0].rankUpBonus}, sheet says ${pounds}`);
+  }
+});
+
+test('a missing rank-up rate falls back to the sheet rate, not the manager one', () => {
+  // The two rates differ by a factor of two. A fallback of 0.00005 here would
+  // silently halve every coach's rank-up line rather than failing loudly.
+  const { rankUpPerDiamondUsd, ...noRate } = config.revenue;
+  const rev = coachRevenue({
+    creators: [who('c', { diamonds: 1000000 })], asOf: ASOF,
+    config: { ...config, revenue: noRate },
+  });
+  assert.equal(rev.rankUpPerDiamond, rev.managerPerDiamond * 2);
 });
 
 test('it is paid on creators past the floor only', () => {
@@ -42,9 +72,9 @@ test('it is paid on creators past the floor only', () => {
   });
   const r = rev.rows[0];
   assert.equal(r.diamonds, 1199999, 'the roster total is everyone');
-  assert.equal(r.qualifying, 2);
-  assert.equal(r.qualifyingDiamonds, 1100000);
-  assert.equal(r.alphaBonus, 1100000 * rev.perDiamond);
+  assert.equal(r.rankUps, 2);
+  assert.equal(r.rankUpDiamonds, 1100000);
+  assert.equal(r.rankUpBonus, 1100000 * rev.rankUpPerDiamond);
   assert.equal(r.managerShare, 1199999 * rev.managerPerDiamond, 'but the manager share is all of them');
 });
 
@@ -54,11 +84,11 @@ test('the two diamond shares use different populations', () => {
     asOf: ASOF, config,
   });
   const r = rev.rows[0];
-  // The manager share is the whole roster; the alpha bonus is only the creator
-  // past the floor. Using one population for both understates the month.
+  // The manager share is the whole roster; rank ups are only the creator past
+  // the floor. Using one population for both understates the month.
   assert.equal(r.managerShare, 1050000 * rev.managerPerDiamond);
-  assert.equal(r.alphaBonus, 1000000 * rev.perDiamond);
-  assert.equal(r.total, r.base + r.recruitBonus + r.managerShare + r.alphaBonus);
+  assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond);
+  assert.equal(r.total, r.base + r.recruitBonus + r.managerShare + r.rankUpBonus);
 });
 
 test('the GBP rate the recruiters were given comes out of the USD one', () => {
@@ -94,7 +124,7 @@ test('Backstage goals double the manager share, and sit on a second line', () =>
   const r = rev.rows[0];
   assert.equal(r.managerWithGoals, r.managerShare * 2);
   assert.equal(r.totalWithGoals, r.total + r.managerShare);
-  assert.equal(r.alphaBonus, 1000000 * rev.perDiamond, 'the alpha bonus does not move');
+  assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond, 'the alpha bonus does not move');
   const block = revenueFields(rev, rev.rows, { config })[1].value;
   assert.match(block, /ESTIMATED THIS MONTH/);
   assert.match(block, /with Backstage goals/);
@@ -143,6 +173,23 @@ test('the warning is the first thing in the block, and says what it has to', () 
   assert.match(warning, /ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT/);
   assert.match(warning, /TALK TO THE DIRECTORS/);
   assert.match(fields[0].value, /move\s+through the month/);
+});
+
+test('the card calls it Rank ups, which is what the coaches call it', () => {
+  // LEAP's own name for this. Recruitment 26/27 labels the row ALPHA GROUP TASK
+  // BONUS, but nobody says that out loud, and a card nobody can read is worse
+  // than one that disagrees with a spreadsheet column heading.
+  const rev = coachRevenue({
+    creators: [who('big', { diamonds: 900000 }), who('small', { diamonds: 40000 })],
+    asOf: ASOF, config,
+  });
+  const body = revenueFields(rev, rev.rows, { config }).map((f) => f.value).join('\n');
+  assert.match(body, /Rank ups\s+~/, 'the line is labelled Rank ups');
+  assert.doesNotMatch(body, /alpha/i, 'and nothing on the card says alpha');
+  // The card has to say which population each diamond line is, or the two
+  // figures look like one of them is simply wrong.
+  assert.match(body, /whole roster — \*\*940,000\*\* diamonds/);
+  assert.match(body, /Rank ups are only the \*\*1\*\* creators past 100,000/);
 });
 
 test('a team summary shows the coaches who work that team, not the whole network', () => {
