@@ -16,13 +16,20 @@
 //                 `leaped.mjs` so there is one definition of a leap and one
 //                 set of records behind the pay, not two that can drift.
 //
+//   base          a fixed monthly wage every coach already has, shown so the
+//                 estimate reflects what actually reaches them rather than
+//                 only the part that moves.
+//
 //   incremental   the coach's creators' diamonds this month times a rate.
 //                 0.00005 USD per diamond, converted at the rate in config, so
 //                 changing the exchange rate changes one number rather than
 //                 two. 0.00005 x 0.75 is the 0.0000375 per diamond in GBP.
 //
 // Plus a further 10% available for hitting Backstage goals, shown as a ceiling
-// rather than folded into the total, because it is not earned yet.
+// rather than folded into the total, because it is not earned yet. By default
+// that 10% is taken on the earned part only, not on the fixed wage: this is an
+// estimate somebody may plan around, and an estimate that comes in under is a
+// better failure than one that comes in over. `bonusOnBase` flips it.
 import { groupKey } from './notify.mjs';
 import { monthMtd } from './policy.mjs';
 import { coachName, offTheBoards } from './coaches.mjs';
@@ -44,6 +51,8 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
   const fee = config.leaped?.fee ?? 10;
   const currency = config.leaped?.currency ?? 'GBP';
   const bonus = cfg.goalBonusPct ?? 0.10;
+  const base = cfg.baseWage ?? 0;
+  const bonusOnBase = cfg.bonusOnBase === true;
   const month = asOf.slice(0, 7);
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
 
@@ -74,7 +83,8 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     const leapedCount = leapedByCoach.get(e.coach) ?? 0;
     const leapedPay = leapedCount * fee;
     const incremental = e.diamonds * perDiamond;
-    const total = leapedPay + incremental;
+    const earned = leapedPay + incremental;
+    const total = base + earned;
     return {
       ...e,
       teams: [...e.teams],
@@ -82,14 +92,16 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
       leapedCount,
       leapedPay,
       incremental,
+      base,
+      earned,
       total,
       // Not earned yet, so it is a ceiling and never the headline.
-      withBonus: total * (1 + bonus),
+      withBonus: total + bonus * (bonusOnBase ? total : earned),
     };
   }).sort((a, b) => b.total - a.total);
 
   return {
-    month, asOf, currency, fee, perDiamond, usdPerDiamond, usdToGbp, bonus,
+    month, asOf, currency, fee, perDiamond, usdPerDiamond, usdToGbp, bonus, base, bonusOnBase,
     rows,
     byCoach: new Map(rows.map((r) => [r.coach, r])),
     // The recruitment standing, which is the "all staff" board on the card. It

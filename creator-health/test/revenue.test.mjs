@@ -4,7 +4,7 @@ import { coachRevenue } from '../lib/revenue.mjs';
 import { revenueFields, teamSummaryEmbed } from '../lib/discord.mjs';
 
 const config = {
-  revenue: { enabled: true, incrementalPerDiamondUsd: 0.00005, usdToGbp: 0.75, goalBonusPct: 0.10 },
+  revenue: { enabled: true, baseWage: 150, incrementalPerDiamondUsd: 0.00005, usdToGbp: 0.75, goalBonusPct: 0.10, bonusOnBase: false },
   leaped: { fee: 10, currency: 'GBP' },
   coaches: { names: { 'josh@leap': 'Sur3shot' }, excludeFromBoards: ['amy@leap'] },
   monitoring: { ignoreGroups: [] },
@@ -32,9 +32,37 @@ test('the three parts add up, and the bonus is a ceiling not a total', () => {
   assert.equal(r.leapedPay, 20);
   assert.equal(r.diamonds, 3000000);
   assert.equal(r.incremental, 3000000 * 0.0000375);
-  assert.equal(r.total, 20 + 112.5);
-  assert.equal(Math.round(r.withBonus * 100) / 100, Math.round(132.5 * 1.1 * 100) / 100);
+  assert.equal(r.base, 150);
+  assert.equal(r.earned, 132.5, 'what they made on top of the fixed wage');
+  assert.equal(r.total, 150 + 132.5);
   assert.ok(r.withBonus > r.total, 'the bonus is not earned yet, so it sits above the estimate');
+});
+
+test('the goal bonus is taken on what was earned, not on the fixed wage', () => {
+  const creators = [who('a', { diamonds: 2000000 })];   // GBP 75 incremental
+  const off = coachRevenue({ creators, asOf: ASOF, config }).rows[0];
+  assert.equal(off.total, 225);
+  assert.equal(off.withBonus, 225 + 7.5, '10% of the 75 earned, not of the 225');
+
+  const on = coachRevenue({
+    creators, asOf: ASOF,
+    config: { ...config, revenue: { ...config.revenue, bonusOnBase: true } },
+  }).rows[0];
+  // 225 * 1.1 is 247.50000000000003; adding the share is exact, which is why
+  // the code is written that way round.
+  assert.equal(on.withBonus, 247.5, 'unless somebody says otherwise');
+});
+
+test('with no base wage set, nothing about the base is printed', () => {
+  const rev = coachRevenue({
+    creators: [who('a', { diamonds: 2000000 })], asOf: ASOF,
+    config: { ...config, revenue: { ...config.revenue, baseWage: 0 } },
+  });
+  assert.equal(rev.rows[0].base, 0);
+  assert.equal(rev.rows[0].total, 75);
+  const block = revenueFields(rev, rev.rows, { config })[1].value;
+  assert.ok(!/Base wage/.test(block));
+  assert.ok(!/base wage/.test(block), 'including the footnote about it');
 });
 
 test('the per-diamond rate is the USD rate converted, not a second number to drift', () => {
@@ -46,6 +74,7 @@ test('the per-diamond rate is the USD rate converted, not a second number to dri
   });
   assert.equal(euro.perDiamond, 0.00004, 'changing the exchange rate moves one number');
   assert.equal(euro.rows[0].incremental, 40);
+  assert.equal(euro.rows[0].total, 190, 'and the base rides on top of it');
 });
 
 test('all-time onboarded counts creators who have since left', () => {

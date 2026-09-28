@@ -1063,6 +1063,7 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
       name: r.name,
       value: '```\n'
         + [
+          ...(r.base ? [line('Base wage', gbp(r.base))] : []),
           line('Recruited this month', String(r.recruited)),
           line('Leaped this month', `${r.leapedCount}  =  ${gbp(r.leapedPay)}`),
           line('Incremental share', `~${gbp(r.incremental)}`),
@@ -1073,7 +1074,8 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
         ].join('\n')
         + '\n```'
         + `\nIncremental share is ${n(r.diamonds)} diamonds this month at ${rev.perDiamond} each. `
-        + `A further ${Math.round(rev.bonus * 100)}% is available for hitting your Backstage goals.`,
+        + `A further ${Math.round(rev.bonus * 100)}% is available for hitting your Backstage goals`
+        + `${rev.base && !rev.bonusOnBase ? ', taken on what you earn on top of the base wage' : ''}.`,
     });
   }
 

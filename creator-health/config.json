@@ -174,12 +174,16 @@
   "revenue": {
     "_note": "A rough monthly earnings estimate at the bottom of each team summary. An indication, not a payslip: the percentages behind the incremental share move through the month, and the card says so.",
     "enabled": true,
+    "_baseWage": "Fixed monthly wage every coach already has. Shown so the estimate reflects what reaches them, not only the part that moves.",
+    "baseWage": 150,
     "_incrementalPerDiamondUsd": "Recruiter commission per diamond, in USD.",
     "incrementalPerDiamondUsd": 5e-05,
     "_usdToGbp": "Converted here rather than storing a second per-diamond rate, so changing the exchange rate changes one number. 0.00005 x 0.75 gives 0.0000375 per diamond.",
     "usdToGbp": 0.75,
     "_goalBonusPct": "A further share available for hitting Backstage goals. Shown as a ceiling, never folded into the total, because it is not earned yet.",
-    "goalBonusPct": 0.1
+    "goalBonusPct": 0.1,
+    "_bonusOnBase": "False takes the bonus on earnings only, not the fixed wage \u2014 an estimate that comes in under is a better failure than one that comes in over. True takes it on the whole total.",
+    "bonusOnBase": false
   },
   "digest": {
     "maxAlertsPerCoach": 12,
