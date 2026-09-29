@@ -83,6 +83,7 @@
       <button id="runBtn" type="button">Run now</button>
       <button id="redoBtn" type="button">Redo today</button>
       <button id="rankBtn" type="button">Leap rankings</button>
+      <button id="hardestBtn" type="button">Hardest worker</button>
       <button id="overviewBtn" type="button" class="ghost">Post overview</button>
       <button id="boardsBtn" type="button" class="ghost">Repost boards</button>
       <button id="sampleBtn" type="button" class="ghost">Send sample cards</button>
@@ -98,6 +99,10 @@
       <strong>Leap rankings</strong> works out who has climbed a LEAP league this month and who has
       dropped out of the one they finished last month in, and posts both to their own channels.
       Pull it whenever you want; it replaces its own last post rather than stacking.
+      <strong>Hardest worker</strong> refreshes the creator-facing Hardest Worker Challenge board:
+      it posts the current standings and takes the old one down, so that channel holds one card.
+      It goes up on its own once a day anyway — this is for when you want it now. It touches that
+      one message and nothing else, so it pings no coaches and is safe to press as often as you like.
       <strong>Post overview</strong> re-sends the management
       summary even if it has already gone out today. <strong>Repost boards</strong> sends today's
       leaderboard and growth board again, which is what you want after a change to how they read. <strong>Send sample cards</strong> posts one real
@@ -234,7 +239,7 @@ async function upload(file) {
 
 // Running and testing from the page, so neither needs a terminal.
 async function post(path, label, render) {
-  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
+  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('hardestBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
   btns.forEach((b) => { b.disabled = true; });
   bar.classList.add('on');
   result.classList.remove('show');
@@ -293,6 +298,17 @@ $('rankBtn').addEventListener('click', () => post('rankings', 'Leap rankings', (
   + row('Held their league', n(r.held))
   + (r.standings ?? []).map((l) => row(esc(l.name), n(l.count))).join('')
   + (r.posted ?? []).map((p) => row('Posted', esc(p), 'ok')).join('')
+  + (r.failed ?? []).map((f) => row('Failed', `<span class="bad">${esc(f.label)} — ${esc(f.error)}</span>`)).join('')));
+
+$('hardestBtn').addEventListener('click', () => post('hardest', 'Hardest worker', (r) => `<h2>Hardest Worker board refreshed</h2>`
+  + row('Data up to', esc(r.asOf))
+  + row('Creators ranked', n(r.entered), r.entered ? 'ok' : 'warn')
+  + row(r.finished ? 'Winner' : 'Leading', esc(r.winner ?? '—'), 'ok')
+  + row(r.finished ? 'Final standings' : 'Days left in the month', r.finished ? 'yes' : n(r.daysLeft))
+  + (r.top ?? []).map((t) => row(`${t.rank}. ${esc(t.username)}`, `${t.hours.toFixed(2)} hrs`)).join('')
+  + row('Older copies removed', n(r.replaced ?? 0))
+  + (r.skipped ? row('Nothing posted', `<span class="warn">${esc(r.skipped)}</span>`) : '')
+  + (r.sweepNote ? row('Could not check the channel', `<span class="warn">${esc(r.sweepNote)}</span>`) : '')
   + (r.failed ?? []).map((f) => row('Failed', `<span class="bad">${esc(f.label)} — ${esc(f.error)}</span>`)).join('')));
 
 $('overviewBtn').addEventListener('click', () => post('run?force-overview=1', 'Overview', (r) => `<h2>Overview posted</h2>`

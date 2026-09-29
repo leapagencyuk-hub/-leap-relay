@@ -15,6 +15,7 @@
 //   POST /discord/interactions  Discord's interactions endpoint (button clicks)
 //   GET  /cases             the open caseload
 //   GET  /effectiveness     which interventions are working
+//   POST /hardest            refresh the Hardest Worker board, on its own
 //   GET  /selftest           what this service can reach
 //                            ?post=1 sends a test line, ?sample=1 sends real cards
 //   GET  /health
@@ -38,6 +39,7 @@ import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 import { preflight } from './lib/dispatch.mjs';
 import { redoToday, redoSummary } from './lib/redo.mjs';
 import { pullRankings, rankingsSummary } from './lib/rankings.mjs';
+import { refreshChallenge, challengeSummary } from './lib/challenge.mjs';
 import { isManageExport, readManualLeaps, importManualLeaps, importSummary } from './lib/leapedimport.mjs';
 import { Discord, declineEmbed, activationEmbed } from './lib/discord.mjs';
 
@@ -425,6 +427,22 @@ async function handleRankings(req, res, url) {
   return json(res, 200, { ...payload, message: rankingsSummary(out) });
 }
 
+/**
+ * Refresh the creator-facing Hardest Worker board, on demand.
+ *
+ * One message in one channel. Unlike a redo this pings nobody and moves
+ * nothing else, so it is safe to press whenever the board is being looked at.
+ */
+async function handleHardestWorker(req, res, url) {
+  if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+  const out = await refreshChallenge(config, configPath, {
+    asOf: url.searchParams.get('as-of'),
+    dryRun: url.searchParams.get('dry') === '1',
+  });
+  const { payload, ...rest } = out;
+  return json(res, 200, { ...rest, message: challengeSummary(out) });
+}
+
 async function handleRun(req, res, url) {
   if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
   const dryRun = url.searchParams.get('dry') === '1';
@@ -461,6 +479,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && route === '/run') return await handleRun(req, res, url);
     if (req.method === 'POST' && route === '/redo') return await handleRedo(req, res, url);
     if (req.method === 'POST' && route === '/rankings') return await handleRankings(req, res, url);
+    if (req.method === 'POST' && route === '/hardest') return await handleHardestWorker(req, res, url);
     if (route === '/selftest') return await handleSelfTest(req, res, url);  // GET or POST
     if (req.method === 'POST' && route === '/discord/interactions') {
       return await handleDiscordInteractions(req, res);

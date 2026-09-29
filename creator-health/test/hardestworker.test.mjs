@@ -265,3 +265,173 @@ test('the month rolls over in the channel: one message, replaced', async () => {
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// --- the button beside the board ------------------------------------------
+
+/** A throwaway project on disk: a store, a routes file and a series. */
+async function sandbox({ creators, asOf, routes = null }) {
+  const fs = await import('node:fs');
+  const os = await import('node:os');
+  const path = await import('node:path');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'challenge-'));
+  fs.mkdirSync(path.join(dir, 'data'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'data', 'series.json'), JSON.stringify({
+    lastAsOf: asOf, creators: Object.fromEntries(creators.map((c) => [c.key, c])),
+  }));
+  fs.writeFileSync(path.join(dir, 'routes.json'), JSON.stringify({
+    discord: routes ?? {
+      enabled: true, mode: 'webhook',
+      hardestWorkerWebhook: 'https://discord.com/api/webhooks/1/creator-server',
+      hardestWorkerChannelId: '1374064861897687201',
+    },
+  }));
+  return { dir, configPath: path.join(dir, 'config.json'), config: { ...config, dataDir: path.join(dir, 'data') } };
+}
+
+/** Stand in for Discord, remembering what is left standing in the channel. */
+function fakeDiscord() {
+  const channel = new Map();
+  const log = [];
+  let next = 500;
+  const orig = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (opts.method === 'DELETE') {
+      const id = String(url).split('/').pop();
+      const had = channel.delete(id);
+      log.push(`DELETE ${id}${had ? '' : ' (already gone)'}`);
+      return new Response(null, { status: had ? 204 : 404 });
+    }
+    if (opts.method === 'GET') return new Response('[]', { status: 200, headers: { 'content-type': 'application/json' } });
+    const id = String(++next);
+    channel.set(id, JSON.parse(opts.body).embeds[0].title);
+    log.push(`POST ${id}`);
+    return new Response(JSON.stringify({ id, channel_id: '1374064861897687201' }),
+      { status: 200, headers: { 'content-type': 'application/json' } });
+  };
+  return { channel, log, restore: () => { globalThis.fetch = orig; } };
+}
+
+test('the button posts the board now and takes the old one down', async () => {
+  const fs = await import('node:fs');
+  const { refreshChallenge, challengeSummary } = await import('../lib/challenge.mjs');
+  const { dir, config: cfg, configPath } = await sandbox({
+    asOf: ASOF,
+    creators: [who('mr_chooksy', { hours: 247.45 }), who('coregaming2811', { hours: 225.41 })],
+  });
+  const d = fakeDiscord();
+  try {
+    const first = await refreshChallenge(cfg, configPath, {});
+    assert.equal(first.posted, true);
+    assert.equal(first.replaced, 0, 'nothing was there to remove');
+    assert.equal(first.entered, 2);
+    assert.equal(first.winner, 'mr_chooksy');
+    assert.match(challengeSummary(first), /^2026-09: 2 creators ranked, mr_chooksy leads on 247\.45 hours \(2 days to go\)\.$/);
+
+    // Pressed again five minutes later: one card in the channel, not two.
+    const second = await refreshChallenge(cfg, configPath, {});
+    assert.equal(second.replaced, 1);
+    assert.equal(d.channel.size, 1, 'the channel holds exactly one board');
+    assert.match(challengeSummary(second), /1 older copy removed\.$/);
+  } finally {
+    d.restore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the button and the daily run share one slot, so they cannot both stand', async () => {
+  // The bug this exists to stop: the button writing its own note, the daily
+  // run writing a different one, and the channel quietly holding two boards.
+  const fs = await import('node:fs');
+  const { refreshChallenge } = await import('../lib/challenge.mjs');
+  const { dispatch } = await import('../lib/dispatch.mjs');
+  const { CaseStore } = await import('../lib/cases.mjs');
+  const { loadRoutes } = await import('../lib/notify.mjs');
+  const creators = [who('mr_chooksy', { hours: 247.45 })];
+  const { dir, config: cfg, configPath } = await sandbox({ asOf: ASOF, creators });
+  const d = fakeDiscord();
+  try {
+    await refreshChallenge(cfg, configPath, {});
+    assert.equal(d.channel.size, 1);
+
+    await dispatch({
+      asOf: ASOF, store: new CaseStore(cfg.dataDir), discordConfig: loadRoutes(dir).discord,
+      dryRun: false, creators, force: ['all'], config: cfg,
+      changes: { opened: [], worsened: [], escalated: [], dueFollowUps: [], autoResolved: [] },
+      alerts: [], spotlight: [], ramp: [], stats: { tracked: 1, quit: 0 },
+    });
+    assert.equal(d.channel.size, 1, 'the run replaced the button\'s card rather than adding to it');
+
+    // And back the other way.
+    await refreshChallenge(cfg, configPath, {});
+    assert.equal(d.channel.size, 1, 'the button replaced the run\'s card');
+  } finally {
+    d.restore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('the button posts nothing into a creator channel when there is nothing to post', async () => {
+  const fs = await import('node:fs');
+  const { refreshChallenge, challengeSummary } = await import('../lib/challenge.mjs');
+  const { dir, config: cfg, configPath } = await sandbox({
+    asOf: '2026-10-01', creators: [who('nobody', { hours: 0, date: '2026-10-01' })],
+  });
+  const d = fakeDiscord();
+  try {
+    const out = await refreshChallenge(cfg, configPath, {});
+    assert.equal(out.posted, false);
+    assert.equal(d.log.length, 0, 'Discord was not called at all');
+    assert.match(challengeSummary(out), /Nothing posted — nobody has been LIVE in 2026-10 yet/);
+  } finally {
+    d.restore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('a dry run renders the card without touching the channel', async () => {
+  const fs = await import('node:fs');
+  const { refreshChallenge } = await import('../lib/challenge.mjs');
+  const { dir, config: cfg, configPath } = await sandbox({
+    asOf: ASOF, creators: [who('mr_chooksy', { hours: 247.45 })],
+  });
+  const d = fakeDiscord();
+  try {
+    const out = await refreshChallenge(cfg, configPath, { dryRun: true });
+    assert.equal(out.posted, false);
+    assert.equal(d.log.length, 0);
+    assert.equal(out.payload.embeds[0].fields[0].value, '1. mr_chooksy — 247.45 hrs');
+  } finally {
+    d.restore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('an unconfigured channel is said plainly, not posted into somebody else\'s', async () => {
+  const fs = await import('node:fs');
+  const { refreshChallenge, challengeSummary } = await import('../lib/challenge.mjs');
+  const { dir, config: cfg, configPath } = await sandbox({
+    asOf: ASOF, creators: [who('mr_chooksy', { hours: 247.45 })],
+    routes: { enabled: true, mode: 'webhook', summaryWebhook: 'https://discord.com/api/webhooks/9/coaches' },
+  });
+  const d = fakeDiscord();
+  try {
+    const out = await refreshChallenge(cfg, configPath, {});
+    assert.equal(out.posted, false);
+    assert.equal(d.log.length, 0);
+    assert.match(challengeSummary(out), /no channel configured for the Hardest Worker Challenge/);
+  } finally {
+    d.restore();
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+test('with nothing ingested it says so rather than posting an empty month', async () => {
+  const { refreshChallenge } = await import('../lib/challenge.mjs');
+  const fs = await import('node:fs');
+  const { dir, config: cfg, configPath } = await sandbox({ asOf: null, creators: [] });
+  try {
+    await assert.rejects(() => refreshChallenge(cfg, configPath, {}), /no snapshots ingested yet/);
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true });
+  }
+});
