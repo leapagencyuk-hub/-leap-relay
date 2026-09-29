@@ -164,19 +164,23 @@
     "show": 10
   },
   "creatorWeek": {
-    "_note": "Creator of the Week: the creator-facing weekly board. Weeks run Monday to Sunday. Every creator who went LIVE is scored by POSITION on four pillars they grew this week - diamonds, LIVE hours, new followers, new fan club members - plus a fifth for how far they beat their own equivalent days last week. Position rather than size, because the four cannot be added together and raw numbers make it a diamonds board with three decorations on it.",
+    "_note": "Creator of the Week: the creator-facing weekly board. Weeks run Monday to Sunday. It is NOT won by whoever is biggest. Every creator who went LIVE is measured against their OWN recent weeks, pillar by pillar, and ranked on how much they grew; where they came in the network this week counts for a quarter of it, so 'are they growing, and doing well'. Ratios are damped by the network's median baseline, so small numbers cannot fake a tenfold week and a creator starting from zero is finite, not infinite.",
     "enabled": true,
     "_show": "How many creators the card prints. Everyone who went LIVE is ranked either way.",
     "show": 10,
-    "_weights": "Relative weight of each pillar. All equal by default. Raise one to make that the thing the award is about.",
+    "_weights": "Relative weight of each pillar, set by LEAP: fan club growth counts for most, diamonds and LIVE hours close behind, followers least but never nothing. Each pillar is scored 0 to 1 by position first, so this decides how much that POSITION counts and one enormous week still cannot buy the award.",
     "weights": {
-      "diamonds": 1,
-      "liveHours": 1,
-      "newFollowers": 1,
-      "newFans": 1
+      "newFans": 4,
+      "diamonds": 3,
+      "liveHours": 3,
+      "newFollowers": 1
     },
-    "_momentumWeight": "Weight of the fifth pillar, beating your own last week. This is what stops the same creators winning every week; set it to 0 to rank on this week's growth alone.",
-    "momentumWeight": 1
+    "_growthWeight": "How much of the score is growth against the creator's own baseline. This is the thing that stops the same creator winning every week.",
+    "growthWeight": 3,
+    "_standingWeight": "How much of the score is where they came in the network this week. Keeps a creator who tripled from almost nothing from taking it off one who grew strongly on real numbers. Set to 0 to rank on growth alone.",
+    "standingWeight": 1,
+    "_baselineWeeks": "How many of a creator's own previous weeks make up 'their normal'. Three smooths out one freak week without going so far back that a creator who has genuinely levelled up is still measured against who they used to be.",
+    "baselineWeeks": 3
   },
   "leaped": {
     "_note": "A creator leaps when their CUMULATIVE totals pass the bar below, at any point in their life with us. It happens once per creator and puts the fee on that month's payroll. Recorded permanently the first time it is seen, so a re-run or a config change can never move anybody's pay.",

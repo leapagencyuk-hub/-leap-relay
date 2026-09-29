@@ -18,7 +18,7 @@ import { CaseStore } from './cases.mjs';
 import { loadRoutes } from './notify.mjs';
 import { Discord, hardestWorkerEmbed, creatorWeekEmbed } from './discord.mjs';
 import { hardestWorkerBoard } from './hardestworker.mjs';
-import { creatorWeekBoard } from './creatorweek.mjs';
+import { creatorWeekBoard, recordWeekBoard } from './creatorweek.mjs';
 import { sweeper, sweepDuplicates } from './sweep.mjs';
 
 /**
@@ -46,7 +46,10 @@ const BOARDS = {
     slot: 'creatorWeek',
     stamp: 'lastCreatorWeekOn',
     name: 'Creator of the Week',
-    build: (creators, asOf, config) => creatorWeekBoard({ creators, asOf, config }),
+    build: (creators, asOf, config, store) => creatorWeekBoard({ creators, asOf, store, config }),
+    // Pressing the button is a board going up, so it moves the comparison on
+    // exactly as the daily run does — and twice in a day changes nothing.
+    record: recordWeekBoard,
     render: creatorWeekEmbed,
     empty: (b) => `nobody has been LIVE in the week of ${b.weekStart} yet`,
   },
@@ -65,7 +68,8 @@ export async function refreshChallenge(config, configPath, { asOf = null, dryRun
   const when = asOf ?? series.lastAsOf;
   if (!when) throw new Error('no snapshots ingested yet');
 
-  const board = spec.build(Object.values(series.creators), when, config);
+  const notes = new CaseStore(config.dataDir);
+  const board = spec.build(Object.values(series.creators), when, config, notes);
 
   const discord = loadRoutes(path.dirname(configPath)).discord;
   const route = discord[spec.hook]
@@ -85,8 +89,12 @@ export async function refreshChallenge(config, configPath, { asOf = null, dryRun
     top: board.top.map((r) => ({
       rank: r.rank,
       username: r.username,
-      // The Hardest Worker board is hours; Creator of the Week is four figures.
+      // The Hardest Worker board is hours; Creator of the Week is a score, and
+      // the four figures behind it. These go to the upload page, which is
+      // LEAP's own, never to the card.
       hours: r.hours ?? r.now?.liveHours ?? null,
+      points: r.points ?? null,
+      move: r.move ?? null,
       grew: r.now ? { ...r.now } : null,
     })),
     posted: false,
@@ -104,7 +112,7 @@ export async function refreshChallenge(config, configPath, { asOf = null, dryRun
   if (dryRun) return { ...result, payload };
 
   const client = new Discord({ token: discord.botToken });
-  const store = new CaseStore(config.dataDir);
+  const store = notes;
 
   // Post first, delete second. A failed post then leaves yesterday's board in
   // the channel, which is out of date but readable; the other order leaves the
@@ -122,6 +130,7 @@ export async function refreshChallenge(config, configPath, { asOf = null, dryRun
     // The same shape the daily run writes, so either can replace the other.
     store.data.lastMessage[spec.slot] = { id: res.body.id, period: null };
     store.data[spec.stamp] = when;
+    spec.record?.(store, board);
   }
 
   if (prevId && prevId !== res.body?.id) {

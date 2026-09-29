@@ -784,19 +784,27 @@ function cmdCreatorWeek() {
   const b = creatorWeekBoard({ creators, asOf, config });
   if (!b.entered) return console.log(`Nobody has been LIVE in the week of ${b.weekStart} yet.`);
 
+  const num = (x) => Math.round(x).toLocaleString('en-GB');
   console.log(`Creator of the Week — ${b.weekStart} to ${b.weekEnd}, day ${b.days} of 7`
     + (b.finished ? '  (final)' : `  (${b.daysLeft} day(s) to go)`));
-  console.log(`${b.entered} creator(s) went LIVE; ${b.observedDays} of ${b.days} days came from a single-day upload\n`);
-  console.log(`  ${'#'.padStart(3)}  ${'creator'.padEnd(24)}${'score'.padStart(6)}${'diamonds'.padStart(11)}`
-    + `${'hours'.padStart(8)}${'follow'.padStart(8)}${'fanclub'.padStart(8)}${'beat own'.padStart(10)}`);
+  console.log(`${b.entered} creator(s) went LIVE; ${b.observedDays} of ${b.days} days came from a `
+    + `single-day upload; "was" is their own average over the previous ${b.baselineWeeks} weeks\n`);
+  console.log(`  ${'#'.padStart(3)}  ${'creator'.padEnd(22)}${'pts'.padStart(4)}${'grow'.padStart(6)}${'stand'.padStart(6)}`
+    + `${'diamonds'.padStart(11)}${'was'.padStart(10)}${'hrs'.padStart(6)}${'was'.padStart(6)}`
+    + `${'fans'.padStart(6)}${'was'.padStart(6)}`);
   for (const r of b.top) {
-    console.log(`  ${String(r.rank).padStart(3)}  ${r.username.padEnd(24)}${r.score.toFixed(3).padStart(6)}`
-      + `${Math.round(r.now.diamonds).toLocaleString('en-GB').padStart(11)}${r.now.liveHours.toFixed(1).padStart(8)}`
-      + `${Math.round(r.now.newFollowers).toLocaleString('en-GB').padStart(8)}`
-      + `${Math.round(r.now.newFans).toString().padStart(8)}${r.momentum.toFixed(2).padStart(10)}`);
+    console.log(`  ${String(r.rank).padStart(3)}  ${r.username.padEnd(22)}${String(r.points).padStart(4)}`
+      + `${r.growth.toFixed(2).padStart(6)}${r.standing.toFixed(2).padStart(6)}`
+      + `${num(r.now.diamonds).padStart(11)}${num(r.base.diamonds).padStart(10)}`
+      + `${r.now.liveHours.toFixed(0).padStart(6)}${r.base.liveHours.toFixed(0).padStart(6)}`
+      + `${num(r.now.newFans).padStart(6)}${r.base.newFans.toFixed(1).padStart(6)}`);
   }
-  console.log(`\n  scored by POSITION on each pillar, not by size: best in the network scores 1, worst 0`);
-  console.log(`  pillars: ${PILLARS.map((p) => p.label).join(', ')}, plus beating your own equivalent days last week`);
+  console.log(`\n  grow  = how far above their OWN normal, ranked across the network (damped, so`);
+  console.log(`          small numbers cannot fake a tenfold week and zero is finite)`);
+  console.log(`  stand = where they came in the network this week`);
+  console.log(`  score = grow and stand, weighted ${config.creatorWeek?.growthWeight ?? 3} to `
+    + `${config.creatorWeek?.standingWeight ?? 1}, over pillars weighted `
+    + PILLARS.map((p) => `${p.label} ${config.creatorWeek?.weights?.[p.key] ?? 1}`).join(', '));
   if (b.rows.length > b.top.length) {
     console.log(`  ${b.rows.length - b.top.length} more ranked but not printed on the card`);
   }

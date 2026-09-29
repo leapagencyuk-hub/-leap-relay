@@ -16,6 +16,7 @@ import { sparkline, progressBar, monthlyTrend } from './spark.mjs';
 import { MILESTONES } from './graduation.mjs';
 import { coachName, offTheBoards, earningsHidden } from './coaches.mjs';
 import { hrs } from './hardestworker.mjs';
+import { PILLARS } from './creatorweek.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -1239,15 +1240,19 @@ export function hardestWorkerEmbed(b, { config = {} } = {}) {
  */
 export function creatorWeekEmbed(b, { config = {} } = {}) {
   const span = weekSpan(b.weekStart, b.weekEnd);
-  // One decimal here, not two. On the Hardest Worker board hours are the whole
-  // answer and earn the precision; here they are one figure of four and
-  // "41.69" beside three round numbers just reads as noise.
-  const h = (x) => (Math.round((x ?? 0) * 10) / 10).toFixed(1);
-  const line = (r) => `${r.rank}. ${r.username} — ${n(r.now.diamonds)} 💎 · `
-    + `${h(r.now.liveHours)} hrs · ${n(r.now.newFollowers)} followers · ${n(r.now.newFans)} fan club`;
 
-  // Discord caps a field value at 1024 characters, and these rows are four
-  // numbers long. Cut at a whole row rather than mid-name.
+  // What a creator earned, streamed, gained and built is their own business,
+  // and the whole network reads this channel. So none of it is printed. The
+  // score is built from positions rather than quantities, so it ranks people
+  // without telling anybody what anybody did.
+  const move = (r) => {
+    if (r.isNew) return '  new';
+    if (r.move == null) return '';
+    if (r.move === 0) return '    ·';
+    return r.move > 0 ? `  ▲${r.move}` : `  ▼${-r.move}`;
+  };
+  const line = (r) => `${r.rank}. ${r.username} — ${r.points} pts${move(r)}`;
+
   const rows = [];
   let len = 0;
   for (const r of b.top) {
@@ -1256,19 +1261,26 @@ export function creatorWeekEmbed(b, { config = {} } = {}) {
     rows.push(t); len += t.length + 1;
   }
 
-  const judged = 'Scored on four things you grew this week — diamonds, LIVE hours, new followers '
-    + 'and new fan club members — plus how much you beat your own last week. Each counts the same, '
-    + 'so it goes to whoever moved on every front, not whoever is biggest.';
+  const judged = 'This is not a board for whoever is biggest. Your score is out of 100 and it is '
+    + 'mostly about how much **you** have grown this week against your own recent weeks — fan club, '
+    + 'diamonds, LIVE hours and new followers — with some credit for how you are doing across the '
+    + 'network. Nobody\'s figures are shown, only the score.';
 
   if (b.finished && b.winner) {
     const w = b.winner;
     const behind = b.top.slice(1, 3).map((r) => r.username);
+    // What they grew more than anybody, and what they were outright best at.
+    // Both are worth saying out loud and neither gives away a number.
+    const grewMost = PILLARS.filter((p) => w.growthScores?.[p.key] === 1).map((p) => p.label);
+    const bestAt = PILLARS.filter((p) => w.scores?.[p.key] === 1).map((p) => p.label);
     return {
       embeds: [{
         title: `👑 LEAP's Creator of the Week – ${span}`,
-        description: `The week is done, and the creator who grew the most is **${w.username}**. 🔥\n\n`
-          + `**${n(w.now.diamonds)}** diamonds · **${h(w.now.liveHours)}** LIVE hours · `
-          + `**${n(w.now.newFollowers)}** new followers · **${n(w.now.newFans)}** new fan club members\n\n`
+        description: `The week is done, and the creator who grew the most is **${w.username}**, `
+          + `finishing on **${w.points} points**. 🔥\n\n`
+          + (grewMost.length ? `Nobody in the network grew more this week for ${listOf(grewMost)}. ` : '')
+          + (bestAt.length ? `Best in the whole network this week for ${listOf(bestAt)}.` : '')
+          + (grewMost.length || bestAt.length ? '\n\n' : '')
           + `Huge congratulations${behind.length ? ` — and to ${behind.join(' and ')} right behind them` : ''}. `
           + 'Every creator on this board grew this week, and that is the whole point of it. 💪',
         color: COLOR.gold,
@@ -1292,11 +1304,14 @@ export function creatorWeekEmbed(b, { config = {} } = {}) {
         value: rows.join('\n')
           || 'Nobody has been LIVE yet this week. First one on the board takes top spot. 🔥',
       }],
-      footer: { text: `Updated daily · ${left} this week · Go LIVE and grow. 🚩` },
+      footer: { text: `Updated daily · ${left} this week · ▲ is places moved since yesterday · Go LIVE and grow. 🚩` },
       timestamp: new Date().toISOString(),
     }],
   };
 }
+
+/** "a, b and c" — for a list a person reads rather than scans. */
+const listOf = (xs) => (xs.length < 2 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`);
 
 /** "15–21 September", or "29 September – 5 October" when a week straddles two. */
 function weekSpan(start, end) {

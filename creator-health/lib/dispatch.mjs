@@ -19,7 +19,7 @@ import { activenessRows, activenessPings, recordPings, activenessSummary, active
 import { policyStanding } from './policy.mjs';
 import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { hardestWorkerBoard, hardestWorkerDue } from './hardestworker.mjs';
-import { creatorWeekBoard, creatorWeekDue } from './creatorweek.mjs';
+import { creatorWeekBoard, creatorWeekDue, recordWeekBoard } from './creatorweek.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
 import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
@@ -571,7 +571,7 @@ export async function dispatch({
     : (discordConfig.creatorWeekChannelId && discordConfig.botToken)
       ? { channelId: discordConfig.creatorWeekChannelId } : null;
   if (weekRoute && creators.length && (again('creatorWeek') || creatorWeekDue(config, store, asOf))) {
-    const cw = creatorWeekBoard({ creators, asOf, config });
+    const cw = creatorWeekBoard({ creators, asOf, store, config });
     // Nobody LIVE yet this week is Monday morning, and an empty board in a
     // creator channel is worse than none.
     if (cw.entered) {
@@ -579,7 +579,9 @@ export async function dispatch({
       await (replaces('creatorWeek')
         ? replaceLast('creator-week', '(creator of the week)', weekRoute, card, 'creatorWeek')
         : send('creator-week', '(creator of the week)', weekRoute, card));
-      if (!dryRun) store.data.lastCreatorWeekOn = asOf;
+      // Recorded after rendering, so today's card shows movement against
+      // yesterday rather than against itself.
+      if (!dryRun) { recordWeekBoard(store, cw); store.data.lastCreatorWeekOn = asOf; }
     }
   }
 
