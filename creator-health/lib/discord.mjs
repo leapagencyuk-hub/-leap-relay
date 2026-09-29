@@ -15,6 +15,7 @@ import { profileUrl, avatarUrl } from './profile.mjs';
 import { sparkline, progressBar, monthlyTrend } from './spark.mjs';
 import { MILESTONES } from './graduation.mjs';
 import { coachName, offTheBoards, earningsHidden } from './coaches.mjs';
+import { hrs } from './hardestworker.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -28,6 +29,8 @@ export const COLOR = {
   recovered: 0x30a46c,
   escalation: 0xab4aba,
   neutral: 0x8b8d98,
+  // The winner's card, once a month. Nothing else in the system uses it.
+  gold: 0xe0a800,
 };
 
 const n = (x) => (x == null ? '—' : Math.round(x).toLocaleString('en-GB'));
@@ -1151,6 +1154,74 @@ export function leaderboardEmbed(b, { config = {} } = {}) {
       color: b.change == null ? COLOR.opportunity : b.change >= 0 ? COLOR.recovered : COLOR.warn,
       fields,
       footer: { text: `${b.asOf} · resets on the 1st` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/**
+ * LEAP's Hardest Worker Challenge, for the creator server.
+ *
+ * This is the one card in the system a creator reads, and it is deliberately
+ * the plainest: a name and a number of hours, ten of them. No coach, no team,
+ * no diamonds, no money — none of that is any other creator's business, and
+ * none of it is what the challenge is about.
+ *
+ * The wording is LEAP's own, off the card they were making by hand every week,
+ * with "every week" changed to what it now is. Keeping their words matters
+ * more than improving them: creators have been reading this card for months
+ * and it should carry on sounding like the same person wrote it.
+ *
+ * On the last day of the month the same card crowns the winner instead of
+ * inviting people to climb, because by then nobody can.
+ */
+export function hardestWorkerEmbed(b, { config = {} } = {}) {
+  const monthName = monthNameOf(b.month);
+  const line = (r) => `${r.rank}. ${r.username} — ${hrs(r.hours)} hrs`;
+
+  // Discord caps a field value at 1024 characters. Ten rows never comes close,
+  // but `show` is configurable and a card that silently lost its last two rows
+  // would be worse than one that prints fewer. Cut at a whole row.
+  const rows = [];
+  let len = 0;
+  for (const r of b.top) {
+    const t = line(r);
+    if (len + t.length + 1 > 1000) break;
+    rows.push(t); len += t.length + 1;
+  }
+
+  const left = b.daysLeft === 1 ? '1 day left' : `${b.daysLeft} days left`;
+
+  if (b.finished && b.winner) {
+    const behind = b.top.slice(1, 3).map((r) => r.username);
+    return {
+      embeds: [{
+        title: `🏆 LEAP's Hardest Worker Challenge – ${monthName} winner`,
+        description: `That's ${monthName} done, and the hardest worker of the month is `
+          + `**${b.winner.username}** on **${hrs(b.winner.hours)} hours** streamed. 🔥\n\n`
+          + `Huge congratulations${behind.length ? ` — and to ${behind.join(' and ')} right behind them` : ''}. `
+          + 'Every one of you on this board put the hours in, and it shows. 💪',
+        color: COLOR.gold,
+        fields: [{ name: `${monthName} final leaderboard`, value: rows.join('\n') }],
+        footer: { text: `Final standings for ${monthName}. The board resets on the 1st — new month, new challenge. 🚩` },
+        timestamp: new Date().toISOString(),
+      }],
+    };
+  }
+
+  return {
+    embeds: [{
+      title: `🏆 LEAP's Hardest Worker Challenge – ${monthName}`,
+      description: 'Welcome to our monthly Hardest Worker Challenge! 💪\n\n'
+        + 'Below is the current leaderboard showing how many hours each creator has streamed '
+        + 'so far this month. The leaderboard is **updated every day**, so keep grinding and '
+        + 'climb the ranks to win prizes and recognition! 🔥',
+      color: COLOR.recovered,
+      fields: [{
+        name: `${monthName} leaderboard`,
+        value: rows.join('\n') || 'Nobody has been LIVE yet this month. First one on the board takes top spot. 🔥',
+      }],
+      footer: { text: `Updated daily · ${left} in ${monthName} · Keep streaming to stay on top! 🚩` },
       timestamp: new Date().toISOString(),
     }],
   };

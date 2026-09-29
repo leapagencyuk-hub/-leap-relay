@@ -3,7 +3,7 @@
     "enabled": true,
     "mode": "webhook",
     "routeBy": "group",
-    "_webhooks": "Channel \u2192 Edit Channel \u2192 Integrations \u2192 Webhooks \u2192 New Webhook \u2192 Copy URL.",
+    "_webhooks": "Channel → Edit Channel → Integrations → Webhooks → New Webhook → Copy URL.",
     "summaryWebhook": "env:DISCORD_WEBHOOK_OVERVIEW",
     "_inactive": "Every creator earning nothing goes to this one channel, not the team channels.",
     "inactiveWebhook": "env:DISCORD_WEBHOOK_INACTIVE",
@@ -29,6 +29,9 @@
     "leagueDownWebhook": "env:DISCORD_WEBHOOK_LEAGUE_DOWN",
     "leagueUpChannelId": "1554399473260699649",
     "leagueDownChannelId": "1554399517649145886",
+    "_hardestWorker": "LEAP's Hardest Worker Challenge, in the creator-facing server. Posted daily; the winner is crowned on the last day of the month and the board clears on the 1st.",
+    "hardestWorkerWebhook": "env:DISCORD_WEBHOOK_HARDEST_WORKER",
+    "hardestWorkerChannelId": "1374064861897687201",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",

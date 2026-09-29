@@ -8,6 +8,7 @@ import {
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
+  hardestWorkerEmbed,
   leapedEmbed, leapedOverviewEmbed,
   redoButton,
 } from './discord.mjs';
@@ -17,6 +18,7 @@ import { graduationEvents } from './graduation.mjs';
 import { activenessRows, activenessPings, recordPings, activenessSummary, activenessDue } from './activeness.mjs';
 import { policyStanding } from './policy.mjs';
 import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
+import { hardestWorkerBoard, hardestWorkerDue } from './hardestworker.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
 import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
@@ -148,7 +150,7 @@ export function preflight(discordConfig) {
   const singles = [
     'defaultWebhook', 'summaryWebhook', 'escalationWebhook', 'inactiveWebhook',
     'activenessOverviewWebhook', 'activenessPingWebhook',
-    'leaderboardWebhook', 'growthBoardWebhook',
+    'leaderboardWebhook', 'growthBoardWebhook', 'hardestWorkerWebhook',
   ];
   const hasWebhook = singles.some((k) => Boolean(discordConfig[k]))
     || Object.values(discordConfig.coaches ?? {}).some((c) => c.webhook)
@@ -532,6 +534,30 @@ export async function dispatch({
         ? replaceLast('growth-board', '(growth)', growthRoute, card, 'growthBoard', gb.month)
         : send('growth-board', '(growth)', growthRoute, card));
       if (!dryRun) { recordGrowthBoard(store, gb); store.data.lastGrowthBoardOn = asOf; }
+    }
+  }
+
+  // --- the creator-facing Hardest Worker Challenge ---------------------------
+  // A different server to every other card here: this one is read by creators,
+  // not coaches. Daily, and it takes yesterday's copy down with it.
+  //
+  // No period is passed, unlike the two coach boards above. Theirs keeps the
+  // closing edition of each month; this one is asked to clear on the 1st, so
+  // the new month's board deletes the old month's winner and starts from zero.
+  const hardestRoute = discordConfig.hardestWorkerWebhook
+    ? { webhook: discordConfig.hardestWorkerWebhook, channelId: discordConfig.hardestWorkerChannelId ?? null }
+    : (discordConfig.hardestWorkerChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.hardestWorkerChannelId } : null;
+  if (hardestRoute && creators.length && (again('hardestWorker') || hardestWorkerDue(config, store, asOf))) {
+    const hw = hardestWorkerBoard({ creators, asOf, config });
+    // A month nobody has streamed in yet is the 1st, and an empty board posted
+    // to a creator channel is worse than none.
+    if (hw.entered) {
+      const card = hardestWorkerEmbed(hw, { config });
+      await (replaces('hardestWorker')
+        ? replaceLast('hardest-worker', '(hardest worker)', hardestRoute, card, 'hardestWorker')
+        : send('hardest-worker', '(hardest worker)', hardestRoute, card));
+      if (!dryRun) store.data.lastHardestWorkerOn = asOf;
     }
   }
 

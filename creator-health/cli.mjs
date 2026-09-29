@@ -16,6 +16,7 @@
 //   node cli.mjs policy                      where the network stands on the 2026 rules
 //   node cli.mjs leaderboard                 this month's new-creator recruitment board
 //   node cli.mjs growthboard                 which coaches are growing, adjusted for team size
+//   node cli.mjs hardestworker               the creator-facing Hardest Worker board
 //   node cli.mjs leaped [--who]              the wage bill from leaped creators
 //   node cli.mjs cases [--coach E] [--all]      the open caseload
 //   node cli.mjs case <id>                      one case and its history
@@ -51,6 +52,7 @@ import { activenessRows, activenessSummary } from './lib/activeness.mjs';
 import { policyStanding } from './lib/policy.mjs';
 import { leaderboard } from './lib/leaderboard.mjs';
 import { growthBoard } from './lib/growthboard.mjs';
+import { hardestWorkerBoard, hrs } from './lib/hardestworker.mjs';
 import { coachName } from './lib/coaches.mjs';
 import { leapedState } from './lib/leaped.mjs';
 
@@ -527,6 +529,7 @@ function cmdDiscordEnv() {
   lift(safe.discord, 'leapedOverviewWebhook', 'DISCORD_WEBHOOK_LEAPED_OVERVIEW');
   lift(safe.discord, 'leagueUpWebhook', 'DISCORD_WEBHOOK_LEAGUE_UP');
   lift(safe.discord, 'leagueDownWebhook', 'DISCORD_WEBHOOK_LEAGUE_DOWN');
+  lift(safe.discord, 'hardestWorkerWebhook', 'DISCORD_WEBHOOK_HARDEST_WORKER');
   lift(safe.discord, 'botToken', 'DISCORD_BOT_TOKEN');
   for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
     lift(entry, 'webhook', varName(label));
@@ -752,6 +755,26 @@ function cmdGrowthBoard() {
   if (b.unranked.length) console.log(`  not ranked (too little in both months): ${b.unranked.join(', ')}`);
 }
 
+/** The creator-facing Hardest Worker board, as it will read in the channel. */
+function cmdHardestWorker() {
+  const { creators, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
+  const b = hardestWorkerBoard({ creators, asOf, config });
+  if (!b.entered) return console.log(`Nobody has been LIVE in ${b.month} yet.`);
+
+  console.log(`LEAP's Hardest Worker Challenge — ${b.month}, day ${b.dayOfMonth} of ${b.monthLength}`
+    + (b.finished ? '  (final)' : `  (${b.daysLeft} day(s) to go)`));
+  console.log(`${b.entered} creator(s) on the board, ${hrs(b.totalHours)} hours between them\n`);
+  for (const r of b.top) {
+    console.log(`  ${String(r.rank).padStart(3)}. ${r.username.padEnd(24)}${hrs(r.hours).padStart(8)} hrs`
+      + `${String(r.liveDays).padStart(5)} days`);
+  }
+  if (b.rows.length > b.top.length) {
+    console.log(`\n  ${b.rows.length - b.top.length} more ranked but not printed on the card `
+      + `(config.json hardestWorker.show = ${b.top.length})`);
+  }
+  if (b.lead != null) console.log(`\n  lead: ${hrs(b.lead)} hours over second place`);
+}
+
 /** The wage bill from leaped creators. Read-only: never records a leap. */
 function cmdLeaped() {
   const { creators, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
@@ -838,13 +861,14 @@ const commands = {
   'discord-env': cmdDiscordEnv,
   teams: cmdTeams, graduation: cmdGraduation, policy: cmdPolicy,
   activeness: cmdActiveness, leaderboard: cmdLeaderboard, growthboard: cmdGrowthBoard,
+  hardestworker: cmdHardestWorker,
   leaped: cmdLeaped,
   snooze: cmdSnooze, close: cmdClose,
 };
 
 if (!command || !commands[command]) {
   console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
-    .split('\n').slice(2, 20).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+    .split('\n').slice(2, 21).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
   process.exit(command ? 1 : 0);
 }
 try {

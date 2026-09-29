@@ -136,6 +136,11 @@ export function loadDiscordConfig(raw) {
     leagueUpChannelId: channelOrNull(fromEnv(raw.leagueUpChannelId)),
     leagueDownWebhook: webhookOrNull(fromEnv(raw.leagueDownWebhook)),
     leagueDownChannelId: channelOrNull(fromEnv(raw.leagueDownChannelId)),
+    // The creator-facing Hardest Worker Challenge. A different Discord server
+    // to everything else here, which changes nothing mechanically — a webhook
+    // URL carries its own server and channel.
+    hardestWorkerWebhook: webhookOrNull(fromEnv(raw.hardestWorkerWebhook)),
+    hardestWorkerChannelId: channelOrNull(fromEnv(raw.hardestWorkerChannelId)),
     coaches,
   };
 }
