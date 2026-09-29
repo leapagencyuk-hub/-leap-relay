@@ -37,6 +37,7 @@ import { isOpen } from './lib/cases.mjs';
 import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 import { preflight } from './lib/dispatch.mjs';
 import { redoToday, redoSummary } from './lib/redo.mjs';
+import { pullRankings, rankingsSummary } from './lib/rankings.mjs';
 import { isManageExport, readManualLeaps, importManualLeaps, importSummary } from './lib/leapedimport.mjs';
 import { Discord, declineEmbed, activationEmbed } from './lib/discord.mjs';
 
@@ -405,6 +406,22 @@ async function handleRedo(req, res, url) {
   return json(res, 200, { ...summary, message: redoSummary(summary) });
 }
 
+/**
+ * Pull the LEAP rankings into their two channels.
+ *
+ * POST only, like the redo: it posts to Discord, and a GET would let a link
+ * preview fire it.
+ */
+async function handleRankings(req, res, url) {
+  if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+  const out = await pullRankings(config, configPath, {
+    asOf: url.searchParams.get('as-of'),
+    dryRun: url.searchParams.get('dry') === '1',
+  });
+  const { board, ...payload } = out;
+  return json(res, 200, { ...payload, message: rankingsSummary(out) });
+}
+
 async function handleRun(req, res, url) {
   if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
   const dryRun = url.searchParams.get('dry') === '1';
@@ -440,6 +457,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && route === '/notify') return await handleNotify(req, res, url);
     if (req.method === 'POST' && route === '/run') return await handleRun(req, res, url);
     if (req.method === 'POST' && route === '/redo') return await handleRedo(req, res, url);
+    if (req.method === 'POST' && route === '/rankings') return await handleRankings(req, res, url);
     if (route === '/selftest') return await handleSelfTest(req, res, url);  // GET or POST
     if (req.method === 'POST' && route === '/discord/interactions') {
       return await handleDiscordInteractions(req, res);

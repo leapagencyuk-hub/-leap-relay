@@ -32,6 +32,10 @@ export const COLOR = {
 
 const n = (x) => (x == null ? '—' : Math.round(x).toLocaleString('en-GB'));
 
+/** "2026-09" -> "September". */
+const monthNameOf = (month) => new Date(`${month}-01T00:00:00Z`)
+  .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
+
 /** "1 card" / "2 cards". Nobody writes "card(s)" except a computer. */
 const plural = (count, one, many = `${one}s`) => `${n(count)} ${count === 1 ? one : many}`;
 
@@ -794,6 +798,110 @@ export function leapedOverviewEmbed(s) {
       color: (s.leapedThisMonth ?? s.thisMonth.length) ? COLOR.recovered : COLOR.neutral,
       fields,
       footer: { text: `as of ${s.asOf}` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/**
+ * Who climbed a LEAP league this month.
+ *
+ * Deliberately a celebration and nothing else. Biggest first, the jump stated
+ * plainly, and how far the next one is — which is the only ask on the card.
+ */
+export function rankUpLeagueEmbed(board, { config = {} } = {}) {
+  const rows = board.rankedUp;
+  const fields = [];
+
+  if (rows.length) {
+    fields.push({
+      name: `Moved up — ${rows.length}`,
+      value: fitJoin(rows.slice(0, 20).map((r) =>
+        `**@${r.username}** ${r.from} to **${r.to}**${r.jumped > 1 ? ` (${r.jumped} leagues)` : ''}`
+        + ` — ${n(r.diamonds)} diamonds · ${r.name}`), { total: rows.length }),
+    });
+    const climbing = rows.filter((r) => r.toNext != null).slice(0, 8);
+    if (climbing.length) {
+      fields.push({
+        name: 'And the next one from here',
+        value: fitJoin(climbing.map((r) =>
+          `**@${r.username}** ${n(r.toNext)} more for ${r.nextLeague}`)),
+      });
+    }
+  }
+
+  fields.push({
+    name: 'The leagues',
+    value: board.standings.map((l) =>
+      `\`${String(l.count).padStart(4)}\`  **${l.name}** — ${l.min ? `${n(l.min)}+` : 'under 50,000'}`).join('\n'),
+  });
+
+  return {
+    embeds: [{
+      title: `Ranked up — ${monthNameOf(board.month)}`,
+      description: rows.length
+        ? `**${rows.length}** creators have climbed a league this month.\n`
+          + '_Month to date only goes up, so these are locked in for the month._'
+        : 'Nobody has climbed a league yet this month.',
+      color: rows.length ? COLOR.recovered : COLOR.neutral,
+      fields,
+      footer: { text: `${board.asOf} · ${board.daysLeft} days left in the month` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/**
+ * Who has dropped out of the league they finished last month in.
+ *
+ * Two lists, and the split is the whole value of the card. A creator below
+ * their league early in the month has not dropped — the month has barely
+ * started. They have only dropped when the diamonds they still need are more
+ * than their own rate can deliver in the days that are left.
+ *
+ * So the ones who can still make it are named first, because that is the list
+ * somebody can do something about.
+ */
+export function deRankLeagueEmbed(board, { config = {} } = {}) {
+  const fields = [];
+
+  if (board.slipping.length) {
+    fields.push({
+      name: `Can still make it back — ${board.slipping.length}`,
+      value: fitJoin(board.slipping.slice(0, 15).map((r) =>
+        `**@${r.username}** ${r.from} to ${r.to} — ${n(r.shortBy)} short`
+        + `, ${n(Math.ceil(r.shortBy / Math.max(1, r.daysLeft)))}/day for ${r.daysLeft} ${r.daysLeft === 1 ? 'day' : 'days'} · ${r.name}`),
+      { total: board.slipping.length }),
+    });
+  }
+
+  if (board.deRanked.length) {
+    fields.push({
+      name: `Out of road — ${board.deRanked.length}`,
+      value: fitJoin(board.deRanked.slice(0, 15).map((r) =>
+        `**@${r.username}** ${r.from} to **${r.to}** — ${n(r.diamonds)} against ${n(r.lastMonth)} last month · ${r.name}`),
+      { total: board.deRanked.length }),
+    });
+  }
+
+  fields.push({
+    name: 'How this is read',
+    value: 'A creator below their league early in the month has not dropped — the month has '
+      + 'barely started. They have dropped when what they still need is more than their own '
+      + 'rate can deliver in the days left. Everyone above that line is still winnable.',
+  });
+
+  const total = board.slipping.length + board.deRanked.length;
+  return {
+    embeds: [{
+      title: `De-ranks — ${monthNameOf(board.month)}`,
+      description: total
+        ? `**${board.deRanked.length}** cannot get back to last month's league. `
+          + `**${board.slipping.length}** still can.`
+        : 'Nobody is below the league they finished last month in.',
+      color: board.deRanked.length ? COLOR.warn : COLOR.neutral,
+      fields,
+      footer: { text: `${board.asOf} · ${board.daysLeft} days left in the month` },
       timestamp: new Date().toISOString(),
     }],
   };

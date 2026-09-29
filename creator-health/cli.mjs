@@ -9,6 +9,7 @@
 //   node cli.mjs status                         what is stored
 //   node cli.mjs run [--dry] [--force-overview] [--again=leaderboard,growth]
 //   node cli.mjs redo                       post every daily card again, fresh
+//   node cli.mjs rankings [--dry]           who climbed a LEAP league, and who dropped
 //   node cli.mjs leaped-import <manage.xlsx> [--dry]  seed leaps LEAP paid by hand
 //   node cli.mjs graduation [--limit N]      the 200k chase as it stands
 //   node cli.mjs activeness [--limit N]      who is about to miss the 15h/7d gate
@@ -43,6 +44,7 @@ import { coverage, routeFor } from './lib/dispatch.mjs';
 import { groupKey } from './lib/notify.mjs';
 import { COMMANDS } from './lib/interactions.mjs';
 import { redoToday, redoSummary } from './lib/redo.mjs';
+import { pullRankings, rankingsSummary } from './lib/rankings.mjs';
 import { readManualLeaps, importManualLeaps, importSummary, restoreCorrectedLeaps, standDownMonth } from './lib/leapedimport.mjs';
 import { graduationEvents } from './lib/graduation.mjs';
 import { activenessRows, activenessSummary } from './lib/activeness.mjs';
@@ -289,6 +291,26 @@ function cmdLeapedStandDown() {
   console.log(`${month}: ${out.moved.length} computed credits stood down (was £${out.value})`
     + (sheet == null ? '' : `, the sheet bills £${sheet}`)
     + (flag('dry') ? '  (dry run, nothing written)' : ''));
+}
+
+/** Who climbed a LEAP league this month, and who dropped out of one. */
+async function cmdRankings() {
+  const out = await pullRankings(config, configPath, {
+    asOf: option('as-of'), dryRun: flag('dry'),
+  });
+  console.log(rankingsSummary(out) + (out.dryRun ? '  (dry run, nothing posted)' : ''));
+  for (const l of out.standings) console.log(`  ${String(l.count).padStart(4)}  ${l.name}`);
+  if (out.board) {
+    for (const [label, rows] of [['ranked up', out.board.rankedUp], ['out of road', out.board.deRanked], ['still winnable', out.board.slipping]]) {
+      if (!rows.length) continue;
+      console.log(`\n  ${label}:`);
+      for (const r of rows.slice(0, 10)) {
+        console.log(`    @${r.username.padEnd(22)} ${r.from} -> ${r.to}  ${r.diamonds.toLocaleString()} (last month ${r.lastMonth.toLocaleString()})`);
+      }
+      if (rows.length > 10) console.log(`    and ${rows.length - 10} more.`);
+    }
+  }
+  for (const f of out.failed) console.log(`  FAILED ${f.label}: ${f.error}`);
 }
 
 /** Post every daily card again with the current numbers. */
@@ -804,7 +826,7 @@ function cmdClose() {
 const commands = {
   ingest: cmdIngest, report: cmdReport, coach: cmdCoach,
   creator: cmdCreator, rebuild: cmdRebuild, status: cmdStatus,
-  run: cmdRun, redo: cmdRedo, 'leaped-import': cmdLeapedImport,
+  run: cmdRun, redo: cmdRedo, rankings: cmdRankings, 'leaped-import': cmdLeapedImport,
   'leaped-restore': cmdLeapedRestore, 'leaped-standdown': cmdLeapedStandDown,
   cases: cmdCases, case: cmdCase,
   effectiveness: cmdEffectiveness, 'discord-register': cmdDiscordRegister,

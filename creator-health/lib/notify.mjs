@@ -132,6 +132,10 @@ export function loadDiscordConfig(raw) {
     leapedChannelId: channelOrNull(fromEnv(raw.leapedChannelId)),
     leapedOverviewWebhook: webhookOrNull(fromEnv(raw.leapedOverviewWebhook)),
     leapedOverviewChannelId: channelOrNull(fromEnv(raw.leapedOverviewChannelId)),
+    leagueUpWebhook: webhookOrNull(fromEnv(raw.leagueUpWebhook)),
+    leagueUpChannelId: channelOrNull(fromEnv(raw.leagueUpChannelId)),
+    leagueDownWebhook: webhookOrNull(fromEnv(raw.leagueDownWebhook)),
+    leagueDownChannelId: channelOrNull(fromEnv(raw.leagueDownChannelId)),
     coaches,
   };
 }

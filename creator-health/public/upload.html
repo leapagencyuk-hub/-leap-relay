@@ -82,6 +82,7 @@
     <div class="actions">
       <button id="runBtn" type="button">Run now</button>
       <button id="redoBtn" type="button">Redo today</button>
+      <button id="rankBtn" type="button">Leap rankings</button>
       <button id="overviewBtn" type="button" class="ghost">Post overview</button>
       <button id="boardsBtn" type="button" class="ghost">Repost boards</button>
       <button id="sampleBtn" type="button" class="ghost">Send sample cards</button>
@@ -94,6 +95,9 @@
       the copy before it, so the channels hold one fresh set. It asks first. It leaves creator
       cards and graduation and leaped posts alone — those are open work and one-off events, not a
       view of today, and a redo cannot recreate them.
+      <strong>Leap rankings</strong> works out who has climbed a LEAP league this month and who has
+      dropped out of the one they finished last month in, and posts both to their own channels.
+      Pull it whenever you want; it replaces its own last post rather than stacking.
       <strong>Post overview</strong> re-sends the management
       summary even if it has already gone out today. <strong>Repost boards</strong> sends today's
       leaderboard and growth board again, which is what you want after a change to how they read. <strong>Send sample cards</strong> posts one real
@@ -230,7 +234,7 @@ async function upload(file) {
 
 // Running and testing from the page, so neither needs a terminal.
 async function post(path, label, render) {
-  const btns = [$('runBtn'), $('redoBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
+  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
   btns.forEach((b) => { b.disabled = true; });
   bar.classList.add('on');
   result.classList.remove('show');
@@ -279,6 +283,17 @@ $('redoBtn').addEventListener('click', () => {
     + (r.skipped ? row('Nothing sent', `<span class="warn">${esc(r.skipped)}</span>`) : '')
     + (r.failed ?? []).map((f) => row('Failed', `<span class="bad">${esc(f.label)} — ${esc(f.error)}</span>`)).join(''));
 });
+
+$('rankBtn').addEventListener('click', () => post('rankings', 'Leap rankings', (r) => `<h2>Leap rankings</h2>`
+  + row('Data up to', esc(r.asOf))
+  + row('Days left in the month', n(r.daysLeft))
+  + row('Ranked up', n(r.rankedUp), r.rankedUp ? 'ok' : '')
+  + row('De-ranked', n(r.deRanked), r.deRanked ? 'warn' : '')
+  + row('Still winnable', n(r.slipping))
+  + row('Held their league', n(r.held))
+  + (r.standings ?? []).map((l) => row(esc(l.name), n(l.count))).join('')
+  + (r.posted ?? []).map((p) => row('Posted', esc(p), 'ok')).join('')
+  + (r.failed ?? []).map((f) => row('Failed', `<span class="bad">${esc(f.label)} — ${esc(f.error)}</span>`)).join('')));
 
 $('overviewBtn').addEventListener('click', () => post('run?force-overview=1', 'Overview', (r) => `<h2>Overview posted</h2>`
   + row('Data up to', esc(r.asOf))

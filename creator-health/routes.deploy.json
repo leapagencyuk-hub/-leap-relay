@@ -24,6 +24,11 @@
     "leapedChannelId": "1554118989461065819",
     "leapedOverviewWebhook": "env:DISCORD_WEBHOOK_LEAPED_OVERVIEW",
     "leapedOverviewChannelId": "1554119444303974440",
+    "_leagues": "LEAP's own leagues - Aspire, Rising, Elite, Pro. Who climbed one this month, and who has dropped out of the one they finished last month in. Pulled on demand from the Leap rankings button, not posted daily.",
+    "leagueUpWebhook": "env:DISCORD_WEBHOOK_LEAGUE_UP",
+    "leagueDownWebhook": "env:DISCORD_WEBHOOK_LEAGUE_DOWN",
+    "leagueUpChannelId": "1554399473260699649",
+    "leagueDownChannelId": "1554399517649145886",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",
