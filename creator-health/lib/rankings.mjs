@@ -13,7 +13,8 @@ import path from 'node:path';
 import { Store } from './store.mjs';
 import { CaseStore } from './cases.mjs';
 import { loadRoutes } from './notify.mjs';
-import { Discord, rankUpLeagueEmbed, deRankLeagueEmbed } from './discord.mjs';
+import { Discord, rankUpLeagueEmbed, deRankLeagueEmbed, teamLeagueEmbed } from './discord.mjs';
+import { groupKey } from './notify.mjs';
 import { leagueBoard } from './leagues.mjs';
 import { supersedes } from './dispatch.mjs';
 import { sweeper, sweepDuplicates } from './sweep.mjs';
@@ -122,6 +123,31 @@ export async function pullRankings(config, configPath, { asOf = null, dryRun = f
 
   await post('league-up', up, rankUpLeagueEmbed(board, { config }), 'leagueUp');
   await post('league-down', down, deRankLeagueEmbed(board, { config }), 'leagueDown');
+
+  // And the same month cut down to each coach's own creators, in the channel
+  // they already watch. The network cards are for the admin channels; this is
+  // the list somebody can act on.
+  const moved = board.rows.filter((r) => r.rankedUp || r.slipping || r.deRanked);
+  const byTeam = new Map();
+  for (const r of moved) {
+    if (!r.group) continue;
+    const k = groupKey(r.group);
+    if (!byTeam.has(k)) byTeam.set(k, { team: r.group, rows: [] });
+    byTeam.get(k).rows.push(r);
+  }
+  result.teams = [];
+  for (const [k, { team, rows }] of byTeam) {
+    const entry = discord.groups?.[k];
+    const route = entry?.webhook
+      ? { webhook: entry.webhook, channelId: entry.channelId ?? null }
+      : (entry?.channelId && discord.botToken) ? { channelId: entry.channelId } : null;
+    if (!route) continue;
+    const pages = teamLeagueEmbed(rows, { team, board, config });
+    if (!pages.length) continue;
+    await post(`league-team`, route, pages, `leagueTeam:${k}`);
+    result.teams.push({ team, moved: rows.length });
+  }
+
   store.save();
 
   return result;
@@ -134,6 +160,7 @@ export function rankingsSummary(r) {
     `${r.deRanked} de-ranked`,
     `${r.slipping} still winnable`,
   ];
+  if (r.teams?.length) parts.push(`${r.teams.length} team cards`);
   return `${r.month}: ${parts.join(', ')} (${r.daysLeft} days left).`
     + (r.failed.length ? ` ${r.failed.length} failed to post.` : '');
 }

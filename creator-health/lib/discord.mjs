@@ -956,6 +956,60 @@ export function deRankLeagueEmbed(board, { config = {} } = {}) {
 }
 
 /**
+ * One team's league movement, for the coach who runs it.
+ *
+ * The network cards go to the admin channels and cover everybody. This is the
+ * same month cut down to the creators a coach can actually ring, and it goes
+ * to their monitoring channel.
+ *
+ * Both directions on one card, in the order a coach can use: who climbed (say
+ * well done), who can still get back (ring them today), who cannot (next
+ * month's problem). Nothing is trimmed here either.
+ */
+export function teamLeagueEmbed(rows, { team, board, config = {} } = {}) {
+  const up = rows.filter((r) => r.rankedUp);
+  const winnable = rows.filter((r) => r.slipping);
+  const gone = rows.filter((r) => r.deRanked);
+  if (!up.length && !winnable.length && !gone.length) return [];
+
+  const lines = [];
+  if (up.length) {
+    lines.push(`**Ranked up — ${up.length}**`);
+    for (const r of up) {
+      lines.push(`\`+\` **@${r.username}** ${r.from} to **${r.to}**`
+        + `${r.jumped > 1 ? ` (${r.jumped} leagues)` : ''} · ${n(r.diamonds)}`
+        + (r.toNext != null ? ` · ${n(r.toNext)} more for ${r.nextLeague}` : ''));
+    }
+  }
+  if (winnable.length) {
+    if (lines.length) lines.push('');
+    lines.push(`**Can still get back — ${winnable.length}**`);
+    for (const r of winnable) {
+      lines.push(`\`>\` **@${r.username}** ${r.from} to ${r.to} · ${n(r.shortBy)} short`
+        + ` · ${n(Math.ceil(r.shortBy / Math.max(1, r.daysLeft)))}/day`);
+    }
+  }
+  if (gone.length) {
+    if (lines.length) lines.push('');
+    lines.push(`**Out of road — ${gone.length}**`);
+    for (const r of gone) {
+      lines.push(`\`-\` **@${r.username}** ${r.from} to **${r.to}** · ${n(r.diamonds)} against ${n(r.lastMonth)} last month`);
+    }
+  }
+
+  return paginateList(lines, {
+    name: 'This month',
+    title: `${team} — league moves, ${monthNameOf(board.month)}`,
+    description: `**${up.length}** up, **${winnable.length}** who can still get back, `
+      + `**${gone.length}** who cannot.\n`
+      + '_A rank-up is locked in for the month. A creator below their league has only dropped '
+      + 'when what they still need is more than their own rate can deliver in the days left._',
+    color: up.length ? COLOR.recovered : gone.length ? COLOR.warn : COLOR.neutral,
+    footer: `${board.asOf} · ${board.daysLeft} days left in the month`,
+  });
+}
+
+/**
  * The coach growth board.
  *
  * Deliberately sparse. A coach wants to know whether they are up, and where

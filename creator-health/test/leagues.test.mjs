@@ -174,3 +174,52 @@ test('a creator with no reading this month is not guessed at', () => {
   assert.equal(leagueMoveFor({ username: 'ghost', obs: [] }, ASOF, config), null);
   assert.equal(leagueMoveFor({ username: 'ghost' }, ASOF, config), null);
 });
+
+test('each team gets its own card, in the order a coach can work it', async () => {
+  const { teamLeagueEmbed } = await import('../lib/discord.mjs');
+  const board = leagueBoard({
+    creators: [
+      who('climbed', { diamonds: 223638, lastMonth: 198822 }),
+      who('winnable', { diamonds: 414527, lastMonth: 597613 }),
+      who('gone', { diamonds: 280194, lastMonth: 657252 }),
+      who('untouched', { diamonds: 60000, lastMonth: 55000 }),
+    ],
+    asOf: ASOF, config,
+  });
+  const rows = board.rows.filter((r) => r.rankedUp || r.slipping || r.deRanked);
+  const [page] = teamLeagueEmbed(rows, { team: 'Team Alpha', board, config });
+  const e = page.embeds[0];
+
+  assert.match(e.title, /^Team Alpha — league moves, September$/);
+  assert.match(e.description, /\*\*1\*\* up, \*\*1\*\* who can still get back, \*\*1\*\* who cannot/);
+
+  const v = e.fields[0].value;
+  // Well done, then ring them today, then next month's problem.
+  assert.ok(v.indexOf('Ranked up') < v.indexOf('Can still get back'), 'climbers first');
+  assert.ok(v.indexOf('Can still get back') < v.indexOf('Out of road'), 'winnable before lost');
+  assert.match(v, /@climbed\*\* Rising to \*\*Elite\*\* · 223,638 · 276,362 more for Pro/);
+  assert.match(v, /@winnable\*\* Pro to Elite · 85,473 short · 8,548\/day/);
+  assert.match(v, /@gone\*\* Pro to \*\*Elite\*\* · 280,194 against 657,252 last month/);
+  // Somebody who held their league is not on it.
+  assert.doesNotMatch(v, /untouched/);
+});
+
+test('a team with nobody moving gets no card at all', async () => {
+  const { teamLeagueEmbed } = await import('../lib/discord.mjs');
+  const board = leagueBoard({ creators: [who('flat', { diamonds: 60000, lastMonth: 55000 })], asOf: ASOF, config });
+  assert.deepEqual(teamLeagueEmbed(board.rows, { team: 'Team Alpha', board, config }), []);
+  assert.deepEqual(teamLeagueEmbed([], { team: 'Team Alpha', board, config }), []);
+});
+
+test('a team card shows everyone who moved, however many', async () => {
+  const { teamLeagueEmbed } = await import('../lib/discord.mjs');
+  const creators = Array.from({ length: 60 }, (_, i) =>
+    who(`a_creator_with_a_long_name_${String(i).padStart(3, '0')}`, { diamonds: 220000 + i, lastMonth: 10000 }));
+  const board = leagueBoard({ creators, asOf: ASOF, config });
+  const pages = teamLeagueEmbed(board.rows, { team: 'Team Alpha', board, config });
+  const all = pages.flatMap((p) => p.embeds[0].fields).map((f) => f.value).join('\n');
+  for (const c of creators) assert.ok(all.includes(`@${c.username}**`), `${c.username} is on the card`);
+  assert.doesNotMatch(all, /and \d+ more/);
+  const titles = pages.map((p) => p.embeds[0].title);
+  assert.equal(new Set(titles).size, titles.length, 'pages are titled distinctly');
+});
