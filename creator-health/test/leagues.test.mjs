@@ -102,18 +102,50 @@ test('the rank-up card celebrates, names the coach, and points at the next one',
   const board = leagueBoard({
     creators: [who('climber', { diamonds: 223638, lastMonth: 198822 })], asOf: ASOF, config,
   });
-  const e = rankUpLeagueEmbed(board, { config }).embeds[0];
-  assert.match(e.title, /Ranked up — September/);
+  const [page] = rankUpLeagueEmbed(board, { config });
+  const e = page.embeds[0];
+  assert.match(e.title, /^Ranked up — September$/, 'one page needs no part number');
   assert.match(e.description, /locked in for the month/);
   const body = e.fields.map((f) => `${f.name}\n${f.value}`).join('\n');
-  assert.match(body, /@climber\*\* Rising to \*\*Elite\*\* — 223,638 diamonds · Sur3shot/);
-  assert.match(body, /@climber\*\* 276,362 more for Pro/);
-  // And where the network stands, on both cards.
+  assert.match(body, /@climber\*\* Rising to \*\*Elite\*\* · 223,638 · 276,362 more for Pro · Sur3shot/);
   assert.match(body, /\*\*Aspire\*\* — under 50,000/);
 });
 
-test('the de-rank card puts the winnable ones first', () => {
-  // The ones who can still make it are the only half anybody can act on.
+test('every name is shown, however many there are', () => {
+  // Staff make a poster for each one, so a card that ends "and 18 more" is
+  // useless. Discord caps a field at 1024 characters and an embed at 6000, so
+  // a long month is split across fields and messages rather than trimmed.
+  const creators = Array.from({ length: 120 }, (_, i) =>
+    who(`a_creator_with_a_long_name_${String(i).padStart(3, '0')}`, { diamonds: 220000 + i, lastMonth: 10000 }));
+  const board = leagueBoard({ creators, asOf: ASOF, config });
+  assert.equal(board.rankedUp.length, 120);
+
+  const pages = rankUpLeagueEmbed(board, { config });
+  assert.ok(pages.length > 1, 'it took more than one message');
+
+  const all = pages.flatMap((p) => p.embeds[0].fields).map((f) => f.value).join('\n');
+  for (const c of creators) {
+    assert.ok(all.includes(`@${c.username}**`), `${c.username} is on the card`);
+  }
+  assert.doesNotMatch(all, /and \d+ more/, 'and nothing was trimmed');
+
+  // Every page stays inside Discord's limits.
+  for (const p of pages) {
+    const e = p.embeds[0];
+    assert.ok(e.fields.length <= 25, 'at most 25 fields');
+    for (const f of e.fields) assert.ok(f.value.length <= 1024, `field is ${f.value.length}`);
+    const total = e.title.length + (e.description?.length ?? 0) + e.footer.text.length
+      + e.fields.reduce((n2, f) => n2 + f.name.length + f.value.length, 0);
+    assert.ok(total <= 6000, `embed is ${total}`);
+  }
+  // Each page is titled distinctly, so the duplicate sweep cannot eat page 1
+  // when page 2 goes up.
+  const titles = pages.map((p) => p.embeds[0].title);
+  assert.equal(new Set(titles).size, titles.length);
+  assert.match(titles[0], /\(1 of \d+\)$/);
+});
+
+test('the de-rank card puts the winnable ones first, and shows them all', () => {
   const board = leagueBoard({
     creators: [
       who('cannot', { diamonds: 280194, lastMonth: 657252 }),
@@ -121,18 +153,21 @@ test('the de-rank card puts the winnable ones first', () => {
     ],
     asOf: ASOF, config,
   });
-  const e = deRankLeagueEmbed(board, { config }).embeds[0];
-  assert.match(e.description, /\*\*1\*\* cannot get back.*\*\*1\*\* still can/);
-  assert.match(e.fields[0].name, /Can still make it back — 1/);
-  assert.match(e.fields[0].value, /@can\*\* Pro to Elite — 85,473 short, 8,548\/day for 10 days/);
-  assert.match(e.fields[1].name, /Out of road — 1/);
-  assert.match(e.fields[1].value, /@cannot\*\* Pro to \*\*Elite\*\* — 280,194 against 657,252 last month/);
+  const pages = deRankLeagueEmbed(board, { config });
+  const first = pages[0].embeds[0];
+  assert.match(first.description, /\*\*1\*\* cannot get back.*\*\*1\*\* still can/s);
+  assert.match(first.fields[0].name, /Can still make it back — 1/);
+  assert.match(first.fields[0].value, /@can\*\* Pro to Elite · 85,473 short · 8,548\/day/);
+
+  const body = pages.flatMap((p) => p.embeds[0].fields).map((f) => `${f.name}\n${f.value}`).join('\n');
+  assert.match(body, /Out of road — 1/);
+  assert.match(body, /@cannot\*\* Pro to \*\*Elite\*\* · 280,194 against 657,252 last month/);
 });
 
 test('empty cards say so rather than showing a bare heading', () => {
   const board = leagueBoard({ creators: [who('flat', { diamonds: 60000, lastMonth: 55000 })], asOf: ASOF, config });
-  assert.match(rankUpLeagueEmbed(board, { config }).embeds[0].description, /Nobody has climbed/);
-  assert.match(deRankLeagueEmbed(board, { config }).embeds[0].description, /Nobody is below/);
+  assert.match(rankUpLeagueEmbed(board, { config })[0].embeds[0].description, /Nobody has climbed/);
+  assert.match(deRankLeagueEmbed(board, { config })[0].embeds[0].description, /Nobody is below/);
 });
 
 test('a creator with no reading this month is not guessed at', () => {

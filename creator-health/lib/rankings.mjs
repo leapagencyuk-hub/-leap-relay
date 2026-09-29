@@ -64,37 +64,59 @@ export async function pullRankings(config, configPath, { asOf = null, dryRun = f
   const store = new CaseStore(config.dataDir);
   const sweep = await sweeper(discord);
 
-  const post = async (label, route, payload, slot) => {
+  /**
+   * Post every page of a card, and remove every page of the last one.
+   *
+   * A long month needs more than one message, so the stored id is a list.
+   * Older stores hold a single id; both shapes are read.
+   */
+  const post = async (label, route, payloads, slot) => {
     if (!route) { result.failed.push({ label, error: 'no channel configured' }); return; }
-    const res = route.webhook
-      ? await client.postToWebhook(route.webhook, payload)
-      : await client.postToChannel(route.channelId, payload);
-    if (!res.ok) { result.failed.push({ label, error: res.error }); return; }
-    result.posted.push(label);
 
-    const prev = store.data.lastMessage?.[slot] ?? null;
-    if (res.body?.id) {
-      store.data.lastMessage ??= {};
-      store.data.lastMessage[slot] = { id: res.body.id, period: board.month };
+    const prevEntry = store.data.lastMessage?.[slot] ?? null;
+    const prevIds = prevEntry?.ids ?? (prevEntry?.id ? [prevEntry.id] : []);
+    const prevPeriod = prevEntry?.period ?? null;
+
+    const ids = [];
+    for (const payload of payloads) {
+      const res = route.webhook
+        ? await client.postToWebhook(route.webhook, payload)
+        : await client.postToChannel(route.channelId, payload);
+      if (!res.ok) { result.failed.push({ label, error: res.error }); continue; }
+      result.posted.push(label);
+      if (res.body?.id) ids.push(res.body.id);
     }
+    if (!ids.length) return;
+
+    store.data.lastMessage ??= {};
+    store.data.lastMessage[slot] = { ids, period: board.month };
+
     // Within a month only: the closing set for a month is a result and
     // survives into the next one.
-    if (supersedes(prev, board.month, res.body?.id)) {
-      const gone = route.webhook
-        ? await client.deleteWebhookMessage(route.webhook, prev.id)
-        : await client.deleteMessage(route.channelId, prev.id);
-      if (gone.ok) result.replaced++;
-      else result.failed.push({ label: `${label}-cleanup`, error: gone.error });
+    if (supersedes({ id: prevIds[0], period: prevPeriod }, board.month, ids[0])) {
+      for (const id of prevIds) {
+        if (ids.includes(id)) continue;
+        const gone = route.webhook
+          ? await client.deleteWebhookMessage(route.webhook, id)
+          : await client.deleteMessage(route.channelId, id);
+        if (gone.ok) result.replaced++;
+        else result.failed.push({ label: `${label}-cleanup`, error: gone.error });
+      }
     }
-    // And the copies our own notes never knew about.
-    if (sweep && route.channelId && res.body?.id) {
-      const out = await sweepDuplicates(sweep.client, {
-        channelId: route.channelId,
-        title: payload.embeds?.[0]?.title ?? null,
-        keepId: res.body.id,
-        botUserId: sweep.botUserId,
-      });
-      if (out.ok) result.replaced += out.removed.length;
+
+    // And the copies our own notes never knew about. Each page has its own
+    // title, so a page is only ever swept by its own earlier copy.
+    if (sweep && route.channelId) {
+      for (let i = 0; i < payloads.length; i++) {
+        if (!ids[i]) continue;
+        const out = await sweepDuplicates(sweep.client, {
+          channelId: route.channelId,
+          title: payloads[i].embeds?.[0]?.title ?? null,
+          keepId: ids[i],
+          botUserId: sweep.botUserId,
+        });
+        if (out.ok) result.replaced += out.removed.length;
+      }
     }
   };
 

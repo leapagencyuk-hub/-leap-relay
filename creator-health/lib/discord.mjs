@@ -32,6 +32,64 @@ export const COLOR = {
 
 const n = (x) => (x == null ? '—' : Math.round(x).toLocaleString('en-GB'));
 
+/**
+ * Break a list across as many fields and messages as it takes to show all of it.
+ *
+ * Discord caps a field value at 1024 characters and a whole embed at 6000, so
+ * a long list has to be split rather than trimmed. Trimming is what this
+ * replaces: a card that ended "and 18 more" was unusable to anyone working
+ * through the names one by one.
+ *
+ * Continuation messages carry the part number in their title. That is not
+ * decoration — the duplicate sweep matches on exact title, so parts must not
+ * share one, or posting part 2 would delete part 1.
+ */
+function paginateList(lines, { name, title, description, color, footer, extraFields = [] }) {
+  const FIELD = 1000;      // under Discord's 1024, with room for the join
+  const EMBED = 5200;      // under 6000, leaving room for title and footer
+  const FIELDS = 20;       // under 25
+
+  const fields = [];
+  let cur = [];
+  let curLen = 0;
+  const flush = () => {
+    if (!cur.length) return;
+    fields.push({ name: fields.length === 0 ? name : `${name}, cont. ${fields.length + 1}`, value: cur.join('\n') });
+    cur = []; curLen = 0;
+  };
+  for (const line of lines) {
+    if (curLen + line.length + 1 > FIELD) flush();
+    cur.push(line); curLen += line.length + 1;
+  }
+  flush();
+  fields.push(...extraFields);
+
+  // Now pack fields into messages that stay under the embed budget.
+  const pages = [];
+  let page = [];
+  let pageLen = 0;
+  for (const f of fields) {
+    const size = f.name.length + f.value.length;
+    if (page.length && (pageLen + size > EMBED || page.length >= FIELDS)) {
+      pages.push(page); page = []; pageLen = 0;
+    }
+    page.push(f); pageLen += size;
+  }
+  if (page.length) pages.push(page);
+  if (!pages.length) pages.push([]);
+
+  return pages.map((pageFields, i) => ({
+    embeds: [{
+      title: pages.length > 1 ? `${title} (${i + 1} of ${pages.length})` : title,
+      ...(i === 0 && description ? { description } : {}),
+      color,
+      fields: pageFields,
+      footer: { text: footer },
+      timestamp: new Date().toISOString(),
+    }],
+  }));
+}
+
 /** "2026-09" -> "September". */
 const monthNameOf = (month) => new Date(`${month}-01T00:00:00Z`)
   .toLocaleString('en-GB', { month: 'long', timeZone: 'UTC' });
@@ -811,44 +869,29 @@ export function leapedOverviewEmbed(s) {
  */
 export function rankUpLeagueEmbed(board, { config = {} } = {}) {
   const rows = board.rankedUp;
-  const fields = [];
-
-  if (rows.length) {
-    fields.push({
-      name: `Moved up — ${rows.length}`,
-      value: fitJoin(rows.slice(0, 20).map((r) =>
-        `**@${r.username}** ${r.from} to **${r.to}**${r.jumped > 1 ? ` (${r.jumped} leagues)` : ''}`
-        + ` — ${n(r.diamonds)} diamonds · ${r.name}`), { total: rows.length }),
-    });
-    const climbing = rows.filter((r) => r.toNext != null).slice(0, 8);
-    if (climbing.length) {
-      fields.push({
-        name: 'And the next one from here',
-        value: fitJoin(climbing.map((r) =>
-          `**@${r.username}** ${n(r.toNext)} more for ${r.nextLeague}`)),
-      });
-    }
-  }
-
-  fields.push({
+  const leagues = {
     name: 'The leagues',
     value: board.standings.map((l) =>
       `\`${String(l.count).padStart(4)}\`  **${l.name}** — ${l.min ? `${n(l.min)}+` : 'under 50,000'}`).join('\n'),
-  });
+  };
 
-  return {
-    embeds: [{
+  return paginateList(
+    rows.map((r) =>
+      `**@${r.username}** ${r.from} to **${r.to}**${r.jumped > 1 ? ` (${r.jumped} leagues)` : ''}`
+      + ` · ${n(r.diamonds)}`
+      + (r.toNext != null ? ` · ${n(r.toNext)} more for ${r.nextLeague}` : '')
+      + ` · ${r.name}`),
+    {
+      name: `Moved up — ${rows.length}`,
       title: `Ranked up — ${monthNameOf(board.month)}`,
       description: rows.length
         ? `**${rows.length}** creators have climbed a league this month.\n`
           + '_Month to date only goes up, so these are locked in for the month._'
         : 'Nobody has climbed a league yet this month.',
       color: rows.length ? COLOR.recovered : COLOR.neutral,
-      fields,
-      footer: { text: `${board.asOf} · ${board.daysLeft} days left in the month` },
-      timestamp: new Date().toISOString(),
-    }],
-  };
+      footer: `${board.asOf} · ${board.daysLeft} days left in the month`,
+      extraFields: [leagues],
+    });
 }
 
 /**
@@ -859,52 +902,57 @@ export function rankUpLeagueEmbed(board, { config = {} } = {}) {
  * started. They have only dropped when the diamonds they still need are more
  * than their own rate can deliver in the days that are left.
  *
- * So the ones who can still make it are named first, because that is the list
- * somebody can do something about.
+ * The ones who can still make it come first, because that is the list somebody
+ * can do something about. Both are shown in full: staff work through these
+ * name by name, so a trimmed list is worse than no list.
  */
 export function deRankLeagueEmbed(board, { config = {} } = {}) {
-  const fields = [];
+  const winnable = board.slipping.map((r) =>
+    `**@${r.username}** ${r.from} to ${r.to} · ${n(r.shortBy)} short`
+    + ` · ${n(Math.ceil(r.shortBy / Math.max(1, r.daysLeft)))}/day · ${r.name}`);
+  const gone = board.deRanked.map((r) =>
+    `**@${r.username}** ${r.from} to **${r.to}** · ${n(r.diamonds)} against ${n(r.lastMonth)} last month · ${r.name}`);
 
-  if (board.slipping.length) {
-    fields.push({
-      name: `Can still make it back — ${board.slipping.length}`,
-      value: fitJoin(board.slipping.slice(0, 15).map((r) =>
-        `**@${r.username}** ${r.from} to ${r.to} — ${n(r.shortBy)} short`
-        + `, ${n(Math.ceil(r.shortBy / Math.max(1, r.daysLeft)))}/day for ${r.daysLeft} ${r.daysLeft === 1 ? 'day' : 'days'} · ${r.name}`),
-      { total: board.slipping.length }),
-    });
-  }
+  const total = winnable.length + gone.length;
+  const pages = [];
 
-  if (board.deRanked.length) {
-    fields.push({
-      name: `Out of road — ${board.deRanked.length}`,
-      value: fitJoin(board.deRanked.slice(0, 15).map((r) =>
-        `**@${r.username}** ${r.from} to **${r.to}** — ${n(r.diamonds)} against ${n(r.lastMonth)} last month · ${r.name}`),
-      { total: board.deRanked.length }),
-    });
-  }
-
-  fields.push({
-    name: 'How this is read',
-    value: 'A creator below their league early in the month has not dropped — the month has '
-      + 'barely started. They have dropped when what they still need is more than their own '
-      + 'rate can deliver in the days left. Everyone above that line is still winnable.',
-  });
-
-  const total = board.slipping.length + board.deRanked.length;
-  return {
-    embeds: [{
+  if (winnable.length) {
+    pages.push(...paginateList(winnable, {
+      name: `Can still make it back — ${winnable.length}`,
       title: `De-ranks — ${monthNameOf(board.month)}`,
-      description: total
-        ? `**${board.deRanked.length}** cannot get back to last month's league. `
-          + `**${board.slipping.length}** still can.`
-        : 'Nobody is below the league they finished last month in.',
-      color: board.deRanked.length ? COLOR.warn : COLOR.neutral,
-      fields,
-      footer: { text: `${board.asOf} · ${board.daysLeft} days left in the month` },
-      timestamp: new Date().toISOString(),
-    }],
-  };
+      description: `**${gone.length}** cannot get back to last month's league. `
+        + `**${winnable.length}** still can.\n`
+        + '_A creator below their league early in the month has not dropped. They have dropped '
+        + 'when what they still need is more than their own rate can deliver in the days left._',
+      color: gone.length ? COLOR.warn : COLOR.neutral,
+      footer: `${board.asOf} · ${board.daysLeft} days left in the month`,
+    }));
+  }
+
+  if (gone.length) {
+    pages.push(...paginateList(gone, {
+      name: `Out of road — ${gone.length}`,
+      title: winnable.length
+        ? `De-ranked — ${monthNameOf(board.month)}`
+        : `De-ranks — ${monthNameOf(board.month)}`,
+      description: winnable.length ? null
+        : `**${gone.length}** cannot get back to last month's league.`,
+      color: COLOR.warn,
+      footer: `${board.asOf} · ${board.daysLeft} days left in the month`,
+    }));
+  }
+
+  if (!total) {
+    pages.push(...paginateList([], {
+      name: 'Nobody',
+      title: `De-ranks — ${monthNameOf(board.month)}`,
+      description: 'Nobody is below the league they finished last month in.',
+      color: COLOR.neutral,
+      footer: `${board.asOf} · ${board.daysLeft} days left in the month`,
+    }));
+  }
+
+  return pages;
 }
 
 /**
