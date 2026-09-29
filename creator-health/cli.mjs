@@ -17,6 +17,7 @@
 //   node cli.mjs leaderboard                 this month's new-creator recruitment board
 //   node cli.mjs growthboard                 which coaches are growing, adjusted for team size
 //   node cli.mjs hardestworker               the creator-facing Hardest Worker board
+//   node cli.mjs creatorweek                 who grew the most this week, and why
 //   node cli.mjs leaped [--who]              the wage bill from leaped creators
 //   node cli.mjs cases [--coach E] [--all]      the open caseload
 //   node cli.mjs case <id>                      one case and its history
@@ -53,6 +54,7 @@ import { policyStanding } from './lib/policy.mjs';
 import { leaderboard } from './lib/leaderboard.mjs';
 import { growthBoard } from './lib/growthboard.mjs';
 import { hardestWorkerBoard, hrs } from './lib/hardestworker.mjs';
+import { creatorWeekBoard, PILLARS } from './lib/creatorweek.mjs';
 import { coachName } from './lib/coaches.mjs';
 import { leapedState } from './lib/leaped.mjs';
 
@@ -530,6 +532,7 @@ function cmdDiscordEnv() {
   lift(safe.discord, 'leagueUpWebhook', 'DISCORD_WEBHOOK_LEAGUE_UP');
   lift(safe.discord, 'leagueDownWebhook', 'DISCORD_WEBHOOK_LEAGUE_DOWN');
   lift(safe.discord, 'hardestWorkerWebhook', 'DISCORD_WEBHOOK_HARDEST_WORKER');
+  lift(safe.discord, 'creatorWeekWebhook', 'DISCORD_WEBHOOK_CREATOR_WEEK');
   lift(safe.discord, 'botToken', 'DISCORD_BOT_TOKEN');
   for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
     lift(entry, 'webhook', varName(label));
@@ -775,6 +778,30 @@ function cmdHardestWorker() {
   if (b.lead != null) console.log(`\n  lead: ${hrs(b.lead)} hours over second place`);
 }
 
+/** Creator of the Week, with the workings the card deliberately hides. */
+function cmdCreatorWeek() {
+  const { creators, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
+  const b = creatorWeekBoard({ creators, asOf, config });
+  if (!b.entered) return console.log(`Nobody has been LIVE in the week of ${b.weekStart} yet.`);
+
+  console.log(`Creator of the Week — ${b.weekStart} to ${b.weekEnd}, day ${b.days} of 7`
+    + (b.finished ? '  (final)' : `  (${b.daysLeft} day(s) to go)`));
+  console.log(`${b.entered} creator(s) went LIVE; ${b.observedDays} of ${b.days} days came from a single-day upload\n`);
+  console.log(`  ${'#'.padStart(3)}  ${'creator'.padEnd(24)}${'score'.padStart(6)}${'diamonds'.padStart(11)}`
+    + `${'hours'.padStart(8)}${'follow'.padStart(8)}${'fanclub'.padStart(8)}${'beat own'.padStart(10)}`);
+  for (const r of b.top) {
+    console.log(`  ${String(r.rank).padStart(3)}  ${r.username.padEnd(24)}${r.score.toFixed(3).padStart(6)}`
+      + `${Math.round(r.now.diamonds).toLocaleString('en-GB').padStart(11)}${r.now.liveHours.toFixed(1).padStart(8)}`
+      + `${Math.round(r.now.newFollowers).toLocaleString('en-GB').padStart(8)}`
+      + `${Math.round(r.now.newFans).toString().padStart(8)}${r.momentum.toFixed(2).padStart(10)}`);
+  }
+  console.log(`\n  scored by POSITION on each pillar, not by size: best in the network scores 1, worst 0`);
+  console.log(`  pillars: ${PILLARS.map((p) => p.label).join(', ')}, plus beating your own equivalent days last week`);
+  if (b.rows.length > b.top.length) {
+    console.log(`  ${b.rows.length - b.top.length} more ranked but not printed on the card`);
+  }
+}
+
 /** The wage bill from leaped creators. Read-only: never records a leap. */
 function cmdLeaped() {
   const { creators, asOf } = analyse(config, { asOf: option('as-of'), persist: false });
@@ -861,14 +888,14 @@ const commands = {
   'discord-env': cmdDiscordEnv,
   teams: cmdTeams, graduation: cmdGraduation, policy: cmdPolicy,
   activeness: cmdActiveness, leaderboard: cmdLeaderboard, growthboard: cmdGrowthBoard,
-  hardestworker: cmdHardestWorker,
+  hardestworker: cmdHardestWorker, creatorweek: cmdCreatorWeek,
   leaped: cmdLeaped,
   snooze: cmdSnooze, close: cmdClose,
 };
 
 if (!command || !commands[command]) {
   console.log(fs.readFileSync(fileURLToPath(import.meta.url), 'utf8')
-    .split('\n').slice(2, 21).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
+    .split('\n').slice(2, 22).map((l) => l.replace(/^\/\/ ?/, '')).join('\n'));
   process.exit(command ? 1 : 0);
 }
 try {

@@ -84,6 +84,7 @@
       <button id="redoBtn" type="button">Redo today</button>
       <button id="rankBtn" type="button">Leap rankings</button>
       <button id="hardestBtn" type="button">Hardest worker</button>
+      <button id="weekBtn" type="button">Creator of the week</button>
       <button id="overviewBtn" type="button" class="ghost">Post overview</button>
       <button id="boardsBtn" type="button" class="ghost">Repost boards</button>
       <button id="sampleBtn" type="button" class="ghost">Send sample cards</button>
@@ -103,6 +104,9 @@
       it posts the current standings and takes the old one down, so that channel holds one card.
       It goes up on its own once a day anyway — this is for when you want it now. It touches that
       one message and nothing else, so it pings no coaches and is safe to press as often as you like.
+      <strong>Creator of the week</strong> does the same for the weekly growth board: who grew the
+      most this week on diamonds, LIVE hours, new followers and fan club members, plus how far they
+      beat their own last week. It crowns the winner on Sunday and starts again on Monday.
       <strong>Post overview</strong> re-sends the management
       summary even if it has already gone out today. <strong>Repost boards</strong> sends today's
       leaderboard and growth board again, which is what you want after a change to how they read. <strong>Send sample cards</strong> posts one real
@@ -239,7 +243,7 @@ async function upload(file) {
 
 // Running and testing from the page, so neither needs a terminal.
 async function post(path, label, render) {
-  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('hardestBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
+  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('hardestBtn'), $('weekBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
   btns.forEach((b) => { b.disabled = true; });
   bar.classList.add('on');
   result.classList.remove('show');
@@ -306,6 +310,20 @@ $('hardestBtn').addEventListener('click', () => post('hardest', 'Hardest worker'
   + row(r.finished ? 'Winner' : 'Leading', esc(r.winner ?? '—'), 'ok')
   + row(r.finished ? 'Final standings' : 'Days left in the month', r.finished ? 'yes' : n(r.daysLeft))
   + (r.top ?? []).map((t) => row(`${t.rank}. ${esc(t.username)}`, `${t.hours.toFixed(2)} hrs`)).join('')
+  + row('Older copies removed', n(r.replaced ?? 0))
+  + (r.skipped ? row('Nothing posted', `<span class="warn">${esc(r.skipped)}</span>`) : '')
+  + (r.sweepNote ? row('Could not check the channel', `<span class="warn">${esc(r.sweepNote)}</span>`) : '')
+  + (r.failed ?? []).map((f) => row('Failed', `<span class="bad">${esc(f.label)} — ${esc(f.error)}</span>`)).join('')));
+
+$('weekBtn').addEventListener('click', () => post('creator-week', 'Creator of the week', (r) => `<h2>Creator of the Week refreshed</h2>`
+  + row('Data up to', esc(r.asOf))
+  + row('Week', esc(r.period))
+  + row('Creators ranked', n(r.entered), r.entered ? 'ok' : 'warn')
+  + row(r.finished ? 'Winner' : 'Leading', esc(r.winner ?? '—'), 'ok')
+  + row(r.finished ? 'Final standings' : 'Days left this week', r.finished ? 'yes' : n(r.daysLeft))
+  + (r.top ?? []).map((t) => row(`${t.rank}. ${esc(t.username)}`,
+      `${n(Math.round(t.grew?.diamonds ?? 0))} diamonds · ${(t.grew?.liveHours ?? 0).toFixed(1)} hrs`
+      + ` · ${n(Math.round(t.grew?.newFollowers ?? 0))} followers · ${n(Math.round(t.grew?.newFans ?? 0))} fan club`)).join('')
   + row('Older copies removed', n(r.replaced ?? 0))
   + (r.skipped ? row('Nothing posted', `<span class="warn">${esc(r.skipped)}</span>`) : '')
   + (r.sweepNote ? row('Could not check the channel', `<span class="warn">${esc(r.sweepNote)}</span>`) : '')

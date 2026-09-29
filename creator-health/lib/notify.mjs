@@ -141,6 +141,9 @@ export function loadDiscordConfig(raw) {
     // URL carries its own server and channel.
     hardestWorkerWebhook: webhookOrNull(fromEnv(raw.hardestWorkerWebhook)),
     hardestWorkerChannelId: channelOrNull(fromEnv(raw.hardestWorkerChannelId)),
+    // Creator of the Week, in the same creator-facing server.
+    creatorWeekWebhook: webhookOrNull(fromEnv(raw.creatorWeekWebhook)),
+    creatorWeekChannelId: channelOrNull(fromEnv(raw.creatorWeekChannelId)),
     coaches,
   };
 }

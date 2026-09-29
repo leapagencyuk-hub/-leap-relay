@@ -16,6 +16,7 @@
 //   GET  /cases             the open caseload
 //   GET  /effectiveness     which interventions are working
 //   POST /hardest            refresh the Hardest Worker board, on its own
+//   POST /creator-week       refresh the Creator of the Week board, on its own
 //   GET  /selftest           what this service can reach
 //                            ?post=1 sends a test line, ?sample=1 sends real cards
 //   GET  /health
@@ -315,6 +316,7 @@ async function handleSelfTest(req, res, url) {
       leagueUp: discord.leagueUpWebhook ? 'set' : 'MISSING',
       leagueDown: discord.leagueDownWebhook ? 'set' : 'MISSING',
       hardestWorker: discord.hardestWorkerWebhook ? 'set' : 'MISSING',
+      creatorWeek: discord.creatorWeekWebhook ? 'set' : 'MISSING',
       teamsResolved: teams.filter((t) => t.destination !== 'NONE').length,
       teamsMissing: teams.filter((t) => t.destination === 'NONE').map((t) => t.team),
     },
@@ -433,9 +435,10 @@ async function handleRankings(req, res, url) {
  * One message in one channel. Unlike a redo this pings nobody and moves
  * nothing else, so it is safe to press whenever the board is being looked at.
  */
-async function handleHardestWorker(req, res, url) {
+async function handleHardestWorker(req, res, url, board = 'hardestWorker') {
   if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
   const out = await refreshChallenge(config, configPath, {
+    board,
     asOf: url.searchParams.get('as-of'),
     dryRun: url.searchParams.get('dry') === '1',
   });
@@ -480,6 +483,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && route === '/redo') return await handleRedo(req, res, url);
     if (req.method === 'POST' && route === '/rankings') return await handleRankings(req, res, url);
     if (req.method === 'POST' && route === '/hardest') return await handleHardestWorker(req, res, url);
+    if (req.method === 'POST' && route === '/creator-week') return await handleHardestWorker(req, res, url, 'creatorWeek');
     if (route === '/selftest') return await handleSelfTest(req, res, url);  // GET or POST
     if (req.method === 'POST' && route === '/discord/interactions') {
       return await handleDiscordInteractions(req, res);

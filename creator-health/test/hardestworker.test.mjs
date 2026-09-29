@@ -325,7 +325,8 @@ test('the button posts the board now and takes the old one down', async () => {
     assert.equal(first.replaced, 0, 'nothing was there to remove');
     assert.equal(first.entered, 2);
     assert.equal(first.winner, 'mr_chooksy');
-    assert.match(challengeSummary(first), /^2026-09: 2 creators ranked, mr_chooksy leads on 247\.45 hours \(2 days to go\)\.$/);
+    assert.match(challengeSummary(first),
+      /^Hardest Worker Challenge — 2026-09: 2 creators ranked, mr_chooksy leads on 247\.45 hours \(2 days to go\)\.$/);
 
     // Pressed again five minutes later: one card in the channel, not two.
     const second = await refreshChallenge(cfg, configPath, {});
@@ -418,7 +419,7 @@ test('an unconfigured channel is said plainly, not posted into somebody else\'s'
     const out = await refreshChallenge(cfg, configPath, {});
     assert.equal(out.posted, false);
     assert.equal(d.log.length, 0);
-    assert.match(challengeSummary(out), /no channel configured for the Hardest Worker Challenge/);
+    assert.match(challengeSummary(out), /no channel configured for Hardest Worker Challenge/);
   } finally {
     d.restore();
     fs.rmSync(dir, { recursive: true, force: true });

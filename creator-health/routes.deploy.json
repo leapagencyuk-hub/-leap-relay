@@ -32,6 +32,9 @@
     "_hardestWorker": "LEAP's Hardest Worker Challenge, in the creator-facing server. Posted daily; the winner is crowned on the last day of the month and the board clears on the 1st.",
     "hardestWorkerWebhook": "env:DISCORD_WEBHOOK_HARDEST_WORKER",
     "hardestWorkerChannelId": "1374064861897687201",
+    "_creatorWeek": "Creator of the Week, in the same creator-facing server. Posted daily; the winner is crowned on Sunday and the board clears when the new week starts on Monday.",
+    "creatorWeekWebhook": "env:DISCORD_WEBHOOK_CREATOR_WEEK",
+    "creatorWeekChannelId": "1554538899068555284",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",

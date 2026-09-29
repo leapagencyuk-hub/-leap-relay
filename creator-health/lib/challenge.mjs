@@ -16,9 +16,41 @@ import path from 'node:path';
 import { Store } from './store.mjs';
 import { CaseStore } from './cases.mjs';
 import { loadRoutes } from './notify.mjs';
-import { Discord, hardestWorkerEmbed } from './discord.mjs';
+import { Discord, hardestWorkerEmbed, creatorWeekEmbed } from './discord.mjs';
 import { hardestWorkerBoard } from './hardestworker.mjs';
+import { creatorWeekBoard } from './creatorweek.mjs';
 import { sweeper, sweepDuplicates } from './sweep.mjs';
+
+/**
+ * The two creator-facing boards, and where each one lives.
+ *
+ * Both work identically — compute, post, remove the last one — so they share
+ * one refresher rather than two near-copies that drift apart.
+ */
+const BOARDS = {
+  hardestWorker: {
+    label: 'hardest-worker',
+    hook: 'hardestWorkerWebhook',
+    channel: 'hardestWorkerChannelId',
+    slot: 'hardestWorker',
+    stamp: 'lastHardestWorkerOn',
+    name: 'Hardest Worker Challenge',
+    build: (creators, asOf, config) => hardestWorkerBoard({ creators, asOf, config }),
+    render: hardestWorkerEmbed,
+    empty: (b) => `nobody has been LIVE in ${b.month} yet`,
+  },
+  creatorWeek: {
+    label: 'creator-week',
+    hook: 'creatorWeekWebhook',
+    channel: 'creatorWeekChannelId',
+    slot: 'creatorWeek',
+    stamp: 'lastCreatorWeekOn',
+    name: 'Creator of the Week',
+    build: (creators, asOf, config) => creatorWeekBoard({ creators, asOf, config }),
+    render: creatorWeekEmbed,
+    empty: (b) => `nobody has been LIVE in the week of ${b.weekStart} yet`,
+  },
+};
 
 /**
  * Work out the board and put it in the channel, replacing the one there.
@@ -26,27 +58,37 @@ import { sweeper, sweepDuplicates } from './sweep.mjs';
  * `asOf` defaults to the latest data we hold. Nothing is remembered beyond the
  * id of the message posted, so pressing it twice gives the same answer.
  */
-export async function refreshChallenge(config, configPath, { asOf = null, dryRun = false } = {}) {
+export async function refreshChallenge(config, configPath, { asOf = null, dryRun = false, board: which = 'hardestWorker' } = {}) {
+  const spec = BOARDS[which];
+  if (!spec) throw new Error(`no such board: ${which}`);
   const series = new Store(config.dataDir).readSeries();
   const when = asOf ?? series.lastAsOf;
   if (!when) throw new Error('no snapshots ingested yet');
 
-  const board = hardestWorkerBoard({ creators: Object.values(series.creators), asOf: when, config });
+  const board = spec.build(Object.values(series.creators), when, config);
 
   const discord = loadRoutes(path.dirname(configPath)).discord;
-  const route = discord.hardestWorkerWebhook
-    ? { webhook: discord.hardestWorkerWebhook, channelId: discord.hardestWorkerChannelId ?? null }
-    : (discord.hardestWorkerChannelId && discord.botToken)
-      ? { channelId: discord.hardestWorkerChannelId } : null;
+  const route = discord[spec.hook]
+    ? { webhook: discord[spec.hook], channelId: discord[spec.channel] ?? null }
+    : (discord[spec.channel] && discord.botToken)
+      ? { channelId: discord[spec.channel] } : null;
 
   const result = {
+    board: which,
+    name: spec.name,
     asOf: when,
-    month: board.month,
+    period: board.month ?? `${board.weekStart} to ${board.weekEnd}`,
     daysLeft: board.daysLeft,
     finished: board.finished,
     entered: board.entered,
     winner: board.winner?.username ?? null,
-    top: board.top.map((r) => ({ rank: r.rank, username: r.username, hours: r.hours })),
+    top: board.top.map((r) => ({
+      rank: r.rank,
+      username: r.username,
+      // The Hardest Worker board is hours; Creator of the Week is four figures.
+      hours: r.hours ?? r.now?.liveHours ?? null,
+      grew: r.now ? { ...r.now } : null,
+    })),
     posted: false,
     replaced: 0,
     failed: [],
@@ -54,11 +96,11 @@ export async function refreshChallenge(config, configPath, { asOf = null, dryRun
   };
 
   // An empty board in a creator channel is worse than no board at all. It
-  // happens on the 1st, before anybody has been LIVE in the new month.
-  if (!board.entered) return { ...result, skipped: `nobody has been LIVE in ${board.month} yet` };
-  if (!route) return { ...result, skipped: 'no channel configured for the Hardest Worker Challenge' };
+  // happens at the start of a month or a week, before anybody has been LIVE.
+  if (!board.entered) return { ...result, skipped: spec.empty(board) };
+  if (!route) return { ...result, skipped: `no channel configured for ${spec.name}` };
 
-  const payload = hardestWorkerEmbed(board, { config });
+  const payload = spec.render(board, { config });
   if (dryRun) return { ...result, payload };
 
   const client = new Discord({ token: discord.botToken });
@@ -70,16 +112,16 @@ export async function refreshChallenge(config, configPath, { asOf = null, dryRun
   const res = route.webhook
     ? await client.postToWebhook(route.webhook, payload)
     : await client.postToChannel(route.channelId, payload);
-  if (!res.ok) return { ...result, failed: [{ label: 'hardest-worker', error: res.error }] };
+  if (!res.ok) return { ...result, failed: [{ label: spec.label, error: res.error }] };
   result.posted = true;
 
-  const prev = store.data.lastMessage?.hardestWorker ?? null;
+  const prev = store.data.lastMessage?.[spec.slot] ?? null;
   const prevId = prev?.ids?.[0] ?? prev?.id ?? null;
   if (res.body?.id) {
     store.data.lastMessage ??= {};
     // The same shape the daily run writes, so either can replace the other.
-    store.data.lastMessage.hardestWorker = { id: res.body.id, period: null };
-    store.data.lastHardestWorkerOn = when;
+    store.data.lastMessage[spec.slot] = { id: res.body.id, period: null };
+    store.data[spec.stamp] = when;
   }
 
   if (prevId && prevId !== res.body?.id) {
@@ -110,13 +152,17 @@ export async function refreshChallenge(config, configPath, { asOf = null, dryRun
   return result;
 }
 
-/** One line a person can read. */
+/** One line a person can read, whichever board it was. */
 export function challengeSummary(r) {
   if (r.skipped) return `Nothing posted — ${r.skipped}`;
   if (!r.posted) return `Failed to post — ${r.failed[0]?.error ?? 'unknown error'}`;
-  const who = r.winner ? `${r.winner} leads on ${r.top[0].hours.toFixed(2)} hours` : 'nobody on the board';
+  const top = r.top[0] ?? null;
+  // The Hardest Worker board is one number and the lead reads better with it;
+  // Creator of the Week is a blend of five and a single figure would mislead.
+  const on = r.board === 'hardestWorker' && top?.hours != null ? ` on ${top.hours.toFixed(2)} hours` : '';
+  const lead = r.winner ? `${r.winner} ${r.finished ? 'wins' : 'leads'}${on}` : 'nobody on the board';
   const when = r.finished ? 'final standings' : `${r.daysLeft} day${r.daysLeft === 1 ? '' : 's'} to go`;
-  return `${r.month}: ${r.entered} creator${r.entered === 1 ? '' : 's'} ranked, ${who} (${when}).`
+  return `${r.name} — ${r.period}: ${r.entered} creator${r.entered === 1 ? '' : 's'} ranked, ${lead} (${when}).`
     + (r.replaced ? ` ${r.replaced} older cop${r.replaced === 1 ? 'y' : 'ies'} removed.` : '')
     + (r.failed.length ? ` ${r.failed.length} problem${r.failed.length === 1 ? '' : 's'}.` : '');
 }

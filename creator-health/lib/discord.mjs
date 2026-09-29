@@ -1228,6 +1228,86 @@ export function hardestWorkerEmbed(b, { config = {} } = {}) {
 }
 
 /**
+ * Creator of the Week, for the creator server.
+ *
+ * Creator-facing like the Hardest Worker card, and written the same way: a name
+ * and what they grew, no coach, no team, no money. The difference is that this
+ * one has to say how it is judged, because "who grew the most" is a claim and
+ * a board that will not show its reasoning is a board creators argue with.
+ *
+ * On Sunday the week is over and the same card crowns the winner.
+ */
+export function creatorWeekEmbed(b, { config = {} } = {}) {
+  const span = weekSpan(b.weekStart, b.weekEnd);
+  // One decimal here, not two. On the Hardest Worker board hours are the whole
+  // answer and earn the precision; here they are one figure of four and
+  // "41.69" beside three round numbers just reads as noise.
+  const h = (x) => (Math.round((x ?? 0) * 10) / 10).toFixed(1);
+  const line = (r) => `${r.rank}. ${r.username} — ${n(r.now.diamonds)} 💎 · `
+    + `${h(r.now.liveHours)} hrs · ${n(r.now.newFollowers)} followers · ${n(r.now.newFans)} fan club`;
+
+  // Discord caps a field value at 1024 characters, and these rows are four
+  // numbers long. Cut at a whole row rather than mid-name.
+  const rows = [];
+  let len = 0;
+  for (const r of b.top) {
+    const t = line(r);
+    if (len + t.length + 1 > 1000) break;
+    rows.push(t); len += t.length + 1;
+  }
+
+  const judged = 'Scored on four things you grew this week — diamonds, LIVE hours, new followers '
+    + 'and new fan club members — plus how much you beat your own last week. Each counts the same, '
+    + 'so it goes to whoever moved on every front, not whoever is biggest.';
+
+  if (b.finished && b.winner) {
+    const w = b.winner;
+    const behind = b.top.slice(1, 3).map((r) => r.username);
+    return {
+      embeds: [{
+        title: `👑 LEAP's Creator of the Week – ${span}`,
+        description: `The week is done, and the creator who grew the most is **${w.username}**. 🔥\n\n`
+          + `**${n(w.now.diamonds)}** diamonds · **${h(w.now.liveHours)}** LIVE hours · `
+          + `**${n(w.now.newFollowers)}** new followers · **${n(w.now.newFans)}** new fan club members\n\n`
+          + `Huge congratulations${behind.length ? ` — and to ${behind.join(' and ')} right behind them` : ''}. `
+          + 'Every creator on this board grew this week, and that is the whole point of it. 💪',
+        color: COLOR.gold,
+        fields: [{ name: `Final standings, ${span}`, value: rows.join('\n') }],
+        footer: { text: 'A new week starts on Monday and everyone goes back to zero. Your turn. 🚩' },
+        timestamp: new Date().toISOString(),
+      }],
+    };
+  }
+
+  const left = b.daysLeft === 1 ? '1 day left' : `${b.daysLeft} days left`;
+  return {
+    embeds: [{
+      title: `🌟 LEAP's Creator of the Week – ${span}`,
+      description: `Welcome to Creator of the Week! 💪\n\n${judged}\n\n`
+        + 'Below is where it stands right now. The board is **updated every day** and the winner '
+        + 'is crowned on Sunday, so there is still time to climb. 🔥',
+      color: COLOR.opportunity,
+      fields: [{
+        name: 'This week so far',
+        value: rows.join('\n')
+          || 'Nobody has been LIVE yet this week. First one on the board takes top spot. 🔥',
+      }],
+      footer: { text: `Updated daily · ${left} this week · Go LIVE and grow. 🚩` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/** "15–21 September", or "29 September – 5 October" when a week straddles two. */
+function weekSpan(start, end) {
+  const day = (d) => String(Number(d.slice(8, 10)));
+  const month = (d) => monthNameOf(d.slice(0, 7));
+  return start.slice(0, 7) === end.slice(0, 7)
+    ? `${day(start)}–${day(end)} ${month(end)}`
+    : `${day(start)} ${month(start)} – ${day(end)} ${month(end)}`;
+}
+
+/**
  * One creator about to miss the activeness gate.
  *
  * The gate is a cliff: 15 LIVE hours across more than 7 days in the calendar

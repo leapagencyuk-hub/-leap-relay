@@ -8,7 +8,7 @@ import {
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
-  hardestWorkerEmbed,
+  hardestWorkerEmbed, creatorWeekEmbed,
   leapedEmbed, leapedOverviewEmbed,
   redoButton,
 } from './discord.mjs';
@@ -19,6 +19,7 @@ import { activenessRows, activenessPings, recordPings, activenessSummary, active
 import { policyStanding } from './policy.mjs';
 import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { hardestWorkerBoard, hardestWorkerDue } from './hardestworker.mjs';
+import { creatorWeekBoard, creatorWeekDue } from './creatorweek.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
 import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
@@ -150,7 +151,7 @@ export function preflight(discordConfig) {
   const singles = [
     'defaultWebhook', 'summaryWebhook', 'escalationWebhook', 'inactiveWebhook',
     'activenessOverviewWebhook', 'activenessPingWebhook',
-    'leaderboardWebhook', 'growthBoardWebhook', 'hardestWorkerWebhook',
+    'leaderboardWebhook', 'growthBoardWebhook', 'hardestWorkerWebhook', 'creatorWeekWebhook',
   ];
   const hasWebhook = singles.some((k) => Boolean(discordConfig[k]))
     || Object.values(discordConfig.coaches ?? {}).some((c) => c.webhook)
@@ -558,6 +559,27 @@ export async function dispatch({
         ? replaceLast('hardest-worker', '(hardest worker)', hardestRoute, card, 'hardestWorker')
         : send('hardest-worker', '(hardest worker)', hardestRoute, card));
       if (!dryRun) store.data.lastHardestWorkerOn = asOf;
+    }
+  }
+
+  // --- Creator of the Week ---------------------------------------------------
+  // The second creator-facing board, in the same server. Weekly rather than
+  // monthly, and for the same reason as the Hardest Worker one it passes no
+  // period: Monday's board removes Sunday's winner and the week starts again.
+  const weekRoute = discordConfig.creatorWeekWebhook
+    ? { webhook: discordConfig.creatorWeekWebhook, channelId: discordConfig.creatorWeekChannelId ?? null }
+    : (discordConfig.creatorWeekChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.creatorWeekChannelId } : null;
+  if (weekRoute && creators.length && (again('creatorWeek') || creatorWeekDue(config, store, asOf))) {
+    const cw = creatorWeekBoard({ creators, asOf, config });
+    // Nobody LIVE yet this week is Monday morning, and an empty board in a
+    // creator channel is worse than none.
+    if (cw.entered) {
+      const card = creatorWeekEmbed(cw, { config });
+      await (replaces('creatorWeek')
+        ? replaceLast('creator-week', '(creator of the week)', weekRoute, card, 'creatorWeek')
+        : send('creator-week', '(creator of the week)', weekRoute, card));
+      if (!dryRun) store.data.lastCreatorWeekOn = asOf;
     }
   }
 

@@ -163,6 +163,21 @@
     "_show": "How many creators the card prints. Everyone who streamed is ranked either way.",
     "show": 10
   },
+  "creatorWeek": {
+    "_note": "Creator of the Week: the creator-facing weekly board. Weeks run Monday to Sunday. Every creator who went LIVE is scored by POSITION on four pillars they grew this week - diamonds, LIVE hours, new followers, new fan club members - plus a fifth for how far they beat their own equivalent days last week. Position rather than size, because the four cannot be added together and raw numbers make it a diamonds board with three decorations on it.",
+    "enabled": true,
+    "_show": "How many creators the card prints. Everyone who went LIVE is ranked either way.",
+    "show": 10,
+    "_weights": "Relative weight of each pillar. All equal by default. Raise one to make that the thing the award is about.",
+    "weights": {
+      "diamonds": 1,
+      "liveHours": 1,
+      "newFollowers": 1,
+      "newFans": 1
+    },
+    "_momentumWeight": "Weight of the fifth pillar, beating your own last week. This is what stops the same creators winning every week; set it to 0 to rank on this week's growth alone.",
+    "momentumWeight": 1
+  },
   "leaped": {
     "_note": "A creator leaps when their CUMULATIVE totals pass the bar below, at any point in their life with us. It happens once per creator and puts the fee on that month's payroll. Recorded permanently the first time it is seen, so a re-run or a config change can never move anybody's pay.",
     "enabled": true,
@@ -335,9 +350,11 @@
       "overview": true,
       "policy": true,
       "leapedOverview": true,
-      "hardestWorker": true
+      "hardestWorker": true,
+      "creatorWeek": true
     },
-    "_hardestWorker": "The creator-facing board is the one that does NOT keep a closing edition: it is asked to clear on the 1st, so each new month's board removes the last one outright."
+    "_hardestWorker": "The creator-facing board is the one that does NOT keep a closing edition: it is asked to clear on the 1st, so each new month's board removes the last one outright.",
+    "_creatorWeek": "Creator of the Week clears the same way the Hardest Worker board does, on Monday rather than the 1st: Sunday's winner is removed by the new week's first board."
   },
   "activation": {
     "_note": "Creators who never started. Excluded from decline rules by design, which otherwise leaves a third of the network invisible.",
