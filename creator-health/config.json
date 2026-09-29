@@ -263,7 +263,7 @@
     "enabled": true,
     "_baseWage": "The sheet calls this EXTRA REVENUE. There is no default: a coach who is not listed below is not on a fixed amount, and inventing one for them is worse than showing nothing.",
     "baseWage": 0,
-    "_baseWageByCoach": "Read off the Recruitment 26/27 sheet's forward column (September onward), where most are on 150, Sureshot on 350 and CamB on 100.",
+    "_baseWageByCoach": "Read off the Recruitment 26/27 sheet's forward column (September onward). Most are on 150; Sureshot 350, Colesy 250, CamB 100.",
     "baseWageByCoach": {
       "joshbates93@hotmail.com": 350,
       "bigbamc.tt@gmail.com": 100,
@@ -271,7 +271,7 @@
       "sherif.begain@gmail.com": 150,
       "mujustreamer@gmail.com": 150,
       "alex_593@hotmail.co.uk": 150,
-      "colesygaming007@gmail.com": 150,
+      "colesygaming007@gmail.com": 250,
       "chavvyy26@hotmail.com": 150,
       "itsmalkintiktok@gmail.com": 150
     },
