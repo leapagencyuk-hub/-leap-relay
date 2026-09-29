@@ -525,6 +525,8 @@ function cmdDiscordEnv() {
   lift(safe.discord, 'growthBoardWebhook', 'DISCORD_WEBHOOK_GROWTH_BOARD');
   lift(safe.discord, 'leapedWebhook', 'DISCORD_WEBHOOK_LEAPED');
   lift(safe.discord, 'leapedOverviewWebhook', 'DISCORD_WEBHOOK_LEAPED_OVERVIEW');
+  lift(safe.discord, 'leagueUpWebhook', 'DISCORD_WEBHOOK_LEAGUE_UP');
+  lift(safe.discord, 'leagueDownWebhook', 'DISCORD_WEBHOOK_LEAGUE_DOWN');
   lift(safe.discord, 'botToken', 'DISCORD_BOT_TOKEN');
   for (const [label, entry] of Object.entries(safe.discord?.groups ?? {})) {
     lift(entry, 'webhook', varName(label));
@@ -605,7 +607,9 @@ function cmdDiscordCheck() {
   console.log(`leaderboard: ${discord.leaderboardWebhook ? 'set' : 'MISSING'}`
     + ` · growth board: ${discord.growthBoardWebhook ? 'set' : 'MISSING'}`);
   console.log(`leaped: ${discord.leapedWebhook ? 'set' : 'MISSING'}`
-    + ` · leaped overview: ${discord.leapedOverviewWebhook ? 'set' : 'MISSING'}`);
+    + ` · leaped overview: ${discord.leapedOverviewWebhook ? 'set' : 'MISSING'}`
+    + ` · league up: ${discord.leagueUpWebhook ? 'set' : 'MISSING'}`
+    + ` · league down: ${discord.leagueDownWebhook ? 'set' : 'MISSING'}`);
   console.log(discord.inactiveWebhook
     ? `\ncreators earning nothing: one shared channel, webhook …${discord.inactiveWebhook.slice(-6)}`
     : '\ncreators earning nothing: no shared channel set — they go to the team channels');
