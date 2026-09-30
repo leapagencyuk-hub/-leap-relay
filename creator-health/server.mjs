@@ -17,7 +17,7 @@
 //   GET  /effectiveness     which interventions are working
 //   POST /hardest            refresh the Hardest Worker board, on its own
 //   POST /creator-week       refresh the Creator of the Week board, on its own
-//   GET  /export             the whole accrued series, gzipped
+//   GET  /export             a full backup: series, snapshots and payroll state
 //   GET  /selftest           what this service can reach
 //                            ?post=1 sends a test line, ?sample=1 sends real cards
 //   GET  /health
@@ -518,10 +518,16 @@ const server = http.createServer(async (req, res) => {
     if (route === '/export') {
       if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
       const store = new Store(config.dataDir);
+      // Everything the service persists, not just the series. The case store
+      // is where PAYROLL lives: which creators have leaped, in which month,
+      // and for how much. Leaving it out made this a backup of the numbers
+      // and not of the money — and left the one thing that cannot be
+      // rebuilt from the exports as the one thing you could not read back.
       const body = Buffer.from(JSON.stringify({
         exportedAt: new Date().toISOString(),
         snapshots: store.listSnapshotDates(),
         series: store.readSeries(),
+        state: new CaseStore(config.dataDir).data,
       }));
       const accepts = String(req.headers['accept-encoding'] ?? '').includes('gzip');
       const out = accepts ? zlib.gzipSync(body) : body;

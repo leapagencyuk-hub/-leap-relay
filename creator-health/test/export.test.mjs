@@ -57,6 +57,12 @@ test('the export needs the token, and carries the whole series', async () => {
     assert.ok(Array.isArray(body.snapshots), 'the snapshot dates come with it');
     assert.ok(body.series && typeof body.series.creators === 'object',
       'and the series itself, not a summary of it');
+    // The case store is where payroll lives — which creators have leaped, in
+    // which month, for how much. It cannot be rebuilt from the exports, so a
+    // backup without it is not a backup.
+    assert.ok(body.state && typeof body.state === 'object', 'the persisted state comes too');
+    assert.ok('leaped' in body.state || 'cases' in body.state,
+      'including the records a coach is paid from');
     assert.match(body.exportedAt, /^\d{4}-\d{2}-\d{2}T/);
 
     // A Bearer header works as well as the query string, so it can be pulled
