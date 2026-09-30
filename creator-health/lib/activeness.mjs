@@ -44,7 +44,7 @@ export function gateFor(creator, asOf, config) {
   const dayOfMonth = Number(asOf.slice(8, 10));
   const daysLeft = Math.max(0, monthLength - dayOfMonth);
 
-  const mtd = monthMtd(creator, month);
+  const mtd = monthMtd(creator, asOf);
   if (!mtd) return null;
 
   // Days in the network this month, for the pro-rata scaling.

@@ -133,7 +133,7 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     e.onboardedAllTime++;
     if (!c.quitOn) e.roster++;
     if (c.joinDate?.slice(0, 7) === month) e.recruited++;
-    const d = monthMtd(c, month)?.diamonds ?? 0;
+    const d = monthMtd(c, asOf)?.diamonds ?? 0;
     e.diamonds += d;
     // Rank ups are paid on creators whose TIER went up against last month, not
     // on creators past some diamond floor. See lib/tiers.mjs: the floor this

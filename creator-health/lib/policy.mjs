@@ -53,12 +53,36 @@
 // us a number that disagrees with the one our benefits are set from.
 import { groupKey } from './notify.mjs';
 
-/** The last observation inside a calendar month, as the export reported it. */
-export function monthMtd(creator, month) {
+/**
+ * A creator's month-to-date, as the export reported it.
+ *
+ * Takes either a full date or a bare month, and they mean different things:
+ *
+ *   "2026-09-27"  the last reading in September ON OR BEFORE the 27th
+ *   "2026-09"     the last reading in September, whenever it was taken
+ *
+ * The first is what asking about a day means, and getting it wrong is silent:
+ * every board here derives its month from `asOf`, so passing the month alone
+ * answered every historical question with TODAY's numbers. The daily run was
+ * never affected — its `asOf` is always the newest data we hold — but a
+ * `--as-of` on the CLI, an `?as-of=` on any endpoint, and every "what did this
+ * look like last Tuesday" returned the same figures as today and looked
+ * entirely plausible doing it.
+ *
+ * The second is still wanted, and deliberately kept: a closed month is a
+ * closed month, and code comparing against one should not have to name its
+ * last day.
+ */
+export function monthMtd(creator, asOf) {
   const obs = creator?.obs;
-  if (!obs?.length) return null;
+  if (!obs?.length || !asOf) return null;
+  const month = asOf.slice(0, 7);
+  const cap = asOf.length > 7 ? asOf : null;
   for (let i = obs.length - 1; i >= 0; i--) {
-    if (obs[i].date.slice(0, 7) === month) return obs[i].mtd ?? null;
+    const o = obs[i];
+    if (o.date.slice(0, 7) !== month) continue;
+    if (cap && o.date > cap) continue;
+    return o.mtd ?? null;
   }
   return null;
 }

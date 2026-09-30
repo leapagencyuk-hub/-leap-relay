@@ -268,3 +268,71 @@ test('reads a real export end to end', { skip: !process.env.SAMPLE_XLSX }, () =>
   assert.equal(store.readSnapshot(s.asOf).active.length, s.active.length);
   fs.rmSync(dir, { recursive: true, force: true });
 });
+
+test('asking about a day gets that day, not today', async () => {
+  // The bug this pins: every board derives its month from `asOf` and used to
+  // pass the MONTH to monthMtd, which returns the last reading in that month
+  // whenever it was taken. So a board asked for the 20th answered with the
+  // 29th's figures and looked entirely plausible doing it. The daily run was
+  // never wrong — its asOf is always the newest data — but --as-of and every
+  // ?as-of= endpoint was, silently.
+  const { monthMtd } = await import('../lib/policy.mjs');
+  const creator = {
+    username: 'climber',
+    obs: [
+      { date: '2026-08-31', mtd: { diamonds: 50, liveHours: 5 } },
+      { date: '2026-09-20', mtd: { diamonds: 100, liveHours: 10 } },
+      { date: '2026-09-25', mtd: { diamonds: 200, liveHours: 20 } },
+      { date: '2026-09-29', mtd: { diamonds: 300, liveHours: 30 } },
+    ],
+  };
+  assert.equal(monthMtd(creator, '2026-09-20').diamonds, 100);
+  assert.equal(monthMtd(creator, '2026-09-24').diamonds, 100, 'the 24th has no reading; the 20th stands');
+  assert.equal(monthMtd(creator, '2026-09-25').diamonds, 200);
+  assert.equal(monthMtd(creator, '2026-09-29').diamonds, 300);
+  // A bare month still means the month's last reading, which closed months need.
+  assert.equal(monthMtd(creator, '2026-09').diamonds, 300);
+  assert.equal(monthMtd(creator, '2026-08').diamonds, 50);
+  // Before the month's first reading there is nothing to report, not August's.
+  assert.equal(monthMtd(creator, '2026-09-10'), null);
+  assert.equal(monthMtd(creator, null), null);
+});
+
+test('every board moves day to day, which is the whole point of a daily card', async () => {
+  const [{ hardestWorkerBoard }, { leagueMoveFor }, { rankUpFor }, { coachRevenue }] = await Promise.all([
+    import('../lib/hardestworker.mjs'), import('../lib/leagues.mjs'),
+    import('../lib/tiers.mjs'), import('../lib/revenue.mjs'),
+  ]);
+  const mk = (n) => ({
+    key: n, username: n, quitOn: null, group: 'Team Alpha', manager: 'josh@leap', joinDate: '2026-01-01',
+    obs: [
+      { date: '2026-09-20', mtd: { diamonds: 100000, liveHours: 10, validLiveDays: 5, liveStreams: 5 }, lastMonthDiamonds: 40000, tierStatus: 'Maintained' },
+      { date: '2026-09-29', mtd: { diamonds: 900000, liveHours: 90, validLiveDays: 20, liveStreams: 20 }, lastMonthDiamonds: 40000, tierStatus: 'Ranked up' },
+    ],
+  });
+  const cfg = {
+    monitoring: { ignoreGroups: [] }, coaches: { names: {} }, hardestWorker: {}, leagues: {},
+    rankUp: { advanced: true, coachSharePerDiamondUsd: 0.0001 },
+    revenue: { enabled: true, baseWage: 0, rankUpPerDiamondUsd: 0.0001, incrementalPerDiamondGbp: 0.0000375, usdToGbp: 0.754074, goalsMultiplier: 2 },
+    leaped: { fee: 10 },
+  };
+  const creators = [mk('a')];
+
+  const early = hardestWorkerBoard({ creators, asOf: '2026-09-20', config: cfg });
+  const late = hardestWorkerBoard({ creators, asOf: '2026-09-29', config: cfg });
+  assert.equal(early.rows[0].hours, 10);
+  assert.equal(late.rows[0].hours, 90);
+
+  assert.equal(leagueMoveFor(creators[0], '2026-09-20', cfg).diamonds, 100000);
+  assert.equal(leagueMoveFor(creators[0], '2026-09-29', cfg).diamonds, 900000);
+
+  assert.equal(rankUpFor(creators[0], '2026-09-20', cfg).diamonds, 100000);
+  assert.equal(rankUpFor(creators[0], '2026-09-29', cfg).diamonds, 900000);
+
+  // And the money, which is the one that matters.
+  const r20 = coachRevenue({ creators, asOf: '2026-09-20', config: cfg, leaped: null }).rows[0];
+  const r29 = coachRevenue({ creators, asOf: '2026-09-29', config: cfg, leaped: null }).rows[0];
+  assert.equal(r20.diamonds, 100000);
+  assert.equal(r29.diamonds, 900000);
+  assert.ok(r29.incrementalShare > r20.incrementalShare * 8, 'the share follows the diamonds');
+});

@@ -85,7 +85,7 @@ export function nextLeague(name, config = {}) {
  */
 export function leagueMoveFor(creator, asOf, config = {}) {
   const month = asOf.slice(0, 7);
-  const mtd = monthMtd(creator, month);
+  const mtd = monthMtd(creator, asOf);
   if (!mtd) return null;
 
   const diamonds = mtd.diamonds ?? 0;

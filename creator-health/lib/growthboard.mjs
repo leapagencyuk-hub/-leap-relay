@@ -75,7 +75,7 @@ export function growthBoard({ creators, metricsByKey = new Map(), asOf, store = 
     e.roster++;
     if (c.group) e.teams.add(c.group);
 
-    const now = monthMtd(c, month)?.diamonds ?? 0;
+    const now = monthMtd(c, asOf)?.diamonds ?? 0;
     const then = monthMtd(c, prev)?.diamonds ?? 0;
     e.now += now;
     if (now > 0) {

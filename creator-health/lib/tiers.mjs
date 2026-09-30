@@ -195,7 +195,7 @@ export function tierStatusFor(creator, month) {
  */
 export function rankUpFor(creator, asOf, config = {}) {
   const month = asOf.slice(0, 7);
-  const mtd = monthMtd(creator, month);
+  const mtd = monthMtd(creator, asOf);
   if (!mtd) return null;
 
   const cfg = config.rankUp ?? {};

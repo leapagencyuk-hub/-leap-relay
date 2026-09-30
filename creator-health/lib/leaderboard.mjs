@@ -31,8 +31,8 @@ const previousMonth = (month) => {
 const joinedIn = (c, month) => Boolean(c.joinDate) && c.joinDate.slice(0, 7) === month;
 
 /** One recruit, with whether they have actually got going. */
-function recruitRow(c, month) {
-  const mtd = monthMtd(c, month);
+function recruitRow(c, asOf) {
+  const mtd = monthMtd(c, asOf);
   return {
     username: c.username,
     group: c.group ?? null,
@@ -67,7 +67,7 @@ export function leaderboard({ creators, asOf, store = null, config = {} }) {
   // card adds up to the rows printed under it.
   const mine = creators.filter((c) =>
     !ignored.has(groupKey(c.group)) && !offTheBoards(c.manager, config));
-  const recruits = mine.filter((c) => joinedIn(c, month)).map((c) => recruitRow(c, month));
+  const recruits = mine.filter((c) => joinedIn(c, month)).map((c) => recruitRow(c, asOf));
 
   const byCoach = new Map();
   for (const r of recruits) {

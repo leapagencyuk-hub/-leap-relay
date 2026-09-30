@@ -55,7 +55,7 @@ export function hardestWorkerBoard({ creators, asOf, config = {} }) {
     // is a partner agency's roster — they are in the export, not in LEAP.
     if (c.quitOn) continue;
     if (ignored.has(groupKey(c.group))) continue;
-    const mtd = monthMtd(c, month);
+    const mtd = monthMtd(c, asOf);
     if (!mtd) continue;
     const hours = mtd.liveHours ?? 0;
     // Nobody wants to be shown on a leaderboard on nought hours, and a tail of
