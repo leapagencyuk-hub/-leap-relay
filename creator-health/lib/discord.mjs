@@ -1261,10 +1261,16 @@ export function creatorWeekEmbed(b, { config = {} } = {}) {
     rows.push(t); len += t.length + 1;
   }
 
+  // A creator who grew hugely and is not on the board is owed the reason, so
+  // the bar is said out loud rather than left to be discovered.
+  const bar = b.minStanding
+    ? ` It goes to creators who are performing **and** growing, so you need to be among the week's `
+      + `top **${Math.round((1 - b.minStanding) * 100)}%** for your growth to count.`
+    : '';
   const judged = 'This is not a board for whoever is biggest. Your score is out of 100 and it is '
     + 'mostly about how much **you** have grown this week against your own recent weeks — fan club, '
-    + 'diamonds, LIVE hours and new followers — with some credit for how you are doing across the '
-    + 'network. Nobody\'s figures are shown, only the score.';
+    + 'diamonds, LIVE hours and new followers.' + bar
+    + ' Nobody\'s figures are shown, only the score.';
 
   if (b.finished && b.winner) {
     const w = b.winner;

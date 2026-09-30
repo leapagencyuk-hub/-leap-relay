@@ -155,6 +155,10 @@ export function creatorWeekBoard({ creators, asOf, store = null, config = {} }) 
   // Mostly "are they growing", partly "are they doing well".
   const growthWeight = cfg.growthWeight ?? 3;
   const standingWeight = cfg.standingWeight ?? 1;
+  // How well a creator has to be doing before growth counts for anything.
+  // Expressed as a position in the network rather than a number of diamonds,
+  // so it scales with the roster and never needs revisiting.
+  const minStanding = cfg.minStanding ?? 0.75;
   // How many of their own previous weeks make up "their normal".
   const baselineWeeks = Math.max(1, cfg.baselineWeeks ?? 3);
 
@@ -171,12 +175,23 @@ export function creatorWeekBoard({ creators, asOf, store = null, config = {} }) 
     // No LIVE, no award. This is a LIVE agency and the week is about streaming.
     if (now.liveHours <= 0) continue;
 
-    // Their own normal for this stretch of a week: the same number of days,
-    // over each of the last few weeks, averaged. Comparing a Wednesday means
-    // comparing three days with three days, not three with seven.
-    const span = gains(byDay, prevEnd, days * baselineWeeks);
+    // Their own normal for this stretch of a week: the SAME DAYS of each of
+    // the previous few weeks, averaged. On a Wednesday that is last
+    // Monday-to-Wednesday, and the one before, and the one before that.
+    //
+    // Not the last nine days, which is what this used to do. Streaming runs on
+    // a weekly rhythm — a Saturday is not a Monday — so measuring somebody's
+    // Monday against a block that was mostly weekend flatters half the network
+    // and punishes the other half, for nothing but which day it happens to be.
     const base = {};
-    for (const p of PILLARS) base[p.key] = span[p.key] / baselineWeeks;
+    for (const p of PILLARS) base[p.key] = 0;
+    for (let w = 1; w <= baselineWeeks; w++) {
+      const backStart = shiftDays(weekStart, -7 * w);
+      const backEnd = shiftDays(backStart, days - 1);
+      const had = gains(byDay, backEnd, days);
+      for (const p of PILLARS) base[p.key] += had[p.key];
+    }
+    for (const p of PILLARS) base[p.key] /= baselineWeeks;
 
     entries.push({
       key: c.key,
@@ -224,7 +239,33 @@ export function creatorWeekBoard({ creators, asOf, store = null, config = {} }) 
       / (growthWeight + standingWeight || 1);
   });
 
-  const rows = entries.sort((a, b) =>
+  // Growing is not enough on its own. Before this, a creator 136th of 326 on
+  // diamonds and 133rd on hours came SIXTH, because they had grown from almost
+  // nothing — which is a real achievement and is not Creator of the Week. The
+  // award is for somebody who is both doing well and growing, so anyone
+  // outside the top of the network is ranked but not eligible to win it.
+  //
+  // Taken as a SHARE OF THE FIELD rather than a score to beat. Those are the
+  // same thing only when scores are spread evenly, and they are not: where a
+  // pillar is a near-universal tie the whole scale compresses, every score
+  // lands under any fixed threshold, and a bar nobody clears is a bar that
+  // excludes the field and hands the award to exactly the creator it was
+  // written to stop. Top quarter of whoever turned up cannot do that.
+  //
+  // And a position only means something once there is a network: on a field of
+  // three, "the top quarter" is one creator and the rule decides the award by
+  // itself. So it applies only above a sensible field size, which also keeps
+  // the first week of a new network, or a small sub-roster, behaving.
+  const floorApplies = entries.length >= (cfg.minField ?? 20) && minStanding > 0;
+  const keep = floorApplies
+    ? Math.max(1, Math.ceil(entries.length * (1 - minStanding)))
+    : entries.length;
+  const byStanding = [...entries].sort((a, b) => b.standing - a.standing);
+  const contenders = new Set(byStanding.slice(0, keep));
+  for (const e of entries) e.eligible = contenders.has(e);
+  const ranked = entries.filter((e) => e.eligible);
+
+  const rows = ranked.sort((a, b) =>
     b.score - a.score
     // A dead heat goes to the bigger grower, then the harder worker, so the
     // order is never down to the sort's mood.
@@ -257,7 +298,11 @@ export function creatorWeekBoard({ creators, asOf, store = null, config = {} }) 
     finished: isWeekEnd(asOf),
     rows,
     top: rows.slice(0, show),
-    entered: rows.length,
+    // Everybody who went LIVE, which is the field; `contending` is how many of
+    // them clear the bar and can actually win it.
+    entered: entries.length,
+    contending: rows.length,
+    minStanding: floorApplies ? minStanding : null,
     winner: rows[0] ?? null,
     total,
     baselineWeeks,

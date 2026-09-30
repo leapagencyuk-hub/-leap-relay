@@ -318,6 +318,8 @@ test('the card publishes a score and a place, and none of the numbers', () => {
   assert.match(e.description, /not a board for whoever is biggest/);
   assert.match(e.description, /fan club, diamonds, LIVE hours and new followers/);
   assert.match(e.description, /grown this week against your own recent weeks/);
+  // On a field too small for a bar, the card must not claim there is one.
+  assert.doesNotMatch(e.description, /top \*\*\d+%\*\*/);
   assert.match(e.description, /Nobody's figures are shown, only the score/);
 
   assert.equal(e.fields[0].name, 'This week so far');
@@ -513,4 +515,90 @@ test('the board is posted once a day, and again when asked', () => {
   assert.equal(creatorWeekDue(config, store, SUN), false);
   assert.equal(creatorWeekDue(config, store, '2026-09-21'), true);
   assert.equal(creatorWeekDue({ creatorWeek: { enabled: false } }, { data: {} }, SUN), false);
+});
+
+test('a week is compared with the same days of earlier weeks, not the days just gone', () => {
+  // Streaming runs on a weekly rhythm. A creator who works weekends and rests
+  // on Mondays was being measured, on a Monday, against a block that was
+  // mostly weekend — so the system marked them down for keeping their own
+  // routine. The baseline now takes last Monday, and the one before, and the
+  // one before that.
+  const weekendHeavy = {};
+  for (const wk of [0, 1, 2, 3]) {
+    const mon = new Date(Date.UTC(2026, 8, 7 + wk * 7));   // 7, 14, 21, 28 September: all Mondays
+    for (let i = 0; i < 7; i++) {
+      const d = new Date(mon); d.setUTCDate(d.getUTCDate() + i);
+      const dow = d.getUTCDay();
+      const big = dow === 0 || dow === 6;                  // weekends only
+      weekendHeavy[d.toISOString().slice(0, 10)] =
+        { diamonds: big ? 10000 : 100, hours: big ? 10 : 1, followers: big ? 100 : 1, fans: big ? 10 : 1 };
+    }
+  }
+  // Monday 28 September: one day in, and that day is a quiet Monday.
+  const b = creatorWeekBoard({ creators: [who('routine', weekendHeavy)], asOf: '2026-09-28', config });
+  const r = b.rows[0];
+  assert.equal(b.days, 1);
+  assert.equal(Math.round(r.now.diamonds), 100, 'this Monday');
+  assert.equal(Math.round(r.base.diamonds), 100, 'against the last three Mondays, not the weekend just gone');
+  assert.equal(r.ratio.diamonds, 1, 'so keeping to their own routine reads as level, not as a collapse');
+});
+
+test('growth alone does not win it — you have to be doing well too', () => {
+  // The real board had a creator 136th of 326 on diamonds and 133rd on hours
+  // sitting sixth, because they had grown from almost nothing.
+  const flat = (g) => {
+    const out = {};
+    for (let d = new Date(Date.UTC(2026, 8, 7)); d <= new Date(Date.UTC(2026, 8, 29)); d.setUTCDate(d.getUTCDate() + 1)) {
+      out[d.toISOString().slice(0, 10)] = g;
+    }
+    return out;
+  };
+  // A field big enough for a percentile to mean something: 40 solid creators,
+  // plus one tiny one who has grown enormously on numbers nobody would notice.
+  const creators = Array.from({ length: 40 }, (_, i) =>
+    who(`solid_${String(i).padStart(2, '0')}`, flat({ diamonds: 5000 + i * 200, hours: 10, followers: 200, fans: 10 })));
+  creators.push(who('minnow', {
+    ...flat({ diamonds: 1, hours: 0.2, followers: 1, fans: 0 }),
+    '2026-09-28': { diamonds: 60, hours: 1, followers: 5, fans: 1 },
+    '2026-09-29': { diamonds: 60, hours: 1, followers: 5, fans: 1 },
+  }));
+
+  const b = creatorWeekBoard({ creators, asOf: '2026-09-29', config });
+  const minnow = b.rows.find((r) => r.username === 'minnow');
+  assert.equal(minnow, undefined, 'ranked, but not contending');
+  assert.equal(b.entered, 41, 'everybody who went LIVE is still counted as the field');
+  assert.ok(b.contending < b.entered, 'and only some of them can win it');
+  assert.equal(b.minStanding, 0.75);
+
+  // Turn the bar off and they are back, which is what proves the bar did it.
+  const open = creatorWeekBoard({ creators, asOf: '2026-09-29', config: { ...config, creatorWeek: { minStanding: 0 } } });
+  assert.ok(open.rows.some((r) => r.username === 'minnow'));
+});
+
+test('on a small network everybody can still win it', () => {
+  // "The top quarter" of three creators is one creator, and a rule that picks
+  // the winner by itself is not a rule. Below a real field size it is off.
+  const g = { diamonds: 1000, hours: 5, followers: 50, fans: 5 };
+  const creators = [who('a', every(MON, SUN, g)), who('b', every(MON, SUN, g)), who('c', every(MON, SUN, g))];
+  const b = creatorWeekBoard({ creators, asOf: SUN, config });
+  assert.equal(b.entered, 3);
+  assert.equal(b.contending, 3, 'all three are in it');
+  assert.equal(b.minStanding, null, 'and the card knows there was no bar');
+});
+
+test('the card says the bar out loud, so a grower who missed out knows why', () => {
+  const flat = (g) => {
+    const out = {};
+    for (let d = new Date(Date.UTC(2026, 8, 7)); d <= new Date(Date.UTC(2026, 8, 29)); d.setUTCDate(d.getUTCDate() + 1)) {
+      out[d.toISOString().slice(0, 10)] = g;
+    }
+    return out;
+  };
+  const creators = Array.from({ length: 40 }, (_, i) =>
+    who(`c_${String(i).padStart(2, '0')}`, flat({ diamonds: 1000 + i * 137, hours: 3 + i / 10, followers: 20 + i, fans: i % 9 })));
+  const b = creatorWeekBoard({ creators, asOf: '2026-09-29', config });
+  assert.equal(b.minStanding, 0.75);
+  const e = creatorWeekEmbed(b, { config }).embeds[0];
+  assert.match(e.description, /performing \*\*and\*\* growing/);
+  assert.match(e.description, /top \*\*25%\*\* for your growth to count/);
 });

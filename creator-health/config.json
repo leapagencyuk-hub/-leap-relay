@@ -180,7 +180,11 @@
     "_standingWeight": "How much of the score is where they came in the network this week. Keeps a creator who tripled from almost nothing from taking it off one who grew strongly on real numbers. Set to 0 to rank on growth alone.",
     "standingWeight": 1,
     "_baselineWeeks": "How many of a creator's own previous weeks make up 'their normal'. Three smooths out one freak week without going so far back that a creator who has genuinely levelled up is still measured against who they used to be.",
-    "baselineWeeks": 3
+    "baselineWeeks": 3,
+    "_minStanding": "How well a creator has to be doing before their growth counts. 0.75 means the top quarter of the network that week. Expressed as a POSITION, not a number of diamonds, so it scales with the roster and never needs revisiting. Without it a creator 136th of 326 on diamonds came sixth for having grown from almost nothing - a real achievement, and not Creator of the Week. Set to 0 to let anybody win on growth alone.",
+    "minStanding": 0.75,
+    "_minField": "The bar only applies once there is a field for it to mean anything. On three creators 'the top quarter' is one creator and the rule picks the winner by itself, so below this many entrants everyone who went LIVE can win.",
+    "minField": 20
   },
   "leaped": {
     "_note": "A creator leaps when their CUMULATIVE totals pass the bar below, at any point in their life with us. It happens once per creator and puts the fee on that month's payroll. Recorded permanently the first time it is seen, so a re-run or a config change can never move anybody's pay.",
