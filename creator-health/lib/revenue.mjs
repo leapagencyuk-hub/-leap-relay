@@ -125,6 +125,7 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
       coach: key, name: coachName(key, config),
       recruited: 0, onboardedAllTime: 0, roster: 0, diamonds: 0,
       rankUps: 0, rankUpDiamonds: 0, closeToRankUp: 0, rankUpUpside: 0,
+      tikTokBonusUsd: 0,
       teams: new Set(),
     };
     // All-time includes creators who have since left: the coach still onboarded
@@ -139,7 +140,16 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
     // replaces paid on two and a half times as many creators as LEAP's own
     // sheet does.
     const up = c.quitOn ? null : rankUpFor(c, asOf, config);
-    if (up?.rankedUp) { e.rankUps++; e.rankUpDiamonds += d; }
+    if (up?.rankedUp) {
+      e.rankUps++;
+      e.rankUpDiamonds += d;
+      // What TikTok pays LEAP for this creator, which is not what LEAP pays
+      // the coach. Carried so a month can be reconciled against Backstage's
+      // "Estimated bonus contribution" in one glance instead of by argument:
+      // diamonds x $0.01 x the creator's tier ratio, which is Backstage's own
+      // arithmetic to the cent.
+      e.tikTokBonusUsd += d * 0.01 * (up.ratio ?? 0);
+    }
     else if (up?.reachable && up.target != null && up.daysLeft > 0) {
       e.closeToRankUp++;
       e.rankUpUpside += up.worthIfCrossed;
@@ -170,6 +180,7 @@ export function coachRevenue({ creators, asOf, config, leaped = null }) {
       diamonds: Math.round(e.diamonds),
       rankUpDiamonds: Math.round(e.rankUpDiamonds),
       rankUpUpside: e.rankUpUpside,
+      tikTokBonusUsd: e.tikTokBonusUsd,
       leapedCount,
       recruitBonus,
       rankUpBonus,

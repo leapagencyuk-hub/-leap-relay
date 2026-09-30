@@ -213,8 +213,8 @@
   "rankUp": {
     "_note": "The rank-up task. A creator's tier is set by LAST month's diamonds and cannot move; ranking out of it this month pays the coach 1% of the creator's whole month. See lib/tiers.mjs for how the table and the rule were verified against the WAGES CALCUATOR tab.",
     "enabled": true,
-    "_advanced": "Base or advanced ratio. Advanced is always base + 1%, and is earned by the NETWORK meeting TikTok's requirements, not by any one coach. LEAP's August rows are all on base, so this is false; earlier months used advanced. It does not change a coach's 1%, only what TikTok pays LEAP.",
-    "advanced": false,
+    "_advanced": "Base or Advanced bonus ratio. Advanced, verified against Backstage's own per-creator rank-up page on 30 September 2026: coregaming2811 458,691 diamonds showed $344.01, sur3shot 314,254 showed $235.69, samboogames 214,578 showed $160.93, .yas_xoxoo 172,494 showed $129.37 - every one of them diamonds x $0.01 x 0.075 to the cent, and none of them x 0.065. This sets what TIKTOK pays LEAP; the coach's own share is a flat 1% of diamond dollars and does not move with it.",
+    "advanced": true,
     "_coachSharePerDiamondUsd": "What the coach gets on a creator who ranks up: $0.01 a diamond at a 1% share. Same number as revenue.rankUpPerDiamondUsd, kept here so the chase figures and the pay block cannot drift apart.",
     "coachSharePerDiamondUsd": 0.0001,
     "_stretch": "A near-miss counts as in reach only if the daily rate needed is within this multiple of the creator's own rate so far. Two means we will ask somebody to double, not to triple.",

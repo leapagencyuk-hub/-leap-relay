@@ -259,3 +259,66 @@ test('a status TikTok has no opinion on falls back to comparing tiers', () => {
     assert.ok(rankUpFor(c, ASOF, config).rankedUp, `"${String(v)}" falls back`);
   }
 });
+
+test('the bonus ratio is the Advanced one, checked against Backstage to the cent', async () => {
+  // Backstage's own rank-up page, 30 September 2026. Every row is the creator's
+  // diamonds x $0.01 x 0.075. At the Base 0.065 not one of them lands, which is
+  // how we know which column LEAP is on.
+  const { rankUpFor } = await import('../lib/tiers.mjs');
+  const cfg = {
+    rankUp: { advanced: true, coachSharePerDiamondUsd: 0.0001 },
+    revenue: { usdToGbp: 0.754074 },
+  };
+  const rows = [
+    { username: 'coregaming2811', diamonds: 458691, lastMonth: 239978, shown: 344.01 },
+    { username: 'sur3shot', diamonds: 314254, lastMonth: 142876, shown: 235.69 },
+    { username: 'samboogames', diamonds: 214578, lastMonth: 16984, shown: 160.93 },
+    { username: '.yas_xoxoo', diamonds: 172494, lastMonth: 61347, shown: 129.37 },
+  ];
+  for (const r of rows) {
+    const creator = {
+      username: r.username, quitOn: null, group: 'Team Alpha', manager: 'josh@leap',
+      joinDate: '2026-01-01',
+      obs: [{ date: '2026-09-30', mtd: { diamonds: r.diamonds }, lastMonthDiamonds: r.lastMonth, tierStatus: 'Ranked up' }],
+    };
+    const up = rankUpFor(creator, '2026-09-30', cfg);
+    assert.equal(up.ratio, 0.075, `${r.username} is on the Advanced ratio`);
+    const bonus = r.diamonds * 0.01 * up.ratio;
+    assert.ok(Math.abs(bonus - r.shown) < 0.02,
+      `${r.username}: computed $${bonus.toFixed(2)} against Backstage's $${r.shown}`);
+  }
+
+  // And the coach's own share does NOT move with that ratio — it is a flat 1%
+  // of diamond dollars, verified separately against the WAGES CALCUATOR.
+  const base = { ...cfg, rankUp: { ...cfg.rankUp, advanced: false } };
+  const one = (c) => rankUpFor(c, '2026-09-30', c.cfg ?? cfg);
+  const creator = {
+    username: 'x', quitOn: null, group: 'Team Alpha', manager: 'josh@leap', joinDate: '2026-01-01',
+    obs: [{ date: '2026-09-30', mtd: { diamonds: 100000 }, lastMonthDiamonds: 10000, tierStatus: 'Ranked up' }],
+  };
+  assert.equal(one(creator).worth, rankUpFor(creator, '2026-09-30', base).worth,
+    'switching Base to Advanced must not change anybody\'s pay');
+});
+
+test('a coach row carries what TikTok pays LEAP, beside what LEAP pays the coach', async () => {
+  const { coachRevenue } = await import('../lib/revenue.mjs');
+  const cfg = {
+    revenue: { enabled: true, baseWage: 0, rankUpPerDiamondUsd: 0.0001, incrementalPerDiamondGbp: 0.0000375, usdToGbp: 0.754074, goalsMultiplier: 2 },
+    leaped: { fee: 10, currency: 'GBP' }, coaches: { names: {} },
+    monitoring: { ignoreGroups: [] }, rankUp: { advanced: true, coachSharePerDiamondUsd: 0.0001 },
+  };
+  const creators = [
+    { key: '1', username: 'coregaming2811', quitOn: null, group: 'Team Alpha', manager: 'josh@leap', joinDate: '2026-01-01',
+      obs: [{ date: '2026-09-30', mtd: { diamonds: 458691 }, lastMonthDiamonds: 239978, tierStatus: 'Ranked up' }] },
+    { key: '2', username: 'didnt', quitOn: null, group: 'Team Alpha', manager: 'josh@leap', joinDate: '2026-01-01',
+      obs: [{ date: '2026-09-30', mtd: { diamonds: 900000 }, lastMonthDiamonds: 850000, tierStatus: 'Maintained' }] },
+  ];
+  const rev = coachRevenue({ creators, asOf: '2026-09-30', config: cfg, leaped: null });
+  const row = rev.rows[0];
+  // Only the creator who ranked up counts towards the bonus, exactly as
+  // Backstage's own page lists only the ones who ranked up.
+  assert.ok(Math.abs(row.tikTokBonusUsd - 344.01) < 0.02, `got $${row.tikTokBonusUsd.toFixed(2)}`);
+  assert.equal(row.rankUps, 1);
+  // The coach's line is the flat 1%, a different number from a different rule.
+  assert.ok(Math.abs(row.rankUpBonus - 458691 * 0.0001 * 0.754074) < 0.01);
+});
