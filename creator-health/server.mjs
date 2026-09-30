@@ -17,6 +17,7 @@
 //   GET  /effectiveness     which interventions are working
 //   POST /hardest            refresh the Hardest Worker board, on its own
 //   POST /creator-week       refresh the Creator of the Week board, on its own
+//   GET  /export             the whole accrued series, gzipped
 //   GET  /selftest           what this service can reach
 //                            ?post=1 sends a test line, ?sample=1 sends real cards
 //   GET  /health
@@ -27,6 +28,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import zlib from 'node:zlib';
 import { fileURLToPath } from 'node:url';
 import {
   loadConfig, ingestFile, analyse, buildDigests, renderNetworkSummary, toJson,
@@ -505,6 +507,30 @@ const server = http.createServer(async (req, res) => {
     if (route === '/' || route === '/index.html') {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
       return res.end(fs.readFileSync(path.join(here, 'public', 'upload.html')));
+    }
+    // The whole accrued series, so it can be pulled off the host rather than
+    // rebuilt from twenty spreadsheets. Gzipped because it is megabytes of
+    // JSON and every client on earth accepts it.
+    //
+    // Behind the token like every other endpoint, and worth saying why: this
+    // is every creator's diamonds, followers and earnings history in one file.
+    // A host with no UPLOAD_TOKEN set serves it to anybody who guesses the URL.
+    if (route === '/export') {
+      if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+      const store = new Store(config.dataDir);
+      const body = Buffer.from(JSON.stringify({
+        exportedAt: new Date().toISOString(),
+        snapshots: store.listSnapshotDates(),
+        series: store.readSeries(),
+      }));
+      const accepts = String(req.headers['accept-encoding'] ?? '').includes('gzip');
+      const out = accepts ? zlib.gzipSync(body) : body;
+      res.writeHead(200, {
+        'content-type': 'application/json; charset=utf-8',
+        'content-length': out.length,
+        ...(accepts ? { 'content-encoding': 'gzip' } : {}),
+      });
+      return res.end(out);
     }
     if (route === '/status.json') {
       const health = dataHealth(config, new Store(config.dataDir).readSeries().lastAsOf);
