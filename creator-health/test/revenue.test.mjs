@@ -6,8 +6,8 @@ import { revenueFields, teamSummaryEmbed } from '../lib/discord.mjs';
 const config = {
   revenue: {
     enabled: true, baseWage: 0, baseWageByCoach: { 'josh@leap': 350, 'amy@leap': 100 },
-    rankUpFloorDiamonds: 100000, rankUpPerDiamondUsd: 0.0001,
-    incrementalPerDiamondUsd: 0.00005, goalsMultiplier: 2, usdToGbp: 0.754074,
+    rankUpFloorDiamonds: 100000, rankUpPerDiamondUsd: 0.0001, usdToGbp: 0.754074,
+    incremental: { boardRate: 0.05, baseUnlock: 0.10, goalBonus: 0.05 },
   },
   leaped: { fee: 10, currency: 'GBP' },
   coaches: { names: { 'josh@leap': 'Sur3shot' }, excludeFromBoards: ['amy@leap'] },
@@ -54,25 +54,113 @@ test('rank ups reproduce real WAGES CALCUATOR rows across months and rates', () 
 });
 
 test('a missing rank-up rate falls back to the sheet rate, not the incremental one', () => {
-  // The two USD rates differ by a factor of two. A fallback of 0.00005 here
-  // would silently halve every coach's rank-up line rather than failing loudly.
+  // The two rates differ by a factor of two. A wrong fallback here would
+  // silently halve every coach's rank-up line rather than failing loudly.
   const { rankUpPerDiamondUsd, ...noRate } = config.revenue;
   const rev = coachRevenue({
     creators: [who('c', { diamonds: 1000000 })], asOf: ASOF,
     config: { ...config, revenue: noRate },
   });
   assert.equal(rev.rankUpPerDiamond, Number((0.0001 * rev.usdToGbp).toPrecision(6)));
-  assert.equal(rev.incrementalUsdPerDiamond * 2, 0.0001);
 });
 
-test('the incremental rate is the figure LEAP quoted, not one derived from it', () => {
-  // recruiter_commission_gbp = diamonds x 0.0000375. Deriving it from the
-  // sheet's own FX cell would give 0.0000377 and disagree with the number the
-  // recruiters were handed, on a line that is explicitly a rough estimate.
+test('the manager share reproduces LEAP\'s own finance sheet, to the penny', () => {
+  // Recruitment 26/27, September's MANAGER DIAMOND % column, against each
+  // coach's September roster diamonds. TikTok paid 8% that month and the
+  // unlocks were 10, 15 and 20 — this is the arithmetic the sheet does, and it
+  // is exact for all ten coaches, which is why this is the spec and not a
+  // formula somebody described.
+  const sheet = [
+    ['tiktokphil', 4079453, 0.20, 492.09],
+    ['joshbates93', 7205729, 0.10, 434.49],
+    ['bigbamc', 2089211, 0.20, 251.96],
+    ['mujustreamer', 3467933, 0.10, 209.02],
+    ['alex593', 2133054, 0.10, 128.25],
+    ['colesy', 1870559, 0.10, 112.82],
+    ['sherif', 1237168, 0.15, 111.92],
+    ['amykins', 1341374, 0.10, 80.90],
+    ['malkin', 819003, 0.15, 74.09],
+    ['chavvyy', 759497, 0.10, 45.81],
+  ];
+  for (const [name, diamonds, unlock, pounds] of sheet) {
+    // September's real rate, not the board's 5%: this test is the reconciliation.
+    const rev = coachRevenue({
+      creators: [who('c', { coach: name, diamonds })], asOf: ASOF,
+      config: {
+        ...config,
+        revenue: {
+          ...config.revenue,
+          incremental: { boardRate: 0.08, baseUnlock: unlock, goalBonus: 0 },
+        },
+      },
+    });
+    assert.ok(Math.abs(rev.rows[0].incrementalShare - pounds) < 0.5,
+      `${name}: got ${rev.rows[0].incrementalShare.toFixed(2)}, sheet says ${pounds}`);
+  }
+});
+
+test('a card quotes 5%, whatever TikTok actually paid', () => {
+  // LEAP's instruction. September paid 8%; a coach's card must still say 5%,
+  // so a quieter month is never a card that promised more than it can pay.
   const rev = coachRevenue({ creators: [who('c', { diamonds: 1000000 })], asOf: ASOF, config });
-  assert.equal(rev.incrementalPerDiamond, 0.0000375);
-  assert.equal(rev.incrementalUsdPerDiamond, 0.00005);
-  assert.equal(rev.rows[0].incrementalShare, 37.5, 'a round million is a round GBP 37.50');
+  assert.equal(rev.boardRate, 0.05);
+  // 1,000,000 x $0.01 x 5% x 10% = $50, at 0.754074 = GBP 37.70.
+  assert.ok(Math.abs(rev.rows[0].incrementalShare - 37.70) < 0.01,
+    `got ${rev.rows[0].incrementalShare}`);
+  // And the real rate is carried for reconciliation, where one is recorded.
+  const withActual = coachRevenue({
+    creators: [who('c', { diamonds: 1000000 })], asOf: ASOF,
+    config: { ...config, revenue: { ...config.revenue, incremental: { ...config.revenue.incremental, actualRate: { '2026-09': 0.08 } } } },
+  });
+  assert.equal(withActual.actualRate, 0.08);
+  assert.equal(withActual.rows[0].incrementalShare, rev.rows[0].incrementalShare,
+    'which changes nothing a coach sees');
+});
+
+test('the two Backstage goals each unlock another 5%', () => {
+  const goalsFor = (diamonds, recruits) => ({
+    ...config,
+    revenue: { ...config.revenue, goals: { '2026-09': { 'josh@leap': { diamonds, recruits } } } },
+  });
+  // A creator who joined this month is a recruit for the coach who manages them.
+  const roster = [
+    who('old', { diamonds: 600000, joinDate: '2026-01-01' }),
+    who('new1', { diamonds: 200000, joinDate: '2026-09-02' }),
+    who('new2', { diamonds: 200000, joinDate: '2026-09-03' }),
+  ];
+  const at = (d, r) => coachRevenue({ creators: roster, asOf: ASOF, config: goalsFor(d, r) }).rows[0];
+
+  assert.equal(at(99000000, 99).unlock, 0.10, 'neither goal met');
+  assert.equal(at(1000000, 99).unlock, 0.15, 'the diamond goal alone');
+  assert.equal(at(99000000, 2).unlock, 0.15, 'the recruiter goal alone');
+  assert.equal(at(1000000, 2).unlock, 0.20, 'both, which is the 20% on the sheet');
+
+  // Hitting both doubles the line, exactly as 10 to 20 should.
+  assert.ok(Math.abs(at(1000000, 2).incrementalShare / at(99000000, 99).incrementalShare - 2) < 1e-9);
+
+  // And the card can say how far off each one is.
+  const g = at(1000000, 99).goals;
+  assert.equal(g.diamondsHit, true);
+  assert.equal(g.recruitsHit, false);
+  assert.equal(g.recruitsToGo, 97);
+  assert.equal(g.diamondsToGo, 0);
+});
+
+test('a goal of zero is met, and no goals at all is not a miss', () => {
+  // Backstage sets 0 for somebody with no target. Treating that as unreachable
+  // would quietly dock them 5% for having nothing to do.
+  const zero = coachRevenue({
+    creators: [who('c', { diamonds: 1000 })], asOf: ASOF,
+    config: { ...config, revenue: { ...config.revenue, goals: { '2026-09': { 'josh@leap': { diamonds: 0, recruits: 0 } } } } },
+  }).rows[0];
+  assert.equal(zero.unlock, 0.20);
+  assert.equal(zero.goals.diamondsHit, true);
+
+  // A coach Backstage has set nothing for sits on the base and says so, rather
+  // than reading as somebody who missed.
+  const none = coachRevenue({ creators: [who('c', { diamonds: 1000 })], asOf: ASOF, config }).rows[0];
+  assert.equal(none.unlock, 0.10);
+  assert.equal(none.goals, null);
 });
 
 test('it is paid on creators whose tier went up, not on a diamond floor', () => {
@@ -93,7 +181,8 @@ test('it is paid on creators whose tier went up, not on a diamond floor', () => 
   assert.equal(r.rankUps, 1, 'only the one who moved up');
   assert.equal(r.rankUpDiamonds, 1000000);
   assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond);
-  assert.equal(r.incrementalShare, 2350000 * rev.incrementalPerDiamond, 'but the manager share is all of them');
+  assert.equal(r.incrementalShare, 2350000 * 0.01 * rev.boardRate * r.unlock * rev.usdToGbp,
+    'but the manager share is all of them');
 });
 
 test('ranking up pays on the creator\'s whole month, not the threshold crossed', () => {
@@ -120,19 +209,9 @@ test('the two diamond shares use different populations', () => {
   // The manager share is the whole roster; rank ups are only the creator who
   // moved up. Using one population for both misses the month in both
   // directions.
-  assert.equal(r.incrementalShare, 1050000 * rev.incrementalPerDiamond);
+  assert.equal(r.incrementalShare, 1050000 * 0.01 * rev.boardRate * r.unlock * rev.usdToGbp);
   assert.equal(r.rankUpBonus, 1000000 * rev.rankUpPerDiamond);
   assert.equal(r.total, r.base + r.recruitBonus + r.incrementalShare + r.rankUpBonus);
-});
-
-test('the GBP rate the recruiters were given comes out of the USD one', () => {
-  // recruiter_commission_gbp = diamonds x 0.0000375, at roughly $1 to GBP 0.75.
-  const rev = coachRevenue({
-    creators: [who('a', { diamonds: 1000000 })], asOf: ASOF,
-    config: { ...config, revenue: { ...config.revenue, usdToGbp: 0.75 } },
-  });
-  assert.equal(rev.incrementalPerDiamond, 0.0000375);
-  assert.equal(rev.rows[0].incrementalShare, 37.5);
 });
 
 test('each coach gets their own fixed amount, and nobody gets an invented one', () => {
@@ -162,7 +241,10 @@ test('Backstage goals double the incremental share, and sit on a second line', (
   // The goals line is a figure on the card, not a paragraph explaining itself.
   const block = revenueFields(rev, rev.rows, { config })[1].value;
   assert.match(block, /ESTIMATED THIS MONTH/);
-  assert.match(block, /with Backstage goals/);
+  assert.match(block, /with both goals hit/);
+  // The unlock is on the line it belongs to, so a coach can see why the figure
+  // is what it is without being told the arithmetic.
+  assert.match(block, /Incremental share \(10%\)/);
 });
 
 test('all-time onboarded counts creators who have since left', () => {
@@ -204,7 +286,7 @@ test('the card is figures, not workings — the prose is gone', () => {
     asOf: ASOF, config,
   });
   const body = revenueFields(rev, rev.rows, { config })[1].value;
-  assert.match(body, /Incremental share\s+~/);
+  assert.match(body, /Incremental share \(\d+%\)\s+~/);
   // The rates, the sheet's column name and the explanation of how each line is
   // worked out belong in the code, not on a coach's morning card.
   for (const workings of [/0\.0000375/, /MANAGER DIAMOND/, /whole roster/, /roughest number/,

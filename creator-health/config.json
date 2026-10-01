@@ -311,10 +311,83 @@
     "_rankUpPerDiamondUsd": "Rank ups, which Recruitment 26/27 calls ALPHA GROUP TASK BONUS. The WAGES CALCUATOR tab's COACH column: diamonds x $0.01 a diamond x a 1% share. Recomputing all 174 creator rows across February to July reproduces both that column and its POUND column with zero mismatches. WHO it is paid on lives in the rankUp block below, not here.",
     "rankUpPerDiamondUsd": 0.0001,
     "_managerPerDiamondUsd": "The manager diamond share: the recruiter commission formula, 0.00005 USD a diamond, applied across the coach's whole roster. At roughly $1 to GBP 0.75 that is the 0.0000375 a diamond quoted in GBP. UNVERIFIED, unlike rank ups - the population is an open question and needs a July creator export to settle. See the header of lib/revenue.mjs.",
-    "_goalsMultiplier": "Everyone is on 10%. Hitting goals on Backstage unlocks a further 10%, so the share doubles. Shown as a second line, never folded in, because it is not earned yet.",
-    "goalsMultiplier": 2,
     "_usdToGbp": "The finance sheet's own FX cell, read off the WAGES CALCUATOR tab. Its per-row POUND column reproduces exactly at this rate; the frozen monthly totals in Recruitment 26/27 were each struck at the FX of their own day, so they drift from it by up to 2 percent.",
-    "usdToGbp": 0.754074
+    "usdToGbp": 0.754074,
+    "_incremental": "The manager diamond share, which Recruitment 26/27 calls MANAGER DIAMOND %. Solved from LEAP's own sheet and exact to the penny for all ten coaches in September: roster diamonds x $0.01 x TikTok's incremental rate x the coach's unlock x FX. TikTok's rate moves with network volume - 8% in September on 29.0m diamonds, about 4% in August on 25.3m - and LEAP's instruction is that the BOARDS always quote 5%, never the live rate, so a coach's card never promises a number a quiet month cannot pay.",
+    "incremental": {
+      "_boardRate": "What the cards quote. Held at 5% on purpose: under-promise, and a high month is a surprise rather than a card that lied.",
+      "boardRate": 0.05,
+      "_actualRate": "What TikTok actually paid for the month, for reconciling against the finance sheet. Only read by the CLI, never by a card.",
+      "actualRate": {
+        "2026-08": 0.04,
+        "2026-09": 0.08
+      },
+      "_baseUnlock": "Every coach starts here.",
+      "baseUnlock": 0.1,
+      "_goalBonus": "Added once for hitting the group's diamond goal and once for hitting the recruiter goal, so 10/15/20.",
+      "goalBonus": 0.05
+    },
+    "_goals": "Backstage's monthly goals, per coach, read off the Group goals page on the 1st. diamonds is the whole group's target; recruits is the recruiter target. Each one hit adds goalBonus to that coach's unlock.",
+    "goals": {
+      "2026-10": {
+        "joshbates93@hotmail.com": {
+          "diamonds": 8387068,
+          "recruits": 35
+        },
+        "mujustreamer@gmail.com": {
+          "diamonds": 4823207,
+          "recruits": 20
+        },
+        "alex_593@hotmail.co.uk": {
+          "diamonds": 3068904,
+          "recruits": 20
+        },
+        "tiktokphil@icloud.com": {
+          "diamonds": 2743631,
+          "recruits": 10
+        },
+        "bigbamc.tt@gmail.com": {
+          "diamonds": 2388329,
+          "recruits": 25
+        },
+        "sherif.begain@gmail.com": {
+          "diamonds": 1276145,
+          "recruits": 10
+        },
+        "chavvyy26@hotmail.com": {
+          "diamonds": 1212307,
+          "recruits": 8
+        },
+        "amykinsincolour@gmail.com": {
+          "diamonds": 1048387,
+          "recruits": 1
+        },
+        "itsmalkintiktok@gmail.com": {
+          "diamonds": 780574,
+          "recruits": 10
+        },
+        "surgeagency.tt@gmail.com": {
+          "diamonds": 475718,
+          "recruits": 4
+        },
+        "senninha.1985@gmail.com": {
+          "diamonds": 262281,
+          "recruits": 1
+        },
+        "staysocialuk1@gmail.com": {
+          "diamonds": 97357,
+          "recruits": 1
+        },
+        "rowlandratty@gmail.com": {
+          "diamonds": 5680,
+          "recruits": 0
+        },
+        "jaywrightjobs@gmail.com": {
+          "diamonds": 2536,
+          "recruits": 0
+        }
+      }
+    }
   },
   "digest": {
     "maxAlertsPerCoach": 12,

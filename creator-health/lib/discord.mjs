@@ -1511,6 +1511,34 @@ export function policyEmbed(p, { asOf }) {
  * somebody reading it a fortnight from now must not be able to say they thought
  * it was their pay.
  */
+/** A share written the way Backstage writes it: 10%, 15%, 20%. */
+const pctOf = (x) => `${Math.round((x ?? 0) * 100)}%`;
+
+/**
+ * The two Backstage goals, and how far off each one is.
+ *
+ * The only forward-looking thing on the card. What a coach has already banked
+ * is history by the time they read it; "4.8m of 8.4m, and another 5% when you
+ * get there" is the line that changes what they do on the 3rd.
+ */
+function goalLine(r, gbp) {
+  if (!r.goals) return '';
+  const g = r.goals;
+  const worth = r.incrementalWithGoals != null && r.incrementalShare != null
+    ? r.totalWithGoals - r.total : 0;
+  const part = (hit, toGo, now, target, what) => (hit
+    ? `**${what} goal hit** (+5%)`
+    : `${what}: ${n(now)} of ${n(target)} — **${n(toGo)}** to go`);
+  const bits = [
+    part(g.diamondsHit, g.diamondsToGo, r.diamonds, g.diamonds, 'Diamonds'),
+    part(g.recruitsHit, g.recruitsToGo, r.recruited, g.recruits, 'Recruits'),
+  ];
+  const tail = g.diamondsHit && g.recruitsHit
+    ? ' Both hit — you are on the full 20%.'
+    : worth > 0 ? ` Both would be worth about ${gbp(worth)} more this month.` : '';
+  return `\n${bits.join('  ·  ')}.${tail}`;
+}
+
 export function revenueFields(rev, coaches, { config = {} } = {}) {
   if (!rev || !coaches?.length) return [];
   // Somebody not on a coach's package yet sees their team's card without a
@@ -1545,14 +1573,15 @@ export function revenueFields(rev, coaches, { config = {} } = {}) {
           ...(r.base ? [line('Extra revenue (fixed)', gbp(r.base))] : []),
           line('Recruits this month', String(r.recruited)),
           line('New recruit bonus', `${r.leapedCount} x ${gbp(rev.fee)}  =  ${gbp(r.recruitBonus)}`),
-          line('Incremental share', `~${gbp(r.incrementalShare)}`),
+          line(`Incremental share (${pctOf(r.unlock)})`, `~${gbp(r.incrementalShare)}`),
           line('Rank ups', `~${gbp(r.rankUpBonus)}`),
           line('Onboarded all time', String(r.onboardedAllTime)),
           '',
           line('ESTIMATED THIS MONTH', `~${gbp(r.total)}`),
-          line('with Backstage goals', `~${gbp(r.totalWithGoals)}`),
+          line('with both goals hit', `~${gbp(r.totalWithGoals)}`),
         ].join('\n')
         + '\n```'
+        + goalLine(r, gbp)
         + `\n${n(r.diamonds)} diamonds · ${plural(r.rankUps, 'rank-up')}`
         + (r.closeToRankUp ? ` · ${r.closeToRankUp} more in reach, ~${gbp(r.rankUpUpside)}` : ''),
     });
