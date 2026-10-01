@@ -327,7 +327,7 @@
       "_goalBonus": "Added once for hitting the group's diamond goal and once for hitting the recruiter goal, so 10/15/20.",
       "goalBonus": 0.05
     },
-    "_goals": "Backstage's monthly goals, per coach, read off the Group goals page on the 1st. diamonds is the whole group's target; recruits is the recruiter target. Each one hit adds goalBonus to that coach's unlock.",
+    "_goals": "Backstage's monthly goals, per coach, read off the Group goals page on the 1st. diamonds is the whole group's target; recruits is the recruiter target. Each one hit adds goalBonus to that coach's unlock. A coach with no entry sits on the base 10% and their card shows no goal line, which is the honest default: it reads as 'no target set', not as two goals missed.",
     "goals": {
       "2026-10": {
         "joshbates93@hotmail.com": {
@@ -346,9 +346,9 @@
           "diamonds": 2743631,
           "recruits": 10
         },
-        "bigbamc.tt@gmail.com": {
-          "diamonds": 2388329,
-          "recruits": 25
+        "colesygaming007@gmail.com": {
+          "diamonds": 2430905,
+          "recruits": 10
         },
         "sherif.begain@gmail.com": {
           "diamonds": 1276145,
