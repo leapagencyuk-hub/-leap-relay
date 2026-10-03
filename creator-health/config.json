@@ -417,7 +417,9 @@
       "TEAM TRUCKERS",
       "Stay Social",
       "Team Ratty"
-    ]
+    ],
+    "_goneAfterMissedSnapshots": "How many exports in a row a creator can be missing from before the system treats them as gone. TikTok lists a departure in the quit section only sometimes; the rest simply vanish with no row at all, and until this existed nothing noticed - quitOn stayed null, every filter still counted them, and the rolling 28-day windows kept them on their team's summary for weeks after they left. Two is the bar because across the daily snapshots held, NO creator has ever gone missing and come back, so the one tolerated miss is for a glitchy export rather than a real absence. Raise it to wait longer, set it to 1 to act on the first miss.",
+    "goneAfterMissedSnapshots": 2
   },
   "posts": {
     "_note": "Recurring posts that keep only their current version: each day's card removes the one before it, so a channel holds what is true now rather than a month of stale copies. Per-creator cards are work items and are never replaced. Set any of these false to keep every post.",

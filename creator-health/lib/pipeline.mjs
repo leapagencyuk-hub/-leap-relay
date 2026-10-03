@@ -48,7 +48,8 @@ export function rebuildSeries(config) {
   const store = new Store(config.dataDir);
   const series = { updatedAt: null, lastAsOf: null, creators: {} };
   const dates = store.listSnapshotDates();
-  for (const d of dates) applySnapshot(series, store.readSnapshot(d));
+  const goneAfter = config.monitoring?.goneAfterMissedSnapshots ?? 2;
+  for (const d of dates) applySnapshot(series, store.readSnapshot(d), { goneAfter });
   store.writeSeries(series);
   return { snapshots: dates.length, creators: Object.keys(series.creators).length, lastAsOf: series.lastAsOf };
 }
