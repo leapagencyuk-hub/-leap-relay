@@ -418,8 +418,12 @@
       "Stay Social",
       "Team Ratty"
     ],
-    "_goneAfterMissedSnapshots": "How many exports in a row a creator can be missing from before the system treats them as gone. TikTok lists a departure in the quit section only sometimes; the rest simply vanish with no row at all, and until this existed nothing noticed - quitOn stayed null, every filter still counted them, and the rolling 28-day windows kept them on their team's summary for weeks after they left. Two is the bar because across the daily snapshots held, NO creator has ever gone missing and come back, so the one tolerated miss is for a glitchy export rather than a real absence. Raise it to wait longer, set it to 1 to act on the first miss.",
-    "goneAfterMissedSnapshots": 2
+    "_goneAfterMissedSnapshots": "How many exports in a row a creator can be missing before the system treats them as gone. LEAP's rule is that absence from the Creator data export IS departure, so this is 1. TikTok lists a leaver in its quit section only sometimes; the rest vanish with no row at all, and until this existed nothing noticed - quitOn stayed null, every filter still counted them, and the rolling 28-day windows kept them on their team's summary for weeks. Reappearing clears it.",
+    "goneAfterMissedSnapshots": 1,
+    "_goneMaxShareOfRoster": "The safety valve on acting that fast. Setting quitOn also closes a creator's open cases as lost, and a truncated or half-written export would do that to the whole network at once - which no reappearance undoes. A snapshot missing more than this share of the live roster is treated as a bad file: nobody is marked and nothing is counted against anybody. Real daily churn is 0 to 2 creators (0.2%); the month-end clear-out that prompted this was 2.6%.",
+    "goneMaxShareOfRoster": 0.2,
+    "_goneShareMinRoster": "The valve above only applies once the roster is this big. A share means nothing on a tiny network: with three creators, one leaving is 33% and is plainly not a half-written file.",
+    "goneShareMinRoster": 20
   },
   "posts": {
     "_note": "Recurring posts that keep only their current version: each day's card removes the one before it, so a channel holds what is true now rather than a month of stale copies. Per-creator cards are work items and are never replaced. Set any of these false to keep every post.",

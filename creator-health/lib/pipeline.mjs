@@ -48,8 +48,10 @@ export function rebuildSeries(config) {
   const store = new Store(config.dataDir);
   const series = { updatedAt: null, lastAsOf: null, creators: {} };
   const dates = store.listSnapshotDates();
-  const goneAfter = config.monitoring?.goneAfterMissedSnapshots ?? 2;
-  for (const d of dates) applySnapshot(series, store.readSnapshot(d), { goneAfter });
+  const goneAfter = config.monitoring?.goneAfterMissedSnapshots ?? 1;
+  const maxGoneShare = config.monitoring?.goneMaxShareOfRoster ?? 0.2;
+  const minRosterForShare = config.monitoring?.goneShareMinRoster ?? 20;
+  for (const d of dates) applySnapshot(series, store.readSnapshot(d), { goneAfter, maxGoneShare, minRosterForShare });
   store.writeSeries(series);
   return { snapshots: dates.length, creators: Object.keys(series.creators).length, lastAsOf: series.lastAsOf };
 }

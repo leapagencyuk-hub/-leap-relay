@@ -94,7 +94,7 @@ function emptyCreator(row, key) {
  *   first sighting -> delta = mtd_now, span = days since period start, flagged
  *                     `partial` because we never saw this creator's month begin
  */
-export function applySnapshot(series, snapshot, { goneAfter = 2 } = {}) {
+export function applySnapshot(series, snapshot, { goneAfter = 1, maxGoneShare = 0.2, minRosterForShare = 20 } = {}) {
   const { asOf, periodStart } = snapshot;
   // Judged only on a NEW snapshot. Re-ingesting an older export, or a rebuild
   // replaying them in order, must not make the whole current roster look absent.
@@ -189,18 +189,41 @@ export function applySnapshot(series, snapshot, { goneAfter = 2 } = {}) {
   // the 1st went on being named on their team's summary for weeks, with last
   // month's figures beside their name.
   //
-  // Two consecutive misses is the bar. Across the thirteen daily snapshots we
-  // hold, NO creator has ever gone missing and come back — once they are out of
-  // the export they stay out — so one tolerated miss is for a glitchy export,
-  // not for a real absence.
+  // LEAP's rule, in their words: "if not on creator data they gone". So one
+  // miss is enough, and the data agrees — across the daily snapshots held, no
+  // creator has ever gone missing and come back.
+  //
+  // The danger in acting that fast is not a creator wrongly dropped off a card;
+  // they come straight back when they reappear. It is that setting quitOn also
+  // CLOSES that creator's open cases as lost, and a truncated or half-written
+  // export would do that to the whole network at once, which no reappearance
+  // undoes. So a snapshot that loses an implausible share of the roster is
+  // treated as a bad file: nobody is marked, and nothing is counted against
+  // anybody from it. Real churn is 0 to 2 creators a day — 0.2% — and the
+  // month-end clear-out that prompted all this was 21 of 819, or 2.6%.
   //
   // `quitOn` is set rather than some new flag because twenty-six places already
   // ask that question, and a second way of being gone is a second thing for
   // them to drift apart on. `quitSource` keeps the distinction for anyone who
   // needs it, and reappearing clears both.
   if (isNewest) {
+    const live = Object.values(series.creators).filter((c) => !c.quitOn);
+    const absent = live.filter((c) => c.lastSeen !== asOf);
+    // A share only means something once there is a roster. On a network of
+    // three, one person leaving is 33% and obviously not a half-written file.
+    const suspect = live.length >= minRosterForShare
+      && absent.length / live.length > maxGoneShare;
+    if (suspect) {
+      // Say so rather than swallowing it: a file this thin is a problem with
+      // the upload, and somebody has to know the roster was not read.
+      (series.suspectSnapshots ??= []).push({
+        asOf, absent: absent.length, live: live.length,
+        share: Number((absent.length / live.length).toPrecision(3)),
+      });
+    }
     for (const c of Object.values(series.creators)) {
       if (c.lastSeen === asOf) { c.missedSnapshots = 0; continue; }
+      if (suspect) continue;              // not counted against anybody
       c.missedSnapshots = (c.missedSnapshots ?? 0) + 1;
       if (!c.quitOn && c.missedSnapshots >= goneAfter) {
         // Dated to the last day we actually saw them, not to today.
