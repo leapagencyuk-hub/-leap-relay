@@ -8,7 +8,7 @@ import {
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
-  hardestWorkerEmbed, creatorWeekEmbed,
+  hardestWorkerEmbed, creatorWeekEmbed, starlightEmbed, starlightOverviewEmbed,
   leapedEmbed, leapedOverviewEmbed,
   redoButton,
 } from './discord.mjs';
@@ -20,6 +20,8 @@ import { policyStanding } from './policy.mjs';
 import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { hardestWorkerBoard, hardestWorkerDue } from './hardestworker.mjs';
 import { creatorWeekBoard, creatorWeekDue, recordWeekBoard } from './creatorweek.mjs';
+import { starlightTeams, starlightSummary, starlightDue } from './starlight.mjs';
+import { readRoster } from './starlightroster.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
 import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
@@ -152,6 +154,7 @@ export function preflight(discordConfig) {
     'defaultWebhook', 'summaryWebhook', 'escalationWebhook', 'inactiveWebhook',
     'activenessOverviewWebhook', 'activenessPingWebhook',
     'leaderboardWebhook', 'growthBoardWebhook', 'hardestWorkerWebhook', 'creatorWeekWebhook',
+    'starlightWebhook',
   ];
   const hasWebhook = singles.some((k) => Boolean(discordConfig[k]))
     || Object.values(discordConfig.coaches ?? {}).some((c) => c.webhook)
@@ -303,6 +306,70 @@ export async function dispatch({
       else if (!out.ok) sent.push({ label: `${label}-sweep`, coach: who, ok: false, error: out.reason });
     }
     return res;
+  };
+
+  /**
+   * The same thing for a card that came out as several pages.
+   *
+   * `replaceLast` holds one message id per slot, which is all a one-page board
+   * needs. A paginated card posts two or three messages and every one of them
+   * has to come down tomorrow, so the slot holds a list. Both shapes are read,
+   * because a slot written before a card grew a second page still has the old
+   * single `id` in it and that message must not be orphaned.
+   *
+   * Each page keeps its own title — paginateList numbers them — so the
+   * duplicate sweep can only ever eat an earlier copy of the same page.
+   */
+  const replaceLastPages = async (label, who, route, payloads, slot, period = null) => {
+    const pages = Array.isArray(payloads) ? payloads : [payloads];
+    // With no slot there is nothing to replace: post the pages and leave them,
+    // which is what `posts.replacePrevious` set to false asks for.
+    if (!slot) {
+      for (let i = 0; i < pages.length; i++) {
+        await send(pages.length > 1 ? `${label} (${i + 1}/${pages.length})` : label, who, route, pages[i]);
+      }
+      return [];
+    }
+    const prev = store.data.lastMessage?.[slot] ?? null;
+    const prevIds = prev?.ids ?? (prev?.id ? [prev.id] : []);
+
+    const ids = [];
+    for (let i = 0; i < pages.length; i++) {
+      const res = await send(pages.length > 1 ? `${label} (${i + 1}/${pages.length})` : label, who, route, pages[i]);
+      if (res?.ok && res.body?.id) ids.push(res.body.id);
+    }
+    if (dryRun || !ids.length) return ids;
+
+    store.data.lastMessage ??= {};
+    store.data.lastMessage[slot] = { ids, period };
+
+    if (supersedes({ id: prevIds[0], period: prev?.period ?? null }, period, ids[0])) {
+      for (const id of prevIds) {
+        // A page count that shrank leaves ids we have just reused for nothing;
+        // a page count that grew leaves none. Either way, never delete one we
+        // just posted.
+        if (ids.includes(id)) continue;
+        const gone = route.webhook
+          ? await client.deleteWebhookMessage(route.webhook, id)
+          : route.channelId
+            ? await client.deleteMessage(route.channelId, id)
+            : { ok: false, error: 'no webhook or channel to delete through' };
+        if (gone.ok) replaced.push({ label, coach: who, slot, id });
+        else sent.push({ label: `${label}-cleanup`, coach: who, ok: false, error: gone.error });
+      }
+    }
+
+    if (sweep && route.channelId) {
+      for (let i = 0; i < pages.length; i++) {
+        if (!ids[i]) continue;
+        const out = await sweepDuplicates(sweep.client, {
+          channelId: route.channelId, title: titleOf(pages[i]), keepId: ids[i], botUserId: sweep.botUserId,
+        });
+        if (out.ok && out.removed.length) swept.push({ label, coach: who, slot, removed: out.removed.length });
+        else if (!out.ok) sent.push({ label: `${label}-sweep`, coach: who, ok: false, error: out.reason });
+      }
+    }
+    return ids;
   };
 
   // --- newly opened cases ---------------------------------------------------
@@ -582,6 +649,46 @@ export async function dispatch({
       // Recorded after rendering, so today's card shows movement against
       // yesterday rather than against itself.
       if (!dryRun) { recordWeekBoard(store, cw); store.data.lastCreatorWeekOn = asOf; }
+    }
+  }
+
+  // --- Star Light: the tournament chase, one card per team -------------------
+  // All into ONE channel, not the team channels. The whole point of a Star
+  // Light channel is that a coach can see what every team is doing and the
+  // tournament reads as one push rather than eleven private lists.
+  //
+  // Every card replaces its own last copy, so the channel settles at one
+  // scoreboard plus one card per team and refreshes daily instead of growing.
+  // That is what "do not spam it" has to mean mechanically: a card per team is
+  // unavoidable — a coach needs their own names — so the cost is paid once and
+  // then held flat.
+  //
+  // No period is passed to replaceLast. The campaign is a single month and the
+  // 1st of November is not a new edition to keep, it is the end: the last card
+  // should come down rather than stand forever beside a dead tournament.
+  const starRoute = discordConfig.starlightWebhook
+    ? { webhook: discordConfig.starlightWebhook, channelId: discordConfig.starlightChannelId ?? null }
+    : (discordConfig.starlightChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.starlightChannelId } : null;
+  if (starRoute && creators.length && (again('starlight') || starlightDue(config, store, asOf))) {
+    const roster = readRoster(config.dataDir);
+    const summary = starlightSummary({ creators, asOf, config, roster });
+    const { teams } = starlightTeams({ creators, asOf, config, roster });
+    if (summary.tracked) {
+      // The scoreboard first, so it sits above the team cards in the channel.
+      await (replaces('starlight')
+        ? replaceLast('starlight-overview', '(star light)', starRoute,
+          starlightOverviewEmbed(summary, { config }), 'starlightOverview')
+        : send('starlight-overview', '(star light)', starRoute, starlightOverviewEmbed(summary, { config })));
+      for (const t of teams) {
+        const card = starlightEmbed(t, { config });
+        // Paginated, and the sweep matches on exact title, so each page has to
+        // keep its own slot or posting page 2 would delete page 1.
+        await (replaces('starlight')
+          ? replaceLastPages(`starlight:${t.team}`, t.team, starRoute, card, `starlight:${groupKey(t.team)}`)
+          : replaceLastPages(`starlight:${t.team}`, t.team, starRoute, card, null));
+      }
+      if (!dryRun) store.data.lastStarlightOn = asOf;
     }
   }
 

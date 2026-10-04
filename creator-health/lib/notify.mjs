@@ -144,6 +144,11 @@ export function loadDiscordConfig(raw) {
     // Creator of the Week, in the same creator-facing server.
     creatorWeekWebhook: webhookOrNull(fromEnv(raw.creatorWeekWebhook)),
     creatorWeekChannelId: channelOrNull(fromEnv(raw.creatorWeekChannelId)),
+    // TikTok's Star Light tournament. One channel for the whole thing: a
+    // scoreboard plus a card per team, so a coach sees every team's push and
+    // not only their own.
+    starlightWebhook: webhookOrNull(fromEnv(raw.starlightWebhook)),
+    starlightChannelId: channelOrNull(fromEnv(raw.starlightChannelId)),
     coaches,
   };
 }

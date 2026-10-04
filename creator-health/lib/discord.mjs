@@ -17,6 +17,7 @@ import { MILESTONES } from './graduation.mjs';
 import { coachName, offTheBoards, earningsHidden } from './coaches.mjs';
 import { hrs } from './hardestworker.mjs';
 import { PILLARS } from './creatorweek.mjs';
+import { MISSIONS as STARLIGHT_MISSIONS } from './starlight.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -53,6 +54,16 @@ function paginateList(lines, { name, title, description, color, footer, extraFie
   const EMBED = 5200;      // under 6000, leaving room for title and footer
   const FIELDS = 20;       // under 25
 
+  // Discord counts the description, title and footer toward the 6000, and only
+  // the first page carries a description. A card whose explainer runs to a
+  // thousand characters was packing 5,200 of fields underneath it and being
+  // rejected, so the first page's budget is its own.
+  //
+  // Measured per page rather than taken off every page: shrinking them all
+  // would push a second page onto cards that fit today for no reason.
+  const overhead = (title?.length ?? 0) + (footer?.length ?? 0);
+  const budgetFor = (i) => EMBED - overhead - (i === 0 ? (description?.length ?? 0) : 0);
+
   const fields = [];
   let cur = [];
   let curLen = 0;
@@ -74,7 +85,7 @@ function paginateList(lines, { name, title, description, color, footer, extraFie
   let pageLen = 0;
   for (const f of fields) {
     const size = f.name.length + f.value.length;
-    if (page.length && (pageLen + size > EMBED || page.length >= FIELDS)) {
+    if (page.length && (pageLen + size > budgetFor(pages.length) || page.length >= FIELDS)) {
       pages.push(page); page = []; pageLen = 0;
     }
     page.push(f); pageLen += size;
@@ -1335,6 +1346,198 @@ function weekSpan(start, end) {
  * month, or the rank-up incentive pays nothing on them at all. So the card
  * leads with the two gaps and the days left, and says what it is worth.
  */
+/**
+ * The Star Light chase card, one per team.
+ *
+ * Coach-facing, so no emojis — the same rule as every other card a coach gets.
+ *
+ * It carries the campaign explainer and the creators' prize at the top because
+ * a coach has to be able to open the channel and know what they are selling
+ * without digging out the brief. The ladder is on the card for the same reason:
+ * the thing a coach says on the phone is "ten days and you are in the draw",
+ * and that sentence has to be in front of them.
+ *
+ * The piles below it are ordered by who is worth a message today, not by who is
+ * doing best. See starlightTeam for why each one exists.
+ */
+export function starlightEmbed(t, { config = {} } = {}) {
+  const cfg = config.starlight ?? {};
+  const monthName = monthNameOf(t.month);
+  const left = t.daysLeft === 1 ? '1 day left' : `${n(t.daysLeft)} days left`;
+  const missions = cfg.missions ?? STARLIGHT_MISSIONS;
+
+  // The team's own ladders, not campaign A's for everybody. A team with
+  // creators in both campaigns needs both rungs shown, because B's extra
+  // condition is the thing its creators are failing.
+  const ladders = Array.isArray(missions)
+    ? [{ campaign: null, rungs: missions }]
+    : (t.campaigns.length ? t.campaigns : ['A']).map((c) => ({ campaign: c, rungs: missions[c] ?? missions.A ?? [] }));
+
+  // Who owns the row, when it is not whoever owns the card. The campaign lists
+  // cut across LEAP's teams, so a name here without this reads as the card
+  // coach's creator when it is somebody else's.
+  const owner = (r) => {
+    if (r.outsideBoards) return ` [${r.outsideReason}]`;
+    return (r.coach ?? null) !== t.coach ? ` [${coachName(r.coach, config)}]` : '';
+  };
+
+  // One line per creator on the push list. The gap and the days left are the
+  // whole point of the card — and the record is there because it is the
+  // sentence that makes the call work: "you did 23 days last month, you are on
+  // 2". When last month was a blank but an earlier one was not, say which, so
+  // a creator on this list never looks like they do not belong on it.
+  const pushLine = (r) => {
+    const last = r.history?.lastMonth ?? null;
+    const parts = [];
+    if (last?.days > 0) parts.push(`${n(last.days)} last month`);
+    // Why they are on this list at all, when last month does not show it. A row
+    // reading "needs 10 more days (2 last month)" under a heading that says
+    // "have done 10 days before" looks like a mistake until the month that
+    // earned them the place is named.
+    if (!last?.hit) {
+      const best = (r.history?.months ?? []).filter((m) => m.hit)
+        .sort((a, b) => b.days - a.days)[0];
+      if (best) parts.push(`${n(best.days)} in ${monthNameOf(best.month)}`);
+    }
+    const needDays = r.daysShort === 1 ? '1 more day' : `${n(r.daysShort)} more days`;
+    return `@${r.username}${owner(r)} — on ${n(r.days)}, needs ${needDays}`
+      + `${parts.length ? ` (${parts.join(', ')})` : ''}`;
+  };
+  const countLine = (r) => `@${r.username}${owner(r)} ${n(r.days)}`;
+
+  const extraFields = [];
+  const addList = (name, rows, render, { sep = '\n', note = null } = {}) => {
+    if (!rows.length) return;
+    extraFields.push({
+      name: `${name} — ${n(rows.length)}`,
+      value: fitJoin(rows.slice(0, t.perBand).map(render), { total: rows.length, sep })
+        + (note ? `\n${note}` : ''),
+    });
+  };
+
+  addList('TRYING — been LIVE, no record of clearing it yet', t.trying, countLine, { sep: ' · ' });
+  addList('NOT BEEN LIVE YET', t.cold, (r) => `@${r.username}${owner(r)}`, { sep: ' · ' });
+  // Campaign B only, and the one problem on this card that going LIVE more does
+  // not fix. Names can repeat from the push list; the action is different.
+  addList('TALK TO CHAT', t.talk, countLine, {
+    sep: ' · ',
+    note: 'Hours going in, zero active interaction days scored. Shout out new viewers, '
+      + 'thank gifters by name, ask chat questions.',
+  });
+  addList('IN ALREADY — past 10 days, every extra day is more points', t.starRows, countLine, { sep: ' · ' });
+
+  // The ladder goes in the DESCRIPTION, not in a field. A long push list pages,
+  // and only the first page carries the description — a ladder in a field would
+  // land on the last page, which is the one a coach is least likely to read,
+  // while the sentence they actually say on the phone is "ten days and you are
+  // in the draw".
+  const ladderText = ladders.map(({ campaign, rungs }) => (ladders.length > 1 ? `Campaign ${campaign}\n` : '')
+    + rungs.map((m) => `Mission ${m.n} — LIVE on ${n(m.days)} days, ${n(m.hours)} hours total`
+      + `${m.interactionDays ? `, ${n(m.interactionDays)} interaction days` : ''}`
+      + ` — ${plural(m.tickets, 'ticket')}`).join('\n')).join('\n\n');
+
+  const banked = t.stars > 0
+    ? `${plural(t.stars, 'Star Creator')} and ${plural(t.starDays, 'Star Creator day')} banked.`
+    : 'No Star Creators on the board yet — the bar is 10 LIVE days, so nobody clears it before the 10th.';
+
+  // The two halves of this card have different dates. LIVE days come from the
+  // morning export, interaction days from whenever the Backstage sheet was last
+  // uploaded by hand, so the footer says both rather than implying one.
+  const source = t.rosterAsOf && t.rosterAsOf !== t.asOf
+    ? `LIVE days to ${t.asOf}, Backstage interaction days to ${t.rosterAsOf}`
+    : `as of ${t.asOf}`;
+
+  const description = `TikTok's Star Light Agency Tournament runs 1-31 ${monthName}. LEAP is in the `
+    + 'Diamond Track, and the agency scores on how many STAR CREATORS we have and how many '
+    + 'STAR CREATOR DAYS they put up — so there is no ceiling, every qualifying day is more points.\n\n'
+    + '**A creator becomes a Star Creator by going LIVE on 10 days in the month, an hour or more '
+    + 'each time.** That is the half that is on us. TikTok also scores interaction, visuals and '
+    + 'content safety, and almost everyone on your list already passes those.\n\n'
+    + '**What is in it for them:** every mission they finish is a ticket for the Uni Wheel, and '
+    + 'every ticket is a spin at a TikTok Universe. Not every spin wins one. They are already '
+    + 'signed up on Backstage — they do not have to join anything, they just have to go LIVE.\n\n'
+    + `${ladderText}\n\n`
+    + `${banked}`;
+
+  // The push list is the card's work and a coach reads it name by name, so it
+  // pages rather than ending in "and 4 more". The other piles are scan lists
+  // and ride along as extra fields.
+  return paginateList(t.push.map(pushLine), {
+    name: 'PUSH THESE FIRST — have done 10 days in a month before',
+    title: `STAR LIGHT — ${String(t.team).toUpperCase()}`,
+    description,
+    color: t.stars > 0 ? COLOR.recovered : COLOR.watch,
+    footer: `Day ${n(t.dayOfMonth)} of ${n(t.monthLength)} · ${left} · ${plural(t.total, 'creator')} in the campaign`
+      + `${t.tickets ? ` · ${plural(t.tickets, 'ticket')} earned` : ''}`
+      + `${t.coachName ? ` · ${t.coachName}` : ''} · ${source} · updated daily`,
+    extraFields,
+  });
+}
+
+/**
+ * The network's Star Light standing, posted once above the team cards.
+ *
+ * The team cards are the work; this is the scoreboard, and it exists so the
+ * whole tournament reads in one message instead of adding up eleven.
+ */
+export function starlightOverviewEmbed(s, { config = {} } = {}) {
+  const monthName = monthNameOf(s.month);
+  const target = config.starlight?.target ?? null;
+  const notStarted = s.counts?.NOT_STARTED ?? 0;
+
+  const fields = [{
+    name: 'Where the month is',
+    value: [
+      `Star Creators now: **${n(s.stars)}**${target ? ` of a ${n(target)} target` : ''}`,
+      `Star Creator days banked: **${n(s.starDays)}**`,
+      `On their own last-month pace, projected Star Creators: **${n(s.projectedStars)}**`,
+      `Tickets earned: **${n(s.tickets)}**`,
+    ].join('\n'),
+  }, {
+    name: 'The chase',
+    value: [
+      `Have cleared 10 days before and have not yet this month: **${n(s.cold)}**`,
+      `One day from their next ticket: **${n(s.oneDayOut)}**`,
+      `Not been LIVE at all this month: **${n(notStarted)}**`,
+      `Putting hours in with zero interaction days scored: **${n(s.interactionBlocked)}**`,
+    ].join('\n'),
+  }];
+
+  // Creators whose days score for LEAP but whom no LEAP coach owns. Named
+  // rather than dropped: the tournament counts them either way, so somebody
+  // has to decide whether anyone chases them.
+  if (s.outside?.length) {
+    fields.push({
+      name: `Scoring for LEAP, no LEAP coach — ${n(s.outside.length)}`,
+      value: `${fitJoin(s.outside.map((r) => `@${r.username} (${r.outsideReason})`), { sep: ' · ' })}`
+        + '\nTikTok put them in a LEAP campaign, so their LIVE days count toward our share. '
+        + 'They sit outside the coaching boards, so nobody is being measured on them.',
+    });
+  }
+
+  if (s.missing?.length) {
+    fields.push({
+      name: `In the campaign, not in our data — ${n(s.missing.length)}`,
+      value: `${fitJoin(s.missing.map((m) => `@${m.username}`), { sep: ' · ' })}`
+        + '\nBackstage has them in a campaign but there is no row for them in the creator export, '
+        + 'so nothing here tracks them. Usually a rename, or a creator who joined after the last upload.',
+    });
+  }
+
+  return {
+    embeds: [{
+      title: `STAR LIGHT — ${monthName} scoreboard`,
+      description: `${plural(s.tracked, 'creator')} across `
+        + `${Object.entries(s.byCampaign ?? {}).map(([k, v]) => `campaign ${k}: ${n(v)}`).join(', ')}.`
+        + `${s.gated ? '' : ' No Backstage campaign list loaded, so this covers the whole monitored roster rather than the campaign.'}`,
+      color: COLOR.opportunity,
+      fields,
+      footer: { text: `Day ${n(s.dayOfMonth)} of ${n(s.monthLength)} · as of ${s.asOf} · updated daily` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
 export function activenessPingEmbed(r, { mention = null, config = {} } = {}) {
   const gaps = [
     r.daysShort > 0 ? `**${r.daysShort} more LIVE day${r.daysShort === 1 ? '' : 's'}**` : null,

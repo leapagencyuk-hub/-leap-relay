@@ -492,5 +492,63 @@
     "_chaseFloor": "A creator projected below this share of 200k is not chasing it, and listing them buries the ones who are.",
     "chaseFloor": 0.3,
     "topPerSection": 5
+  },
+  "starlight": {
+    "enabled": true,
+    "_comment": "TikTok's Star Light Agency Tournament, 1-31 Oct 2026. Outside from..to there is nothing to chase, so the card stops posting rather than going stale.",
+    "from": "2026-10-01",
+    "to": "2026-11-02",
+    "starDays": 10,
+    "target": 70,
+    "historyMonths": 3,
+    "plausibleHoursPerDay": 3,
+    "comfortable": 0.4,
+    "tight": 0.7,
+    "perBand": 40,
+    "missions": {
+      "A": [
+        {
+          "n": 1,
+          "days": 10,
+          "hours": 10,
+          "tickets": 1
+        },
+        {
+          "n": 2,
+          "days": 15,
+          "hours": 15,
+          "tickets": 2
+        },
+        {
+          "n": 3,
+          "days": 20,
+          "hours": 25,
+          "tickets": 3
+        }
+      ],
+      "B": [
+        {
+          "n": 1,
+          "days": 10,
+          "hours": 10,
+          "interactionDays": 10,
+          "tickets": 1
+        },
+        {
+          "n": 2,
+          "days": 15,
+          "hours": 15,
+          "interactionDays": 15,
+          "tickets": 2
+        },
+        {
+          "n": 3,
+          "days": 20,
+          "hours": 25,
+          "interactionDays": 20,
+          "tickets": 3
+        }
+      ]
+    }
   }
 }

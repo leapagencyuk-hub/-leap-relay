@@ -54,9 +54,23 @@ test('the export needs the token, and carries the whole series', async () => {
     const ok = await fetch(`${base}/export?token=secret`);
     assert.equal(ok.status, 200);
     const body = await ok.json();
-    assert.ok(Array.isArray(body.snapshots), 'the snapshot dates come with it');
+    assert.ok(Array.isArray(body.snapshotDates), 'the snapshot dates come with it');
     assert.ok(body.series && typeof body.series.creators === 'object',
       'and the series itself, not a summary of it');
+    // And the raw snapshots, not only their dates. The series is derived FROM
+    // them, so a dump without them can be read but never rebuilt or re-run —
+    // and they are the only copy of what TikTok actually sent on each day.
+    assert.ok(Array.isArray(body.snapshots), 'the snapshots themselves come with it');
+    assert.equal(body.snapshots.length, body.snapshotDates.length);
+    if (body.snapshots.length) {
+      assert.ok(Array.isArray(body.snapshots[0].active),
+        'and each one is the snapshot, not its date');
+    }
+
+    // ?full=0 is the light response, for when the dates are all that is wanted.
+    const light = await fetch(`${base}/export?token=secret&full=0`).then((r) => r.json());
+    assert.equal(light.snapshots, null);
+    assert.deepEqual(light.snapshotDates, body.snapshotDates);
     // The case store is where payroll lives — which creators have leaped, in
     // which month, for how much. It cannot be rebuilt from the exports, so a
     // backup without it is not a backup.

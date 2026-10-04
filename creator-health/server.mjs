@@ -10,13 +10,16 @@
 //   GET  /creator/:name     one creator's numbers
 //   POST /notify            run today's analysis and push digests to webhooks
 //   POST /run               the daily run: reconcile cases and post to Discord
-//                           ?force=leaderboard,growth,overview,policy,activeness,summaries
+//                           ?force=leaderboard,growth,overview,policy,activeness,summaries,
+//                           starlight
 //                           (or ?force=all) reposts today's once-a-day cards
 //   POST /discord/interactions  Discord's interactions endpoint (button clicks)
 //   GET  /cases             the open caseload
 //   GET  /effectiveness     which interventions are working
 //   POST /hardest            refresh the Hardest Worker board, on its own
 //   POST /creator-week       refresh the Creator of the Week board, on its own
+//   POST /upload             also takes a Star Light "Activity Host Rank" sheet, which
+//                           sets who is in which campaign and their interaction days
 //   GET  /export             a full backup: series, snapshots and payroll state
 //   GET  /selftest           what this service can reach
 //                            ?post=1 sends a test line, ?sample=1 sends real cards
@@ -44,6 +47,7 @@ import { redoToday, redoSummary } from './lib/redo.mjs';
 import { pullRankings, rankingsSummary } from './lib/rankings.mjs';
 import { refreshChallenge, challengeSummary } from './lib/challenge.mjs';
 import { isManageExport, readManualLeaps, importManualLeaps, importSummary } from './lib/leapedimport.mjs';
+import { isActivityHostRankFile, saveRosterFile, readRoster, rosterHealth } from './lib/starlightroster.mjs';
 import { Discord, declineEmbed, activationEmbed } from './lib/discord.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
@@ -152,6 +156,38 @@ async function handleUpload(req, res, url) {
         already: out.already.length,
         unmatched: out.unmatched,
         message: importSummary(out),
+      });
+    }
+
+    // The Star Light campaign roster. A third Backstage export, recognised the
+    // same way as the other two: by a column only it has.
+    //
+    // This one is NOT the daily driver. The day and hour counts on the cards
+    // come from the Creator data export, which arrives every morning anyway;
+    // what only this file has is who is in which campaign and their active
+    // interaction days. So it wants uploading when the campaign roster changes
+    // or when the interaction numbers matter, not every day.
+    if (isActivityHostRankFile(tmp)) {
+      const out = saveRosterFile(config.dataDir, tmp, {
+        campaign: url.searchParams.get('campaign') || null,
+      });
+      return json(res, 200, {
+        kind: 'starlight-roster',
+        applied: true,
+        campaign: out.campaign,
+        campaignId: out.campaignId,
+        asOf: out.asOf,
+        inThisCampaign: out.count,
+        campaignCreators: out.total,
+        movedCampaign: out.movedCampaign,
+        // The brief's rule is one campaign per creator. Reported, never fixed
+        // here: which campaign to drop them from is a Backstage decision.
+        inBothCampaigns: out.inBoth,
+        message: `Campaign ${out.campaign}: ${out.count} creators, as of ${out.asOf}.`
+          + (out.inBoth.length
+            ? ` WARNING: ${out.inBoth.map((c) => c.username).join(', ')} in more than one campaign — `
+              + 'they can only take tickets from one, so remove them from the other in Backstage.'
+            : ''),
       });
     }
 
@@ -319,6 +355,11 @@ async function handleSelfTest(req, res, url) {
       leagueDown: discord.leagueDownWebhook ? 'set' : 'MISSING',
       hardestWorker: discord.hardestWorkerWebhook ? 'set' : 'MISSING',
       creatorWeek: discord.creatorWeekWebhook ? 'set' : 'MISSING',
+      starlight: discord.starlightWebhook ? 'set' : 'MISSING',
+      // Not a secret, so unlike the webhooks this reports its contents: the
+      // campaign roster going stale is the one failure that would make the
+      // Star Light cards quietly wrong rather than absent.
+      starlightRoster: rosterHealth(readRoster(config.dataDir), new Store(config.dataDir).readSeries().lastAsOf),
       teamsResolved: teams.filter((t) => t.destination !== 'NONE').length,
       teamsMissing: teams.filter((t) => t.destination === 'NONE').map((t) => t.team),
     },
@@ -523,9 +564,21 @@ const server = http.createServer(async (req, res) => {
       // and for how much. Leaving it out made this a backup of the numbers
       // and not of the money — and left the one thing that cannot be
       // rebuilt from the exports as the one thing you could not read back.
+      //
+      // And the snapshots themselves, not just their dates. `snapshots` used to
+      // be the list of dates, which reads like the data in a payload that calls
+      // itself an export and is not: the series is derived FROM the snapshots,
+      // so a dump without them cannot be rebuilt or re-run, only read. The raw
+      // files are the only copy of what TikTok actually sent on each day.
+      //
+      // ?full=0 gives the old light response, for when the dates are all that
+      // is wanted.
+      const full = url.searchParams.get('full') !== '0';
+      const dates = store.listSnapshotDates();
       const body = Buffer.from(JSON.stringify({
         exportedAt: new Date().toISOString(),
-        snapshots: store.listSnapshotDates(),
+        snapshotDates: dates,
+        snapshots: full ? dates.map((d) => store.readSnapshot(d)) : null,
         series: store.readSeries(),
         state: new CaseStore(config.dataDir).data,
       }));

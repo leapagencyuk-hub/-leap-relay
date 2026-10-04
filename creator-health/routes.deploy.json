@@ -35,6 +35,9 @@
     "_creatorWeek": "Creator of the Week, in the same creator-facing server. Posted daily; the winner is crowned on Sunday and the board clears when the new week starts on Monday.",
     "creatorWeekWebhook": "env:DISCORD_WEBHOOK_CREATOR_WEEK",
     "creatorWeekChannelId": "1554538899068555284",
+    "_starlight": "TikTok's Star Light Agency Tournament, 1-31 Oct 2026. One scoreboard plus one card per team, all in this one channel, every card replacing its own last copy.",
+    "starlightWebhook": "env:DISCORD_WEBHOOK_STARLIGHT",
+    "starlightChannelId": "1556406354313482280",
     "groups": {
       "Team Alpha": {
         "webhook": "env:DISCORD_WEBHOOK_TEAM_ALPHA",

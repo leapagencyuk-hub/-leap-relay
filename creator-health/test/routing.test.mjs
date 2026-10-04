@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadRoutes, groupKey, isChannelId, isWebhookUrl } from '../lib/notify.mjs';
+import { loadRoutes, loadDiscordConfig, groupKey, isChannelId, isWebhookUrl } from '../lib/notify.mjs';
 import { routeFor, coverage, preflight, supersedes } from '../lib/dispatch.mjs';
 
 const ID = (n) => String(n).padStart(18, '1');
@@ -549,4 +549,34 @@ test('a list that fits keeps every entry and says nothing about more', () => {
     .embeds[0].fields.find((f) => f.name === 'Who');
   assert.equal(field.value.split('\n').length, 3);
   assert.doesNotMatch(field.value, /more/);
+});
+
+test('every webhook in routes.deploy.json survives the loader', () => {
+  // loadDiscordConfig copies a known list of keys, so a webhook added to
+  // routes.json without a matching line in the loader is read as unset. The
+  // card then never posts and nothing reports a problem — which is what
+  // happened to the Star Light webhook, and is the same silent failure the
+  // delete path already carries a comment about.
+  //
+  // So the committed route file is the contract: if it names a webhook or a
+  // channel, the loader has to hand it back.
+  const raw = JSON.parse(fs.readFileSync(new URL('../routes.deploy.json', import.meta.url), 'utf8')).discord;
+  const env = {};
+  for (const [key, value] of Object.entries(raw)) {
+    if (typeof value === 'string' && value.startsWith('env:')) {
+      env[value.slice(4)] = /ChannelId$/.test(key) ? '1551546764471836832' : 'https://discord.com/api/webhooks/1/x';
+    }
+  }
+  const saved = { ...process.env };
+  Object.assign(process.env, env);
+  try {
+    const loaded = loadDiscordConfig(raw);
+    const missing = Object.keys(raw)
+      .filter((k) => /Webhook$|ChannelId$/.test(k))
+      .filter((k) => loaded[k] == null);
+    assert.deepEqual(missing, [], `routes.deploy.json names these but the loader drops them: ${missing.join(', ')}`);
+  } finally {
+    for (const k of Object.keys(env)) delete process.env[k];
+    Object.assign(process.env, saved);
+  }
 });
