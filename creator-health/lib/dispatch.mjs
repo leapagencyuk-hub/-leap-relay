@@ -673,7 +673,11 @@ export async function dispatch({
   if (starRoute && creators.length && (again('starlight') || starlightDue(config, store, asOf))) {
     const roster = readRoster(config.dataDir);
     const summary = starlightSummary({ creators, asOf, config, roster });
-    const { teams } = starlightTeams({ creators, asOf, config, roster });
+    // `persist` writes the surfacing record that makes the daily list a
+    // rotation. A dry run must not spend it: previewing the card would
+    // otherwise put six creators on cooldown and the real run would then hand
+    // the coach a different six.
+    const { teams } = starlightTeams({ creators, asOf, config, roster, store, persist: !dryRun });
     if (summary.tracked) {
       // The scoreboard first, so it sits above the team cards in the channel.
       await (replaces('starlight')

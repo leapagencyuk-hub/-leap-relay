@@ -17,7 +17,7 @@ import { MILESTONES } from './graduation.mjs';
 import { coachName, offTheBoards, earningsHidden } from './coaches.mjs';
 import { hrs } from './hardestworker.mjs';
 import { PILLARS } from './creatorweek.mjs';
-import { MISSIONS as STARLIGHT_MISSIONS } from './starlight.mjs';
+import { MISSIONS as STARLIGHT_MISSIONS, chaseReason } from './starlight.mjs';
 
 const API = 'https://discord.com/api/v10';
 
@@ -49,7 +49,7 @@ const n = (x) => (x == null ? '—' : Math.round(x).toLocaleString('en-GB'));
  * decoration — the duplicate sweep matches on exact title, so parts must not
  * share one, or posting part 2 would delete part 1.
  */
-function paginateList(lines, { name, title, description, color, footer, extraFields = [] }) {
+function paginateList(lines, { name, title, description, color, footer, extraFields = [], leadFields = [] }) {
   const FIELD = 1000;      // under Discord's 1024, with room for the join
   const EMBED = 5200;      // under 6000, leaving room for title and footer
   const FIELDS = 20;       // under 25
@@ -77,6 +77,9 @@ function paginateList(lines, { name, title, description, color, footer, extraFie
     cur.push(line); curLen += line.length + 1;
   }
   flush();
+  // `leadFields` go above the list rather than below it, for the part of a card
+  // that asks for something today. extraFields are reference and follow.
+  fields.unshift(...leadFields);
   fields.push(...extraFields);
 
   // Now pack fields into messages that stay under the embed budget.
@@ -1408,22 +1411,39 @@ export function starlightEmbed(t, { config = {} } = {}) {
   const extraFields = [];
   const addList = (name, rows, render, { sep = '\n', note = null } = {}) => {
     if (!rows.length) return;
+    // The note has to come out of the field's budget, not be added on top of
+    // it. Appending it after fitJoin had already filled 1024 characters put
+    // the field over Discord's limit as soon as a list got long — 45 names on
+    // one line each was enough.
+    const room = 1024 - (note ? note.length + 1 : 0);
     extraFields.push({
       name: `${name} — ${n(rows.length)}`,
-      value: fitJoin(rows.slice(0, t.perBand).map(render), { total: rows.length, sep })
+      value: fitJoin(rows.slice(0, t.perBand).map(render), { total: rows.length, sep, max: room })
         + (note ? `\n${note}` : ''),
     });
   };
 
+  // Named so a coach does not spend a message here. They are the comfortable
+  // call and they are landing it anyway.
+  addList('ON COURSE — leave them, they get there on their own', t.onCourse, countLine, { sep: ' · ' });
   addList('TRYING — been LIVE, no record of clearing it yet', t.trying, countLine, { sep: ' · ' });
   addList('NOT BEEN LIVE YET', t.cold, (r) => `@${r.username}${owner(r)}`, { sep: ' · ' });
   // Campaign B only, and the one problem on this card that going LIVE more does
   // not fix. Names can repeat from the push list; the action is different.
-  addList('TALK TO CHAT', t.talk, countLine, {
-    sep: ' · ',
-    note: 'Hours going in, zero active interaction days scored. Shout out new viewers, '
-      + 'thank gifters by name, ask chat questions.',
-  });
+  // Interaction, as far as we can read it. The card says "gifts are thin"
+  // rather than "interaction days", because for most of the roster this is a
+  // proxy fitted against TikTok's score and not the score itself.
+  // One per line, not joined with " · ": the line carries its own figures and
+  // the two separators ran together into "@ohmagicz 2d · 0/hr · @nugs988 0d".
+  addList('TALK TO CHAT — hours going in, gifts not following', t.talk,
+    (r) => `@${r.username}${owner(r)} — ${plural(r.days, 'day')}, `
+      + `${r.interaction?.perHour != null ? `${n(r.interaction.perHour)} diamonds per LIVE hour`
+        : `${plural(r.interaction?.days ?? 0, 'interaction day')} on Backstage`}`, {
+      sep: '\n',
+      note: 'TikTok scores interaction, and on our own numbers gifts predict that score where '
+        + 'hours do not. These are putting the time in without the gifts following. Shout out new '
+        + 'viewers, thank gifters by name, ask chat questions, do not sit in silence.',
+    });
   addList('IN ALREADY — past 10 days, every extra day is more points', t.starRows, countLine, { sep: ' · ' });
 
   // The ladder goes in the DESCRIPTION, not in a field. A long push list pages,
@@ -1459,11 +1479,28 @@ export function starlightEmbed(t, { config = {} } = {}) {
     + `${ladderText}\n\n`
     + `${banked}`;
 
+  // The day's short list goes FIRST, above everything, because it is the only
+  // part of the card that asks for something today. See dailyChase for how the
+  // names are chosen and why they change each day.
+  const today = t.today;
+  const leadFields = [];
+  const tail = `\nDifferent names tomorrow${today?.queued ? `, ${n(today.queued)} more in the queue` : ''}`
+    + `${today?.coverable ? ` · ${n(today.covered)} of ${n(today.coverable)} reached this month` : ''}.`;
+  if (today?.pick?.length) {
+    leadFields.push({
+      name: `MESSAGE THESE TODAY — ${n(today.pick.length)}`,
+      value: fitJoin(today.pick.map((c) => `@${c.row.username}${owner(c.row)} — ${chaseReason(c)}`),
+        { sep: '\n', max: 1024 - tail.length })
+        + tail,
+    });
+  }
+
   // The push list is the card's work and a coach reads it name by name, so it
   // pages rather than ending in "and 4 more". The other piles are scan lists
   // and ride along as extra fields.
-  return paginateList(t.push.map(pushLine), {
-    name: 'PUSH THESE FIRST — have done 10 days in a month before',
+  return paginateList((t.rest ?? t.push).map(pushLine), {
+    leadFields,
+    name: 'THE REST TO WORK THROUGH — have done 10 days in a month before',
     title: `STAR LIGHT — ${String(t.team).toUpperCase()}`,
     description,
     color: t.stars > 0 ? COLOR.recovered : COLOR.watch,
@@ -1490,16 +1527,30 @@ export function starlightOverviewEmbed(s, { config = {} } = {}) {
     value: [
       `Star Creators now: **${n(s.stars)}**${target ? ` of a ${n(target)} target` : ''}`,
       `Star Creator days banked: **${n(s.starDays)}**`,
-      `On their own last-month pace, projected Star Creators: **${n(s.projectedStars)}**`,
+      // Two projections, because they answer different questions and
+      // disagreeing is informative. The first is each creator's own curve; the
+      // second is what LEAP's September actually converted at from the same
+      // position, which is the one to plan against.
+      `Where the month lands on each creator's own pace: **${n(s.projectedStars)}**`,
+      `Where it lands on what LEAP converted at last month: **${n(s.expectedStars)}**`,
       `Tickets earned: **${n(s.tickets)}**`,
     ].join('\n'),
   }, {
     name: 'The chase',
     value: [
+      `Worth a message today, on the measured odds: **${n(s.worthMessaging)}**`,
       `Have cleared 10 days before and have not yet this month: **${n(s.cold)}**`,
-      `One day from their next ticket: **${n(s.oneDayOut)}**`,
       `Not been LIVE at all this month: **${n(notStarted)}**`,
-      `Putting hours in with zero interaction days scored: **${n(s.interactionBlocked)}**`,
+      `One day from their next ticket: **${n(s.oneDayOut)}**`,
+    ].join('\n'),
+  }, {
+    name: 'Interaction',
+    value: [
+      `Gifting well enough to be scoring it: **${n(s.interaction?.GOOD ?? 0)}**`,
+      `LIVE with the gifts not following: **${n((s.interaction?.THIN ?? 0) + (s.interaction?.NONE ?? 0))}**`,
+      `Not LIVE enough to read: **${n(s.interaction?.UNKNOWN ?? 0)}**`,
+      '_Read from Backstage where we hold a figure, otherwise from gifts per LIVE hour — '
+        + 'which separates TikTok\'s own score where LIVE hours do not._',
     ].join('\n'),
   }];
 

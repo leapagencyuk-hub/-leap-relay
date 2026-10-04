@@ -6,6 +6,8 @@ import path from 'node:path';
 import {
   starlightRow, starlightRows, starlightTeam, starlightTeams, starlightSummary,
   starlightDue, steadyHistory, bandOf, chaseOrder, MISSIONS, STAR_DAYS,
+  interactionRead, conversionOdds, capableOdds, messageWorth, dailyChase, chaseReason,
+  CAPABLE_BY_HITS, CAPABLE_ONE_MONTH, CAPABLE_UNKNOWN,
 } from '../lib/starlight.mjs';
 import { starlightEmbed, starlightOverviewEmbed } from '../lib/discord.mjs';
 import {
@@ -365,13 +367,23 @@ test('the card is coach-facing, so it carries no emoji', () => {
   assert.ok(!/\p{Extended_Pictographic}/u.test(text), 'found an emoji on a coach card');
 });
 
-test('a long push list pages rather than ending in "and 40 more"', () => {
-  const pages = starlightEmbed(bigTeam(), { config });
-  const shown = pages.flatMap((p) => p.embeds[0].fields)
-    .filter((f) => /PUSH THESE FIRST/.test(f.name))
+test('a long work-through list pages rather than ending in "and 40 more"', () => {
+  const t = bigTeam();
+  const shown = starlightEmbed(t, { config }).flatMap((p) => p.embeds[0].fields)
+    .filter((f) => /THE REST TO WORK THROUGH/.test(f.name))
     .flatMap((f) => f.value.split('\n'));
-  assert.ok(!shown.some((l) => /and \d+ more/.test(l)), 'the push list was trimmed instead of paged');
-  assert.equal(shown.filter((l) => l.startsWith('@')).length, bigTeam().push.length);
+  assert.ok(!shown.some((l) => /and \d+ more/.test(l)), 'the list was trimmed instead of paged');
+  assert.equal(shown.filter((l) => l.startsWith('@')).length, t.rest.length);
+  assert.ok(t.rest.length > 20, 'and there were enough rows for this to mean something');
+});
+
+test("today's names are not repeated in the list underneath", () => {
+  // "The rest" has to mean the rest. Listing the same six again below their own
+  // reasons made the card read as though they had to be worked twice.
+  const t = bigTeam();
+  const picked = new Set(t.today.pick.map((c) => c.row.username));
+  assert.ok(picked.size > 0);
+  assert.equal(t.rest.filter((r) => picked.has(r.username)).length, 0);
 });
 
 test('every page stays inside Discord limits', () => {
@@ -406,12 +418,20 @@ test('a team with creators in both campaigns gets both ladders', () => {
 test('a push line names the month that earned the creator their place', () => {
   // A row reading "needs 10 more days (2 last month)" under a heading that says
   // "have done 10 days before" looks like a bug until the month is named.
+  // Enough other rows that `rusty` is not one of the day's six and so lands in
+  // the work-through list, which is the line this is about.
   const t = starlightTeam({
     team: 'Team Alpha',
-    rows: [starlightRow(who('rusty', { days: 0, months: { [SEPT]: 2, [AUG]: 16 } }), ASOF, config)],
+    rows: [
+      starlightRow(who('rusty', { days: 0, months: { [SEPT]: 2, [AUG]: 16 } }), ASOF, config),
+      ...Array.from({ length: 8 }, (_, i) => starlightRow(
+        who(`stronger_${i}`, { days: 0, months: { [SEPT]: 20, [AUG]: 20, [JULY]: 20 } }), ASOF, config,
+      )),
+    ],
     asOf: ASOF, config,
   });
-  const value = starlightEmbed(t, { config })[0].embeds[0].fields[0].value;
+  const value = starlightEmbed(t, { config })[0].embeds[0].fields
+    .find((f) => /THE REST TO WORK THROUGH/.test(f.name)).value;
   assert.match(value, /@rusty — on 0, needs 10 more days \(2 last month, 16 in August\)/);
 });
 
@@ -688,4 +708,241 @@ test('the campaign id reader does not mistake the date for an id', () => {
   assert.equal(describeFile('Activity_Host_Rank_-_2026_10_04_09_00_UTC0.xlsx').id, null);
   assert.equal(describeFile('Activity_Host_Rank_-_7690978446935097352_2026_10_04_09_00_UTC0.xlsx').id,
     '7690978446935097352');
+});
+
+// --- the interaction read ---------------------------------------------------
+
+test('gifts read as interaction and hours do not', () => {
+  // The two cases that made the point, from the labelled Campaign B sheet.
+  // mackopete streamed 19.2 hours over 3 days for 52 diamonds and TikTok
+  // scored him zero; the_cleaner87 streamed 3.1 hours on one day for 2,609
+  // diamonds and scored the full four. Any read built on time would have had
+  // these the wrong way round.
+  const grind = starlightRow(who('mackopete', { days: 3, hours: 19.2, diamonds: 52 }), ASOF, config);
+  const gifted = starlightRow(who('the_cleaner87', { days: 1, hours: 3.1, diamonds: 2609 }), ASOF, config);
+  assert.equal(interactionRead(grind, config).band, 'THIN');
+  assert.equal(interactionRead(gifted, config).band, 'GOOD');
+});
+
+test('the cut is 20 diamonds per LIVE hour, measured', () => {
+  const at = (dia, hours) => interactionRead(
+    starlightRow(who('x', { days: 3, hours, diamonds: dia }), ASOF, config), config,
+  );
+  assert.equal(at(60, 3).band, 'GOOD', '20/hr exactly is in');
+  assert.equal(at(57, 3).band, 'THIN', 'just under is out');
+  assert.equal(at(60, 3).perHour, 20);
+});
+
+test('a creator who has not been LIVE reads UNKNOWN, never bad', () => {
+  // Their problem is going LIVE, which every other list on the card is about.
+  // Putting them on a "talk to your chat" list would be advice about a stream
+  // they have not done.
+  const r = interactionRead(starlightRow(who('x', { days: 0, hours: 0 }), ASOF, config), config);
+  assert.equal(r.band, 'UNKNOWN');
+  assert.equal(r.perHour, null);
+});
+
+test("Backstage's own reading beats the proxy where we hold one", () => {
+  const entry = { username: 'inb', campaign: 'B', interactionDays: 9, asOf: '2026-10-04' };
+  const r = interactionRead(starlightRow(who('inb', { days: 3, hours: 9, diamonds: 0 }), ASOF, config, entry), config);
+  assert.equal(r.source, 'Backstage');
+  assert.equal(r.days, 9);
+  assert.equal(r.perHour, null, 'the proxy is not reported beside a real measurement');
+});
+
+test('Backstage interaction days are judged on pace, not against the month-end target', () => {
+  // Four interaction days on the 4th against a target of ten is somebody doing
+  // it every single day. Reading that as "six short" put creators who had
+  // scored on every day of the campaign onto the list to chase about it.
+  const entry = { username: 'inb', campaign: 'B', interactionDays: 4, asOf: '2026-10-04' };
+  const early = starlightRow(who('inb', { days: 4, hours: 12, diamonds: 100, asOf: '2026-10-04' }), '2026-10-04', config, entry);
+  assert.equal(interactionRead(early, config).band, 'GOOD');
+
+  // The same four days with three days left is genuinely behind.
+  const late = starlightRow(who('inb', { days: 4, hours: 12, diamonds: 100, asOf: '2026-10-28' }), '2026-10-28', config, entry);
+  assert.equal(interactionRead(late, config).band, 'THIN');
+});
+
+test('the talk-to-chat list is only creators who have been LIVE', () => {
+  const entry = (d) => ({ username: 'x', campaign: 'B', interactionDays: d, asOf: '2026-10-04' });
+  const t = starlightTeam({
+    team: 'Team Alpha',
+    rows: [
+      starlightRow(who('grinding', { days: 3, hours: 19, diamonds: 50 }), ASOF, config, entry(0)),
+      starlightRow(who('absent', { days: 0, hours: 0 }), ASOF, config, entry(1)),
+    ],
+    asOf: ASOF, config,
+  });
+  assert.deepEqual(t.talk.map((r) => r.username), ['grinding']);
+});
+
+// --- the conversion model ---------------------------------------------------
+
+test('the conversion table is read off the required rate', () => {
+  // Measured over 8,337 September creator-days. The cliff is between a third
+  // and a half of the remaining days.
+  const at = (days, asOf) => conversionOdds(starlightRow(who('x', { days, asOf, months: { [SEPT]: 20, [AUG]: 20 } }), asOf, config));
+  assert.ok(at(8, '2026-10-20') > 0.8, 'needing 2 of 11 is comfortable');
+  assert.ok(at(4, '2026-10-20') < 0.5, 'needing 6 of 11 is not');
+  assert.equal(at(0, '2026-10-29'), 0, 'needing 10 of 2 is arithmetically impossible');
+});
+
+test('an already-qualified creator is certain and worth no message', () => {
+  const r = starlightRow(who('x', { days: 12, months: { [SEPT]: 20 } }), ASOF, config);
+  assert.equal(conversionOdds(r), 1);
+  assert.equal(messageWorth(r), 0);
+});
+
+test('capability comes from the record and never from where they are now', () => {
+  const both = starlightRow(who('x', { days: 0, months: { [SEPT]: 20, [AUG]: 20, [JULY]: 1 } }), ASOF, config);
+  const one = starlightRow(who('x', { days: 0, months: { [SEPT]: 20, [AUG]: 1, [JULY]: 1 } }), ASOF, config);
+  const none = starlightRow(who('x', { days: 0, months: { [SEPT]: 1, [AUG]: 1, [JULY]: 1 } }), ASOF, config);
+  assert.equal(capableOdds(both), CAPABLE_BY_HITS[2]);
+  assert.equal(capableOdds(one), CAPABLE_BY_HITS[1]);
+  assert.equal(capableOdds(none), CAPABLE_BY_HITS[0]);
+});
+
+test('a creator with no history on file is not treated as a strong prospect', () => {
+  // The first version of this guessed 0.82 for the no-history case — the
+  // conversion rate of people facing an EASY remaining ask, which is not a
+  // capability at all — and it ranked creators nobody has ever seen go LIVE
+  // above creators with a twenty-day month behind them.
+  const unknown = starlightRow(who('new', { days: 0, months: {} }), ASOF, config);
+  const proven = starlightRow(who('proven', { days: 0, months: { [SEPT]: 20, [AUG]: 20, [JULY]: 20 } }), ASOF, config);
+  assert.equal(capableOdds(unknown), CAPABLE_UNKNOWN);
+  assert.ok(messageWorth(unknown) < messageWorth(proven),
+    'a creator with no record must not outrank a proven one');
+});
+
+test('one month on file is read less confidently than two', () => {
+  const hit = starlightRow(who('x', { days: 0, months: { [SEPT]: 20 } }), ASOF, config);
+  const miss = starlightRow(who('x', { days: 0, months: { [SEPT]: 2 } }), ASOF, config);
+  assert.equal(capableOdds(hit), CAPABLE_ONE_MONTH.hit);
+  assert.equal(capableOdds(miss), CAPABLE_ONE_MONTH.miss);
+  assert.ok(CAPABLE_ONE_MONTH.hit < CAPABLE_BY_HITS[2]);
+});
+
+test('a message is worth most to the stalled-but-proven, and nothing to the on-course', () => {
+  // The whole point of the ranking. Both of these are real shapes off the
+  // October roster.
+  const stalled = starlightRow(who('nugs988', { days: 0, asOf: '2026-10-03', months: { [SEPT]: 18, [AUG]: 16, [JULY]: 15 } }), '2026-10-03', config);
+  const flying = starlightRow(who('leachiii', { days: 3, asOf: '2026-10-03', months: { [SEPT]: 10, [AUG]: 12, [JULY]: 14 } }), '2026-10-03', config);
+  const hopeless = starlightRow(who('never', { days: 0, asOf: '2026-10-03', months: { [SEPT]: 1, [AUG]: 0, [JULY]: 2 } }), '2026-10-03', config);
+  assert.ok(messageWorth(stalled) > 0.3, `stalled-but-proven should be top, got ${messageWorth(stalled)}`);
+  assert.ok(messageWorth(flying) < 0.05, 'somebody on course needs no message');
+  assert.ok(messageWorth(hopeless) < 0.1, 'chasing will not fix what has never been done');
+  assert.ok(messageWorth(stalled) > messageWorth(hopeless));
+});
+
+test('on-course creators are named so a coach does not spend a message there', () => {
+  const t = starlightTeam({
+    team: 'Team Alpha',
+    rows: [
+      starlightRow(who('flying', { days: 3, asOf: '2026-10-03', months: { [SEPT]: 12, [AUG]: 12, [JULY]: 12 } }), '2026-10-03', config),
+      starlightRow(who('stalled', { days: 0, asOf: '2026-10-03', months: { [SEPT]: 18, [AUG]: 16, [JULY]: 15 } }), '2026-10-03', config),
+    ],
+    asOf: '2026-10-03', config,
+  });
+  assert.deepEqual(t.onCourse.map((r) => r.username), ['flying']);
+  assert.deepEqual(t.today.pick.map((c) => c.row.username), ['stalled'],
+    'and they are kept off the day list entirely');
+});
+
+// --- the daily rotation -----------------------------------------------------
+
+const rotationRows = (asOf = '2026-10-03') => Array.from({ length: 20 }, (_, i) => starlightRow(
+  who(`c${i}`, { days: 0, asOf, months: { [SEPT]: 18, [AUG]: 16, [JULY]: 15 } }), asOf, config,
+));
+
+test('the list is capped, so a coach gets a handful rather than the roster', () => {
+  const out = dailyChase({ rows: rotationRows(), store: { data: {} }, asOf: '2026-10-03', config });
+  assert.equal(out.pick.length, 6);
+  assert.equal(out.queued, 14);
+});
+
+test('the same names do not come back the next day', () => {
+  const store = { data: {} };
+  const first = dailyChase({ rows: rotationRows('2026-10-03'), store, asOf: '2026-10-03', config });
+  const second = dailyChase({ rows: rotationRows('2026-10-04'), store, asOf: '2026-10-04', config });
+  const a = new Set(first.pick.map((c) => c.row.username));
+  const b = second.pick.map((c) => c.row.username);
+  assert.equal(b.filter((u) => a.has(u)).length, 0, 'day two repeated day one');
+  // Twelve, not six: `covered` counts today's list as reached, which is what
+  // the card is reporting once it has posted.
+  assert.equal(second.covered, 12, 'and it counts everyone surfaced so far, today included');
+  assert.equal(first.covered, 6);
+});
+
+test('after the cooldown they can come back round', () => {
+  const store = { data: {} };
+  dailyChase({ rows: rotationRows('2026-10-03'), store, asOf: '2026-10-03', config });
+  // Four days later, with everyone else also spent, the first six are eligible
+  // again rather than the list running dry.
+  for (const d of ['2026-10-04', '2026-10-05', '2026-10-06']) {
+    dailyChase({ rows: rotationRows(d), store, asOf: d, config });
+  }
+  const back = dailyChase({ rows: rotationRows('2026-10-07'), store, asOf: '2026-10-07', config });
+  assert.ok(back.pick.length > 0, 'the rotation came back round');
+});
+
+test('a last chance overrides the cooldown', () => {
+  // Tomorrow there is no list to be on, so the cooldown cannot hold them.
+  const store = { data: { starlightSurfaced: { '2026-10': { urgent: '2026-10-27' } } } };
+  const rows = [starlightRow(who('urgent', { days: 2, asOf: '2026-10-23', months: { [SEPT]: 20, [AUG]: 20 } }), '2026-10-23', config)];
+  const out = dailyChase({ rows, store, asOf: '2026-10-28', config, persist: false });
+  assert.deepEqual(out.pick.map((c) => c.row.username), ['urgent']);
+  assert.equal(out.pick[0].lastChance, true);
+});
+
+test('a dry run reports the same coverage as the real run', () => {
+  // Reading the surfacing record through a live reference made this number
+  // depend on whether persist had run, so the preview and the post disagreed.
+  const dry = dailyChase({ rows: rotationRows(), store: { data: {} }, asOf: '2026-10-03', config, persist: false });
+  const wet = dailyChase({ rows: rotationRows(), store: { data: {} }, asOf: '2026-10-03', config, persist: true });
+  assert.equal(dry.covered, wet.covered);
+});
+
+test('a dry run does not spend the rotation', () => {
+  // Previewing the card would otherwise put six creators on cooldown, and the
+  // real run would then hand the coach a different six.
+  const store = { data: {} };
+  dailyChase({ rows: rotationRows(), store, asOf: '2026-10-03', config, persist: false });
+  assert.deepEqual(store.data.starlightSurfaced, undefined);
+  const real = dailyChase({ rows: rotationRows(), store, asOf: '2026-10-03', config });
+  assert.equal(real.pick.length, 6);
+  assert.equal(Object.keys(store.data.starlightSurfaced['2026-10']).length, 6);
+});
+
+test('creators already past the bar, or out of days, are never on the list', () => {
+  const rows = [
+    starlightRow(who('done', { days: 14, months: { [SEPT]: 20 } }), ASOF, config),
+    starlightRow(who('gone', { days: 0, asOf: '2026-10-29', months: { [SEPT]: 20, [AUG]: 20 } }), '2026-10-29', config),
+  ];
+  const out = dailyChase({ rows, store: { data: {} }, asOf: '2026-10-29', config, persist: false });
+  assert.deepEqual(out.pick, []);
+});
+
+test('the reason on each line is a sentence, not the model', () => {
+  const out = dailyChase({ rows: rotationRows(), store: { data: {} }, asOf: '2026-10-03', config, persist: false });
+  const reason = chaseReason(out.pick[0]);
+  assert.match(reason, /did 18 days last month, nothing yet this month/);
+  assert.ok(!/0\.\d|odds|%/.test(reason), 'a coach does not need the conversion odds');
+});
+
+test('the card leads with the day list and says the names rotate', () => {
+  const t = starlightTeam({ team: 'Team Alpha', rows: rotationRows(), asOf: '2026-10-03', config, store: { data: {} }, persist: true });
+  const first = starlightEmbed(t, { config })[0].embeds[0].fields[0];
+  assert.match(first.name, /MESSAGE THESE TODAY/);
+  assert.match(first.value, /Different names tomorrow/);
+  assert.match(first.value, /14 more in the queue/);
+  assert.match(first.value, /of 20 reached this month/);
+});
+
+test('the prize fund is nowhere on any card', () => {
+  // Directors' knowledge. The channel this posts to is read by coaches.
+  const t = starlightTeam({ team: 'Team Alpha', rows: rotationRows(), asOf: '2026-10-03', config, store: { data: {} } });
+  const s = starlightSummary({ creators: [who('a', { days: 3 })], asOf: '2026-10-03', config });
+  const text = JSON.stringify([...starlightEmbed(t, { config }), starlightOverviewEmbed(s, { config })]);
+  assert.ok(!/26[,.]?500/.test(text), 'the prize fund appeared on a card');
+  assert.ok(!/\$/.test(text), 'a cash figure appeared on a card');
 });

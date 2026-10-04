@@ -549,6 +549,17 @@
           "tickets": 3
         }
       ]
+    },
+    "_daily": "The short list the card leads with. messagesPerDay is how many names a coach gets; cooldownDays is how long before somebody can reappear, which is what makes it a rotation; minWorth is the floor below which a message is not worth sending.",
+    "messagesPerDay": 6,
+    "cooldownDays": 4,
+    "minWorth": 0.03,
+    "_onCourseOdds": "At or above this measured chance of reaching 10 days on their own, a creator is listed as on course and kept off the chase list. Messaging them is the comfortable call and buys nothing.",
+    "onCourseOdds": 0.7,
+    "_interaction": "TikTok scores active interaction and the export has no column for it. Measured against Backstage's own score on 34 LIVE creators, gifts per LIVE hour separates it at 0.84 AUC where LIVE hours and days do not separate at all (0.51, 0.53). The cut at 20 calls 82% of them right. See the header of lib/starlight.mjs.",
+    "interaction": {
+      "goodPerHour": 20,
+      "minHours": 1
     }
   }
 }
