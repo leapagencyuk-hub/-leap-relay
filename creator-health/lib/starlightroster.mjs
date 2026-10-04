@@ -166,6 +166,11 @@ export function readRoster(dataDir) {
 export function saveRosterFile(dataDir, filePath, { campaign = null } = {}) {
   const read = readRosterFile(filePath, { campaign });
   const roster = readRoster(dataDir);
+  // The sheet's export date, from its own filename. Falling back to today is
+  // right for a file uploaded the day it was pulled and wrong for one pulled
+  // last week, so which of the two happened is reported rather than hidden —
+  // the card prints this date as the age of its interaction numbers.
+  const asOfFrom = read.asOf ? 'filename' : 'upload date';
   const asOf = read.asOf ?? new Date().toISOString().slice(0, 10);
   const before = roster.creators ?? {};
 
@@ -183,6 +188,7 @@ export function saveRosterFile(dataDir, filePath, { campaign = null } = {}) {
     asOf,
     scoresInteraction: read.scoresInteraction,
     count: read.count,
+    asOfFrom,
     sourceFile: path.basename(filePath),
     // The membership list is kept per campaign, not just in the flat index,
     // because that is the only way a creator in two campaigns stays visible:
@@ -206,6 +212,7 @@ export function saveRosterFile(dataDir, filePath, { campaign = null } = {}) {
     campaign: read.campaign,
     campaignId: read.campaignId,
     asOf,
+    asOfFrom,
     count: read.count,
     total: Object.keys(keep).length,
     movedCampaign,

@@ -94,9 +94,19 @@ function readBody(req, limit = MAX_UPLOAD) {
  * always a single file part, and the xlsx must survive byte for byte, so the
  * part is sliced out of the raw buffer rather than decoded as text.
  */
+/**
+ * The file out of a multipart body, and the name it was sent under.
+ *
+ * The name matters for one upload: Backstage's Star Light sheets carry their
+ * campaign id and their export date in the filename and nowhere inside, so a
+ * sheet saved to a temp path loses both. The id came back null and the date
+ * silently fell back to today — which on the day it was first run happened to
+ * be right, and on any other day would have had the card claim a week-old
+ * reading was current.
+ */
 function extractMultipart(buf, contentType) {
   const boundaryMatch = /boundary=(?:"([^"]+)"|([^;]+))/i.exec(contentType);
-  if (!boundaryMatch) return buf;
+  if (!boundaryMatch) return { file: buf, filename: null };
   const boundary = Buffer.from(`--${boundaryMatch[1] ?? boundaryMatch[2]}`);
   let start = buf.indexOf(boundary);
   while (start !== -1) {
@@ -105,13 +115,19 @@ function extractMultipart(buf, contentType) {
     if (headerEnd === -1) break;
     const headers = buf.toString('utf8', headerStart, headerEnd);
     const next = buf.indexOf(boundary, headerEnd);
-    if (/filename=/i.test(headers)) {
+    const named = /filename=(?:"([^"]*)"|([^;\r\n]+))/i.exec(headers);
+    if (named) {
       const end = next === -1 ? buf.length : next - 2; // trim the trailing CRLF
-      return buf.subarray(headerEnd + 4, end);
+      return {
+        file: buf.subarray(headerEnd + 4, end),
+        // Only the basename, never a path: the value is attacker-controlled and
+        // is used to name a file.
+        filename: path.basename(String(named[1] ?? named[2] ?? '').trim()) || null,
+      };
     }
     start = next;
   }
-  return buf;
+  return { file: buf, filename: null };
 }
 
 async function handleUpload(req, res, url) {
@@ -123,12 +139,21 @@ async function handleUpload(req, res, url) {
     return json(res, 413, { error: err.message });
   }
   const contentType = req.headers['content-type'] ?? '';
-  const fileBuf = contentType.includes('multipart/form-data') ? extractMultipart(body, contentType) : body;
+  const part = contentType.includes('multipart/form-data')
+    ? extractMultipart(body, contentType)
+    : { file: body, filename: null };
+  const fileBuf = part.file;
   if (fileBuf.length < 4 || fileBuf[0] !== 0x50 || fileBuf[1] !== 0x4b) {
     return json(res, 400, { error: 'body is not an .xlsx file' });
   }
 
-  const tmp = path.join(os.tmpdir(), `creator-upload-${Date.now()}.xlsx`);
+  // Keep the name it arrived under where there is one, because one of the three
+  // exports carries data only in its filename. ?name= is the way in for a
+  // caller that cannot send a multipart filename, such as a raw body POST.
+  const sentName = url.searchParams.get('name') || part.filename;
+  const tmp = path.join(os.tmpdir(), sentName && /^[\w.\- ]+\.xlsx$/i.test(sentName)
+    ? `${Date.now()}-${sentName}`
+    : `creator-upload-${Date.now()}.xlsx`);
   fs.writeFileSync(tmp, fileBuf);
   try {
     // Two different exports come off Backstage and they are easy to confuse.
@@ -177,6 +202,10 @@ async function handleUpload(req, res, url) {
         campaign: out.campaign,
         campaignId: out.campaignId,
         asOf: out.asOf,
+        // "filename" means the sheet's own export date was used. "upload date"
+        // means the name did not carry one and today was assumed, which is
+        // only right if the sheet was pulled today.
+        asOfFrom: out.asOfFrom,
         inThisCampaign: out.count,
         campaignCreators: out.total,
         movedCampaign: out.movedCampaign,

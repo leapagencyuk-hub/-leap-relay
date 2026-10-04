@@ -655,3 +655,37 @@ function zip(parts) {
   end.writeUInt32LE(offset, 16);
   return Buffer.concat([...locals, cd, end]);
 }
+
+test('a sheet whose filename carries no date says it assumed the upload date', () => {
+  // The card prints this date as the age of its interaction numbers, so a
+  // fallback that looked like a real reading would have the card claim a
+  // week-old sheet was current.
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'starlight-'));
+  // A real campaign id, because the reader wants six digits or more: four
+  // would match the year in the date that follows it.
+  const named = path.join(dir, 'Activity_Host_Rank_-_7690978446935097352_2026_10_04_09_00_UTC0.xlsx');
+  const bare = path.join(dir, 'renamed.xlsx');
+  const head = ['UserName', 'Completed stage', 'LIVE duration', 'Go-LIVE days during Event'];
+  writeSheet(named, head, [['a', '0', '1h0min', '1']]);
+  writeSheet(bare, head, [['a', '0', '1h0min', '1']]);
+
+  const fromName = saveRosterFile(dir, named);
+  assert.equal(fromName.asOf, '2026-10-04');
+  assert.equal(fromName.asOfFrom, 'filename');
+  assert.equal(fromName.campaignId, '7690978446935097352');
+
+  const fallback = saveRosterFile(dir, bare);
+  assert.equal(fallback.asOfFrom, 'upload date');
+  assert.equal(fallback.asOf, new Date().toISOString().slice(0, 10));
+  assert.equal(fallback.campaignId, null);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('the campaign id reader does not mistake the date for an id', () => {
+  // "Rank_-_7690978446935097352_2026_10_04" — a looser pattern would have
+  // taken 2026 as the campaign, which would then differ between two uploads
+  // of the same campaign in different months.
+  assert.equal(describeFile('Activity_Host_Rank_-_2026_10_04_09_00_UTC0.xlsx').id, null);
+  assert.equal(describeFile('Activity_Host_Rank_-_7690978446935097352_2026_10_04_09_00_UTC0.xlsx').id,
+    '7690978446935097352');
+});
