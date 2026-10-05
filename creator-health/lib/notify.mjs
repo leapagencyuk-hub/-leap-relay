@@ -149,6 +149,12 @@ export function loadDiscordConfig(raw) {
     // not only their own.
     starlightWebhook: webhookOrNull(fromEnv(raw.starlightWebhook)),
     starlightChannelId: channelOrNull(fromEnv(raw.starlightChannelId)),
+    // Partner agency revenue. One channel per partner, because a partner must
+    // never see another partner's settlement — `partnerWebhook` is a fallback
+    // and dispatch only uses it when a single partner is enabled.
+    partnerWebhook: webhookOrNull(fromEnv(raw.partnerWebhook)),
+    partnerChannelId: channelOrNull(fromEnv(raw.partnerChannelId)),
+    partners: normaliseGroups(raw.partners),
     coaches,
   };
 }

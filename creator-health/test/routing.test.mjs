@@ -562,11 +562,14 @@ test('every webhook in routes.deploy.json survives the loader', () => {
   // channel, the loader has to hand it back.
   const raw = JSON.parse(fs.readFileSync(new URL('../routes.deploy.json', import.meta.url), 'utf8')).discord;
   const env = {};
-  for (const [key, value] of Object.entries(raw)) {
-    if (typeof value === 'string' && value.startsWith('env:')) {
-      env[value.slice(4)] = /ChannelId$/.test(key) ? '1551546764471836832' : 'https://discord.com/api/webhooks/1/x';
+  const collect = (obj) => {
+    for (const [key, value] of Object.entries(obj ?? {})) {
+      if (typeof value === 'string' && value.startsWith('env:')) {
+        env[value.slice(4)] = /channelId$/i.test(key) ? '1551546764471836832' : 'https://discord.com/api/webhooks/1/x';
+      } else if (value && typeof value === 'object') collect(value);
     }
-  }
+  };
+  collect(raw);
   const saved = { ...process.env };
   Object.assign(process.env, env);
   try {
@@ -575,6 +578,18 @@ test('every webhook in routes.deploy.json survives the loader', () => {
       .filter((k) => /Webhook$|ChannelId$/.test(k))
       .filter((k) => loaded[k] == null);
     assert.deepEqual(missing, [], `routes.deploy.json names these but the loader drops them: ${missing.join(', ')}`);
+
+    // And the nested maps, which the flat key check cannot see. A partner
+    // agency's revenue card going nowhere is the same silent failure, and a
+    // partner must never be routed into another partner's channel instead.
+    for (const map of ['groups', 'teamSummaries', 'partners']) {
+      for (const name of Object.keys(raw[map] ?? {})) {
+        const entry = loaded[map]?.[groupKey(name)];
+        assert.ok(entry, `routes.deploy.json has ${map}."${name}" but the loader drops the whole map`);
+        assert.ok(entry.webhook || entry.channelId,
+          `routes.deploy.json has ${map}."${name}" but the loader resolved neither webhook nor channel`);
+      }
+    }
   } finally {
     for (const k of Object.keys(env)) delete process.env[k];
     Object.assign(process.env, saved);

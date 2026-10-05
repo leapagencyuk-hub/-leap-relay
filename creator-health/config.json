@@ -438,10 +438,12 @@
       "policy": true,
       "leapedOverview": true,
       "hardestWorker": true,
-      "creatorWeek": true
+      "creatorWeek": true,
+      "partners": true
     },
     "_hardestWorker": "The creator-facing board is the one that does NOT keep a closing edition: it is asked to clear on the 1st, so each new month's board removes the last one outright.",
-    "_creatorWeek": "Creator of the Week clears the same way the Hardest Worker board does, on Monday rather than the 1st: Sunday's winner is removed by the new week's first board."
+    "_creatorWeek": "Creator of the Week clears the same way the Hardest Worker board does, on Monday rather than the 1st: Sunday's winner is removed by the new week's first board.",
+    "_partners": "The partner revenue card replaces within a month only, like the other monthly boards: the closing card of each month is a settlement record a partner will look back at."
   },
   "activation": {
     "_note": "Creators who never started. Excluded from decline rules by design, which otherwise leaves a third of the network invisible.",
@@ -561,5 +563,37 @@
       "goodPerHour": 20,
       "minHours": 1
     }
+  },
+  "partners": {
+    "enabled": true,
+    "_note": "Partner agencies under the Agency Partner Programme Agreement. They recruit and manage their own creators, who stay contractually under LEAP's TikTok registration, and LEAP settles a share of the agency revenue those creators generate (clauses 2 and 5). Separate from monitoring.ignoreGroups, which keeps their creators off LEAP's coaching boards — that is right, because nobody at LEAP coaches them, and it must not keep them off the revenue card, because the money is real.",
+    "_tiers": "Clause 5's revenue-share ladder. The tier is a monthly judgement LEAP makes on growth, compliance, retention and contribution, so it is set here rather than computed.",
+    "tiers": [
+      {
+        "name": "Seedling",
+        "share": 0.8
+      },
+      {
+        "name": "Growth",
+        "share": 0.85
+      },
+      {
+        "name": "Performance",
+        "share": 0.9
+      },
+      {
+        "name": "Elite",
+        "share": 0.95
+      }
+    ],
+    "_agencies": "group is the Group value as it appears in the creator export. tier must match a name in the ladder above.",
+    "agencies": [
+      {
+        "name": "Stay Social",
+        "group": "Stay Social",
+        "tier": "Growth",
+        "enabled": true
+      }
+    ]
   }
 }

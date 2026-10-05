@@ -36,6 +36,7 @@ export const COLOR = {
 };
 
 const n = (x) => (x == null ? '—' : Math.round(x).toLocaleString('en-GB'));
+const round2 = (x) => Math.round((x ?? 0) * 100) / 100;
 
 /**
  * Break a list across as many fields and messages as it takes to show all of it.
@@ -1363,6 +1364,162 @@ function weekSpan(start, end) {
  * The piles below it are ordered by who is worth a message today, not by who is
  * doing best. See starlightTeam for why each one exists.
  */
+/**
+ * A partner agency's revenue card.
+ *
+ * Partner-facing and financial, so no emojis, and it carries the same verbatim
+ * warning every earnings card in this system carries — the figures are a
+ * picture of the month, not a settlement statement.
+ *
+ * BEFORE TAX is on the title, in the warning and on the settlement line. Three
+ * times is not a mistake: clause 6 of the Agreement puts Corporation Tax, VAT
+ * where applicable and agreed statutory deductions ahead of settlement, so a
+ * partner reading one line in isolation must not be able to mistake any of
+ * these numbers for what lands in their bank.
+ *
+ * The card answers three questions in order, because that is the order a
+ * partner asks them: what have we made, what did we make today, and where is
+ * there more.
+ */
+export function partnerEarningsEmbed(r, { config = {} } = {}) {
+  const monthName = monthNameOf(r.month);
+  const gbp = (x) => `£${(x ?? 0).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  const pc = (s) => `${Math.round(s * 100)}%`;
+  const fields = [];
+
+  fields.push({
+    name: 'Rough estimate only — BEFORE TAX',
+    value: '**THIS IS FOR VISUAL PURPOSES AND A ROUGH ESTIMATE OF YOUR INCOME, NOT EXACT. '
+      + 'FOR EXACT FIGURES TALK TO THE DIRECTORS**\n'
+      + '_Every figure below is BEFORE TAX. Corporation Tax, VAT where applicable and agreed '
+      + 'statutory deductions are accounted for before settlement, and your own staff, '
+      + 'recruiters and running costs come out of your share._',
+  });
+
+  const left = r.daysLeft === 1 ? '1 day left' : `${n(r.daysLeft)} days left`;
+  fields.push({
+    name: `${monthName} so far — BEFORE TAX`,
+    value: '```\n'
+      + row('Your creators earned', `${n(r.diamonds)} diamonds`)
+      + row('Agency revenue', gbp(r.agencyGbp))
+      + row(`Your share (${r.tier.name} ${pc(r.tier.share)})`, gbp(r.settlement.gbp))
+      + '```'
+      + `\nAcross **${plural(r.creators, 'creator')}**, ${n(r.earning)} of them earning, `
+      + `on ${plural(r.liveDays, 'valid LIVE day')} and ${n(r.liveHours)} hours.`,
+  });
+
+  // The daily question, from real single-day readings rather than a month
+  // average dressed up as a day.
+  const dir = r.today.previousDiamonds > 0
+    ? (r.today.diamonds >= r.today.previousDiamonds ? 'up on' : 'down on')
+    : null;
+  fields.push({
+    name: 'Day by day — BEFORE TAX',
+    value: '```\n'
+      + row(`${r.asOf} (latest)`, `${n(r.today.diamonds)} dia  ${gbp(r.today.gbp)}`)
+      + row('Average day so far', `${n(r.perDayDiamonds)} dia  ${gbp(r.perDayGbp)}`)
+      + row('Typical day (median)', `${n(r.medianDayDiamonds)} dia`)
+      + '```'
+      + `${dir ? `\nLatest day is ${dir} the one before (${n(r.today.previousDiamonds)} diamonds).` : ''}`
+      + `\n${r.projected.young
+        ? `Too early in the month for a reliable projection — on the ${r.projected.from} it would be `
+          + `around **${gbp(r.projected.gbp)}**, but ${left} is a lot of room either way.`
+        : `On the ${r.projected.from}, ${monthName} lands near **${gbp(r.projected.gbp)}** (${left}).`}`
+      + `${r.lastMonth.diamonds > 0
+        ? ` ${monthNameOf(r.lastMonth.month)} finished on ${n(r.lastMonth.diamonds)} diamonds, `
+          + `which was ${gbp(r.lastMonth.gbp)}.` : ''}`,
+  });
+
+  fields.push({
+    name: 'The breakdown — BEFORE TAX',
+    value: '```\n'
+      + row(`Incremental share (${pc(r.boardRate)})`, gbp(r.incrementalGbp))
+      + row(`Rank-up bonuses (${n(r.rankedUp.length)})`, gbp(r.rankUpGbp))
+      + row('Agency revenue', gbp(r.agencyGbp))
+      + row(`Your ${pc(r.tier.share)}`, gbp(r.settlement.gbp))
+      + '```'
+      + '\n_Incremental share is a slice of every diamond your creators earn. A rank-up bonus is '
+      + 'paid when a creator finishes a month in a higher tier than they started it, and it pays on '
+      + `their WHOLE month. Quoted at ${pc(r.boardRate)}, which is the rate every card in this `
+      + 'system uses — a strong month comes in above it._',
+  });
+
+  // The first lever, and on a young roster usually by far the biggest: a single
+  // rank-up can be worth more than the whole month's share, because it pays on
+  // a creator's entire month rather than on the diamonds above the line.
+  if (r.nearestRankUp.length) {
+    const best = r.nearestRankUp[0];
+    const beatsMonth = best.ifRankedUpGbp > r.settlement.gbp;
+    fields.push({
+      name: 'Where you earn more — 1. rank-ups',
+      value: `**One creator crossing their next tier is worth about ${gbp(best.ifRankedUpGbp)} to you`
+        + `${beatsMonth ? ', which is more than the whole month so far' : ''}.** It pays on their `
+        + 'entire month, not just the diamonds above the line, so the nearer they already are the '
+        + 'cheaper it is.\n'
+        + fitJoin(r.nearestRankUp.map((x) => `@${x.username} — on ${n(x.diamonds)}, `
+          + `${n(x.gap)} from tier ${x.fromTier + 1} (worth ${gbp(x.ifRankedUpGbp)})`), { sep: '\n' })
+        + `${r.outOfReach ? `\n_${plural(r.outOfReach, 'other creator')} would need a tier jump their `
+          + 'current rate will not reach this month, so they are not counted here._' : ''}`,
+    });
+  }
+
+  if (r.dormant.length) {
+    fields.push({
+      name: `Where you earn more — 2. creators earning nothing — ${n(r.dormant.length)}`,
+      value: `${fitJoin(r.dormant.map((x) => `@${x.username}`), { sep: ' · ' })}`
+        + '\nNothing at all this month. Clause 4 of the Agreement asks for inactive creators to be '
+        + 'managed or removed promptly, because they drag the agency health score that every other '
+        + 'number here sits on.',
+    });
+  }
+
+  fields.push({
+    name: 'Where you earn more — 3. your revenue share',
+    value: '```\n'
+      + r.atEachTier.map((t) => `${t.current ? '>' : ' '} ${t.name.padEnd(12)}${pc(t.share).padStart(4)}   ${gbp(t.gbp)}`).join('\n')
+      + '\n```'
+      + `${r.nextTier
+        ? `\nOn ${monthName}'s numbers, ${r.nextTier.name} would be **${gbp(r.nextTierGain)}** more. `
+          + 'Reviewed monthly on creator growth, diamond growth, compliance, retention, operational '
+          + 'standards and overall contribution.'
+        : '\nTop of the ladder.'}`
+      + '\n_Growing the diamonds moves this far more than moving up a rung does — the rung is a '
+      + 'percentage of whatever the month earned._',
+  });
+
+  const perCreator = r.rows.filter((x) => x.diamonds > 0 || !x.left);
+  if (perCreator.length) {
+    fields.push({
+      name: 'Your creators',
+      value: '```\n'
+        + fitJoin(perCreator.map((x) => `${String(x.username).slice(0, 20).padEnd(21)}`
+          + `${n(x.diamonds).padStart(8)}  ${String(x.liveDays).padStart(2)}d ${String(x.liveHours.toFixed(1)).padStart(6)}h`
+          + `${x.left ? '  left' : ''}`), { sep: '\n', max: 980 })
+        + '\n```',
+    });
+  }
+
+  return {
+    embeds: [{
+      title: `${String(r.partner).toUpperCase()} — ${monthName} revenue (BEFORE TAX)`,
+      description: `Day ${n(r.dayOfMonth)} of ${n(r.monthLength)}. You are on **${r.tier.name}**, `
+        + `${/^[80]/.test(pc(r.tier.share)) ? 'an' : 'a'} ${pc(r.tier.share)} share of the agency `
+        + 'revenue your own creators generate.\n\n'
+        + `**Your share so far: ${gbp(r.settlement.gbp)} — BEFORE TAX.**`,
+      color: COLOR.opportunity,
+      fields,
+      footer: {
+        text: `Figures to ${r.asOf} · the export runs a day behind TikTok · updated daily`
+          + ` · rough estimate, before tax`,
+      },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
+/** A left-aligned label and value for a code block, so columns line up. */
+const row = (label, value) => `${String(label).padEnd(30)}${value}\n`;
+
 export function starlightEmbed(t, { config = {} } = {}) {
   const cfg = config.starlight ?? {};
   const monthName = monthNameOf(t.month);

@@ -9,6 +9,7 @@ import {
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
   hardestWorkerEmbed, creatorWeekEmbed, starlightEmbed, starlightOverviewEmbed,
+  partnerEarningsEmbed,
   leapedEmbed, leapedOverviewEmbed,
   redoButton,
 } from './discord.mjs';
@@ -22,6 +23,7 @@ import { hardestWorkerBoard, hardestWorkerDue } from './hardestworker.mjs';
 import { creatorWeekBoard, creatorWeekDue, recordWeekBoard } from './creatorweek.mjs';
 import { starlightTeams, starlightSummary, starlightDue } from './starlight.mjs';
 import { readRoster } from './starlightroster.mjs';
+import { partnerRevenues, partnerDue } from './partner.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
 import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
@@ -694,6 +696,43 @@ export async function dispatch({
       }
       if (!dryRun) store.data.lastStarlightOn = asOf;
     }
+  }
+
+  // --- partner agency revenue ------------------------------------------------
+  // One card per partner agency, each into ITS OWN channel. A partner seeing
+  // another partner's settlement would be a breach of clause 8 as much as a
+  // mistake, so the route is per-partner and the shared `partnerWebhook` is
+  // only ever used when exactly one partner is enabled — with two configured,
+  // a partner without its own channel is skipped and reported rather than
+  // falling back into somebody else's.
+  if (creators.length && (again('partners') || partnerDue(config, store, asOf))) {
+    const revenues = partnerRevenues({ creators, asOf, config });
+    const only = revenues.length === 1;
+    for (const rev of revenues) {
+      const own = discordConfig.partners?.[groupKey(rev.group)] ?? null;
+      const route = own?.webhook
+        ? { webhook: own.webhook, channelId: own.channelId ?? null }
+        : (own?.channelId && discordConfig.botToken)
+          ? { channelId: own.channelId }
+          : only && discordConfig.partnerWebhook
+            ? { webhook: discordConfig.partnerWebhook, channelId: discordConfig.partnerChannelId ?? null }
+            : null;
+      if (!route) {
+        sent.push({
+          label: 'partner-revenue', coach: rev.partner, ok: false,
+          error: `no channel for partner "${rev.group}" — add it under discord.partners in routes.json`,
+        });
+        continue;
+      }
+      const card = partnerEarningsEmbed(rev, { config });
+      // The month is passed as the period, so the closing card of each month
+      // survives into the next one. A partner's final settlement figure is a
+      // record they will want to look back at, unlike a chase list.
+      await (replaces('partners')
+        ? replaceLast(`partner:${rev.partner}`, rev.partner, route, card, `partner:${groupKey(rev.group)}`, rev.month)
+        : send(`partner:${rev.partner}`, rev.partner, route, card));
+    }
+    if (!dryRun) store.data.lastPartnerOn = asOf;
   }
 
   // --- leaped creators, and the wage bill ------------------------------------

@@ -11,7 +11,7 @@
 //   POST /notify            run today's analysis and push digests to webhooks
 //   POST /run               the daily run: reconcile cases and post to Discord
 //                           ?force=leaderboard,growth,overview,policy,activeness,summaries,
-//                           starlight
+//                           starlight,partners
 //                           (or ?force=all) reposts today's once-a-day cards
 //   POST /discord/interactions  Discord's interactions endpoint (button clicks)
 //   GET  /cases             the open caseload
@@ -385,6 +385,8 @@ async function handleSelfTest(req, res, url) {
       hardestWorker: discord.hardestWorkerWebhook ? 'set' : 'MISSING',
       creatorWeek: discord.creatorWeekWebhook ? 'set' : 'MISSING',
       starlight: discord.starlightWebhook ? 'set' : 'MISSING',
+      partners: Object.fromEntries(Object.entries(discord.partners ?? {})
+        .map(([k, v]) => [k, v.webhook ? 'set' : v.channelId ? 'channel only' : 'MISSING'])),
       // Not a secret, so unlike the webhooks this reports its contents: the
       // campaign roster going stale is the one failure that would make the
       // Star Light cards quietly wrong rather than absent.
