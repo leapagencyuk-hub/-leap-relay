@@ -20,7 +20,7 @@ const partner = { name: 'Stay Social', group: 'Stay Social', tier: 'Growth' };
  * card's "today" line needs are real rather than spread.
  */
 const who = (username, { days = [], group = 'Stay Social', quitOn = null,
-  lastMonth = 0, manager = 'staysocial@leap', septTotal = null } = {}) => {
+  lastMonth = 0, manager = 'staysocial@leap', septTotal = null, month = '2026-10' } = {}) => {
   const obs = [];
   if (septTotal != null) {
     obs.push({ date: '2026-09-30', span: 1, partial: false, mtd: { diamonds: septTotal, liveHours: 10, validLiveDays: 5 }, delta: { diamonds: septTotal } });
@@ -29,7 +29,7 @@ const who = (username, { days = [], group = 'Stay Social', quitOn = null,
   days.forEach((d, i) => {
     run += d;
     obs.push({
-      date: `2026-10-${String(i + 1).padStart(2, '0')}`,
+      date: `${month}-${String(i + 1).padStart(2, '0')}`,
       span: 1, partial: false,
       delta: { diamonds: d, liveHours: 2, validLiveDays: d > 0 ? 1 : 0 },
       mtd: { diamonds: run, liveHours: 2 * (i + 1), validLiveDays: days.slice(0, i + 1).filter((x) => x > 0).length },
@@ -344,4 +344,230 @@ test('a disabled partner is skipped', () => {
   };
   const rs = partnerRevenues({ creators: [who('a', { days: [1000] })], asOf: '2026-10-01', config: two });
   assert.deepEqual(rs.map((r) => r.partner), ['Stay Social']);
+});
+
+// --- the activeness incentive ----------------------------------------------
+//
+// TikTok pays the agency three ways, not two. This system knew about two of
+// them until Backstage's September page was read: rank-up $11.20K, activeness
+// $8.04K, incremental $23.21K.
+
+const withLevels = (levels) => ({
+  ...config,
+  partners: {
+    ...config.partners,
+    agencies: [{ ...config.partners.agencies[0], levels }],
+  },
+});
+
+test('activeness is diamonds x $0.01 x the level ratio', () => {
+  const cfg = withLevels({ '2026-10': { a: 3 } });
+  const r = partnerRevenue({
+    creators: [who('a', { days: [71173] })],
+    asOf: '2026-10-01', config: cfg, partner: cfg.partners.agencies[0],
+  });
+  // Level 3 is 2%. This is victoria.willis8's September row, which Backstage
+  // priced at $14.23.
+  assert.equal(r.activenessUsd, 14.23);
+});
+
+test('every one of September\'s seven creators reproduces Backstage to the cent', () => {
+  // The reconciliation this whole model rests on. Backstage's per-creator
+  // activeness view for StaySocial, September 2026.
+  const rows = [
+    ['victoria.willis8', 71173, 3, 14.23],
+    ['scottie2k26', 7625, 4, 1.90],
+    ['jeddyslays_20', 17573, 2, 1.75],
+    ['i_am_shoooook', 2762, 3, 0.55],
+    ['sbird198', 1714, 3, 0.34],
+    ['therealmelty', 30174, 0, 0.00],
+    ['anf_203', 1733, 0, 0.00],
+  ];
+  const cfg = withLevels({ '2026-10': Object.fromEntries(rows.map(([u, , l]) => [u, l])) });
+  for (const [username, diamonds, , expected] of rows) {
+    const r = partnerRevenue({
+      creators: [who(username, { days: [diamonds] })],
+      asOf: '2026-10-01', config: cfg, partner: cfg.partners.agencies[0],
+    });
+    // Within a penny of Backstage's own figure. Backstage TRUNCATES where this
+    // rounds — it shows $1.90 for scottie2k26's $1.90625 and $1.75 for
+    // jeddyslays_20's $1.7573 — so an exact match on every row is not
+    // available, and a card that claimed one would be overstating its own
+    // precision on a figure it already calls a rough estimate.
+    assert.ok(Math.abs(r.activenessUsd - expected) < 0.011,
+      `${username}: got $${r.activenessUsd}, Backstage shows $${expected}`);
+  }
+});
+
+test('the whole September month reconciles to Backstage\'s $124.99', () => {
+  // activeness $18.79 + incremental at 8% on 132,754 diamonds ($106.20) +
+  // nothing from rank-ups, because nobody ranked up.
+  const rows = [
+    ['victoria.willis8', 71173, 3], ['scottie2k26', 7625, 4], ['jeddyslays_20', 17573, 2],
+    ['i_am_shoooook', 2762, 3], ['sbird198', 1714, 3], ['therealmelty', 30174, 0], ['anf_203', 1733, 0],
+  ];
+  const cfg = {
+    ...withLevels({ '2026-09': Object.fromEntries(rows.map(([u, , l]) => [u, l])) }),
+    revenue: { usdToGbp: 0.754074, incremental: { boardRate: 0.05, actualRate: { '2026-09': 0.08 } } },
+  };
+  const r = partnerRevenue({
+    creators: rows.map(([u, d]) => who(u, { days: [d], month: '2026-09' })),
+    asOf: '2026-09-01', config: cfg, partner: cfg.partners.agencies[0],
+  });
+  assert.equal(r.diamonds, 132754);
+  assert.equal(r.rate, 0.08);
+  assert.equal(r.rateIsActual, true);
+  assert.equal(r.incrementalUsd, 106.2);
+  assert.equal(r.activenessUsd, 18.79);
+  assert.equal(r.rankUpUsd, 0);
+  // Backstage shows $124.99; it truncates where this rounds.
+  assert.ok(Math.abs(r.agencyUsd - 124.99) < 0.02, `got $${r.agencyUsd}`);
+});
+
+test('a creator on no level earns nothing from activeness however many diamonds', () => {
+  const cfg = withLevels({ '2026-10': { big: 0 } });
+  const r = partnerRevenue({
+    creators: [who('big', { days: [500000] })],
+    asOf: '2026-10-01', config: cfg, partner: cfg.partners.agencies[0],
+  });
+  assert.equal(r.activenessUsd, 0);
+  assert.deepEqual(r.noLevel.map((x) => x.username), ['big']);
+  // But the incremental share still pays on them.
+  assert.ok(r.incrementalUsd > 0);
+});
+
+test('a creator we hold no level for contributes nothing rather than a guess', () => {
+  // The level comes from valid LIVE days AND duration, and fitting a ladder to
+  // seven known rows got four of seven right. Seven rows is not enough to fit
+  // two variables, so this does not pretend to.
+  const r = partnerRevenue({
+    creators: [who('unknown', { days: [50000] })],
+    asOf: '2026-10-01', config, partner,
+  });
+  assert.equal(r.activenessUsd, 0);
+  assert.equal(r.levelsKnown, 0);
+  assert.deepEqual(r.levelsUnknown.map((x) => x.username), ['unknown']);
+});
+
+test('last month\'s levels are carried forward, and the result says so', () => {
+  const cfg = withLevels({ '2026-09': { a: 3 } });
+  const r = partnerRevenue({
+    creators: [who('a', { days: [10000] })],
+    asOf: '2026-10-01', config: cfg, partner: cfg.partners.agencies[0],
+  });
+  assert.equal(r.rows[0].level, 3);
+  assert.equal(r.rows[0].levelFrom, 'carried forward');
+  assert.equal(r.levelsCarried, 1);
+});
+
+test('this month\'s level wins over last month\'s', () => {
+  const cfg = withLevels({ '2026-09': { a: 2 }, '2026-10': { a: 4 } });
+  const r = partnerRevenue({
+    creators: [who('a', { days: [10000] })],
+    asOf: '2026-10-01', config: cfg, partner: cfg.partners.agencies[0],
+  });
+  assert.equal(r.rows[0].level, 4);
+  assert.equal(r.rows[0].levelFrom, 'month');
+});
+
+test('a level is matched without the @ and without case', () => {
+  const cfg = withLevels({ '2026-10': { '@Victoria.Willis8': 3 } });
+  const r = partnerRevenue({
+    creators: [who('victoria.willis8', { days: [10000] })],
+    asOf: '2026-10-01', config: cfg, partner: cfg.partners.agencies[0],
+  });
+  assert.equal(r.rows[0].level, 3);
+});
+
+test('levels 2, 3 and 4 are confirmed and 1 and 5 are not', () => {
+  // No LEAP creator has been seen on level 1 or 5, so those ratios are a
+  // straight-line guess and must not be presented as fact.
+  const cfg = withLevels({ '2026-10': { a: 3, b: 5 } });
+  const r = partnerRevenue({
+    creators: [who('a', { days: [1000] }), who('b', { days: [1000] })],
+    asOf: '2026-10-01', config: cfg, partner: cfg.partners.agencies[0],
+  });
+  assert.equal(r.rows.find((x) => x.username === 'a').levelConfirmed, true);
+  assert.equal(r.rows.find((x) => x.username === 'b').levelConfirmed, false);
+});
+
+// --- which incremental rate ------------------------------------------------
+
+test('a partner is costed at the rate TikTok actually settled, not the board rate', () => {
+  // The coach boards quote 5% to under-promise. A partner is settled on what
+  // their creators actually generated, and quoting 5% against a real 8%
+  // understates them by over a third.
+  const cfg = {
+    ...config,
+    revenue: { usdToGbp: 0.754074, incremental: { boardRate: 0.05, actualRate: { '2026-09': 0.08 } } },
+  };
+  const r = partnerRevenue({
+    creators: [who('a', { days: [100000], month: '2026-09' })], asOf: '2026-09-01', config: cfg, partner,
+  });
+  assert.equal(r.rate, 0.08);
+  assert.equal(r.rateIsActual, true);
+  assert.equal(r.incrementalUsd, 80);
+});
+
+test('a month TikTok has not settled falls back to the board rate and says it is provisional', () => {
+  const cfg = {
+    ...config,
+    revenue: { usdToGbp: 0.754074, incremental: { boardRate: 0.05, actualRate: { '2026-09': 0.08 } } },
+  };
+  const r = partnerRevenue({
+    creators: [who('a', { days: [100000] })], asOf: '2026-10-01', config: cfg, partner,
+  });
+  assert.equal(r.rate, 0.05);
+  assert.equal(r.rateIsActual, false);
+});
+
+test('turning off useActualRate puts a partner back on the board rate', () => {
+  const cfg = {
+    ...config,
+    partners: { ...config.partners, useActualRate: false },
+    revenue: { usdToGbp: 0.754074, incremental: { boardRate: 0.05, actualRate: { '2026-09': 0.08 } } },
+  };
+  const r = partnerRevenue({
+    creators: [who('a', { days: [100000], month: '2026-09' })], asOf: '2026-09-01', config: cfg, partner,
+  });
+  assert.equal(r.rate, 0.05);
+});
+
+test('last month is costed at last month\'s rate, not this month\'s', () => {
+  // Restating a settled month at today's rate would quietly disagree with what
+  // the partner was actually paid.
+  const cfg = {
+    ...withLevels({ '2026-09': { a: 3 } }),
+    revenue: { usdToGbp: 0.754074, incremental: { boardRate: 0.05, actualRate: { '2026-09': 0.08 } } },
+  };
+  const c = who('a', { days: [1000], septTotal: 100000 });
+  const r = partnerRevenue({ creators: [c], asOf: '2026-10-01', config: cfg, partner: cfg.partners.agencies[0] });
+  assert.equal(r.lastMonth.diamonds, 100000);
+  // 100,000 x $0.01 x 8% = $80 incremental, plus level 3 activeness at 2% = $20.
+  assert.equal(r.lastMonth.usd, Math.round(100 * 0.85 * 100) / 100);
+});
+
+// --- the card --------------------------------------------------------------
+
+test('the breakdown names all three incentives and still adds up', () => {
+  const cfg = withLevels({ '2026-10': { 'victoria.willis8': 3, frisk7046: 2 } });
+  const r = partnerRevenue({
+    creators: [
+      who('victoria.willis8', { days: [16047, 40000, 2161, 170] }),
+      who('frisk7046', { days: [0, 16030, 6000, 7204] }),
+    ],
+    asOf: '2026-10-04', config: cfg, partner: cfg.partners.agencies[0],
+  });
+  assert.equal(Math.round((r.incrementalGbp + r.activenessGbp + r.rankUpGbp) * 100) / 100, r.agencyGbp);
+  const e = partnerEarningsEmbed(r, { config: cfg }).embeds[0];
+  const breakdown = e.fields.find((f) => /breakdown/.test(f.name)).value;
+  assert.match(breakdown, /Incremental share/);
+  assert.match(breakdown, /Activeness/);
+  assert.match(breakdown, /Rank-up bonuses/);
+});
+
+test('the card says when the incremental rate is provisional', () => {
+  const e = partnerEarningsEmbed(sample(), { config }).embeds[0];
+  assert.match(e.fields.find((f) => /breakdown/.test(f.name)).value,
+    /provisional, because TikTok has not settled this month yet/);
 });

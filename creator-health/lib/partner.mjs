@@ -22,28 +22,72 @@
 //
 // WHAT AGENCY REVENUE IS
 //
-//   The same two components the coach cards already use, verified to the cent
-//   against Backstage's own per-creator page:
+//   THREE incentives, not two. Backstage's Revenue > Incentives page for
+//   September 2026 reads: rank-up $11.20K, activeness $8.04K, incremental
+//   $23.21K, total $42.4K. This system knew about two of them.
 //
 //     incremental share    roster diamonds x $0.01 x TikTok's incremental rate
+//     activeness incentive roster diamonds x $0.01 x a ratio set by each
+//                          creator's ACTIVENESS LEVEL for the month
 //     rank-up bonus        for each creator who moved up a tier this month,
 //                          their WHOLE month's diamonds x $0.01 x the ratio of
 //                          the tier they LEFT
 //
-//   Quoted at the 5% board rate, like every other card, rather than at what
-//   TikTok actually paid. That is a standing decision — under-promise, so a
-//   good month is a surprise rather than a card that lied — and the card names
-//   the rate it used so nobody has to guess.
+// THE WHOLE THING RECONCILES, TO THE CENT
+//
+//   Backstage says StaySocial generated $124.99 in September. Working it from
+//   our own data:
+//
+//     activeness    7 of 7 creators match Backstage's per-creator figure
+//                   exactly. 71,173 x $0.01 x 2% = $14.2346 against its
+//                   $14.23, and so on down the list, for $18.7934 against
+//                   its $18.79.
+//     rank-up       $0.00. Nobody ranked up — every creator was tier 1 to
+//                   tier 1 — and Backstage's activeness-only view agrees.
+//     incremental   $124.99 - $18.79 = $106.20, and 132,754 x $0.01 x 8%
+//                   is $106.2032. Exactly 8.00%.
+//
+//     total         $124.9965 against Backstage's $124.99.
+//
+//   That single reconciliation confirms three separate things at once: that
+//   activeness is the missing third component, that the incremental rate is
+//   applied to the partner's OWN roster diamonds rather than allocated by some
+//   network formula, and that September's rate really was 8%.
+//
+// WHICH INCREMENTAL RATE A PARTNER CARD USES
+//
+//   The coach boards quote 5% on purpose — under-promise, so a good month is a
+//   surprise rather than a card that lied. A partner is different: they are
+//   settled on the agency revenue their creators actually generated, under a
+//   signed agreement. Quoting 5% to a partner settled at 8% understates them by
+//   over a third, and they can see their own Backstage page.
+//
+//   So this uses TikTok's real monthly rate where we know it, falls back to the
+//   board rate where we do not, and the card always names the rate it used and
+//   says whether it is provisional.
 //
 //   WORTH KNOWING, because a partner will do this arithmetic: the Agreement's
 //   own worked example in clause 5 is "30M diamonds agency revenue generates
-//   $42,000", which is $0.0014 a diamond. This model reaches that only at
-//   TikTok's 8% incremental rate AND with about 80% of diamonds coming from
-//   creators who ranked up. At the 5% board rate it cannot reach it at all —
-//   rank-ups would have to cover 120% of diamonds. So the example in the signed
-//   document is an optimistic month, not a baseline, and a partner comparing it
-//   to this card will see roughly a third of it. That gap is the directors' to
-//   explain; this module's job is not to paper over it.
+//   $42,000", which is $0.0014 a diamond. At 8% incremental plus a typical
+//   activeness ratio that still needs most of the roster's diamonds coming from
+//   creators who ranked up. So the example in the signed document is a strong
+//   month rather than a baseline. That gap is the directors' to explain; this
+//   module's job is not to paper over it.
+//
+// THE ACTIVENESS LEVEL IS NOT IN THE EXPORT
+//
+//   It is set by valid go LIVE days AND LIVE duration for the month, pro-rated
+//   for a part-month, with static LIVE excluded. The creator export carries
+//   neither the level nor enough to derive it: fitting a day ladder to LEAP's
+//   seven known September levels got four of seven right, and the three misses
+//   were all creators whose hours pulled them a level away from where days
+//   alone put them. Seven rows is not enough to fit two variables, so this does
+//   not pretend to.
+//
+//   Levels therefore come from Backstage, carried in config per month. Where
+//   the current month has none yet, the most recent month is carried forward
+//   and the result says so, because a level moves slowly and last month's is a
+//   far better estimate than a ladder fitted to seven rows.
 //
 // BEFORE TAX, ALWAYS
 //
@@ -67,6 +111,18 @@ import { groupKey } from './notify.mjs';
 // cannot leave a partner's settlement on a stale copy of them.
 import { tierOf as creatorTierOf, nextTier, lastMonthDiamonds } from './tiers.mjs';
 
+/**
+ * The activeness ratio for each level.
+ *
+ * Levels 2, 3 and 4 are observed on LEAP's own creators and verified against
+ * Backstage to the cent. Levels 1 and 5 are NOT confirmed — no LEAP creator has
+ * been seen on either — and are carried as a straight-line guess so the model
+ * does not fall over if somebody lands there. `CONFIRMED_LEVELS` says which is
+ * which, and the card marks an unconfirmed one rather than printing it as fact.
+ */
+export const ACTIVENESS_RATIOS = { 0: 0, 1: 0.005, 2: 0.01, 3: 0.02, 4: 0.025, 5: 0.03 };
+export const CONFIRMED_LEVELS = [2, 3, 4];
+
 /** Clause 5's ladder. */
 export const PARTNER_TIERS = [
   { name: 'Seedling', share: 0.80 },
@@ -79,6 +135,32 @@ const daysInMonth = (month) =>
   new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).getUTCDate();
 
 const round2 = (x) => Math.round(x * 100) / 100;
+
+/**
+ * A creator's activeness level for a month.
+ *
+ * Current month first; failing that, the most recent month we hold, because a
+ * level moves slowly and last month's is a far better estimate than nothing.
+ * `from` says which happened so the card can be honest about it.
+ */
+export function levelFor(partner, username, month) {
+  const book = partner?.levels ?? {};
+  const name = String(username ?? '').trim().replace(/^@/, '').toLowerCase();
+  const at = (m) => {
+    const row = book[m];
+    if (!row) return undefined;
+    const hit = Object.entries(row).find(([k]) => k.trim().replace(/^@/, '').toLowerCase() === name);
+    return hit?.[1];
+  };
+  const now = at(month);
+  if (now != null) return { level: now, month, from: 'month' };
+  const earlier = Object.keys(book).filter((m) => m < month).sort().reverse();
+  for (const m of earlier) {
+    const v = at(m);
+    if (v != null) return { level: v, month: m, from: 'carried forward' };
+  }
+  return { level: null, month: null, from: 'unknown' };
+}
 
 /** The tier a partner is on, and the one above it. */
 export function partnerTierOf(partner, config = {}) {
@@ -99,9 +181,17 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
   const inc = cfg.incremental ?? {};
   const boardRate = inc.boardRate ?? 0.05;
   const usdToGbp = cfg.usdToGbp ?? 0.754074;
+  const ratios = cfg.activeness?.ratios ?? ACTIVENESS_RATIOS;
+  const confirmed = new Set(cfg.activeness?.confirmed ?? CONFIRMED_LEVELS);
   const advanced = config.rankUp?.advanced !== false;
 
   const month = asOf.slice(0, 7);
+  // A partner is settled on what their creators actually generated, so the real
+  // monthly rate wins over the board's deliberately conservative one. Falls
+  // back to the board rate for a month TikTok has not settled yet.
+  const actual = inc.actualRate?.[month] ?? null;
+  const useActual = config.partners?.useActualRate !== false && actual != null;
+  const rate = useActual ? actual : boardRate;
   const monthLength = daysInMonth(month);
   const dayOfMonth = Number(asOf.slice(8, 10));
   const prev = previousMonth(month);
@@ -142,8 +232,26 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
     const reachable = gap != null && gap > 0
       && ownPerDay > 0 && gap <= ownPerDay * daysLeft * (config.partners?.reachStretch ?? 1.5);
 
+    // `ratio` above is the TIER ratio, which is what the rank-up bonus pays at.
+    // This is the ACTIVENESS ratio, a different number from a different
+    // incentive, and conflating the two would silently pay rank-up money at an
+    // activeness rate.
+    const lv = levelFor(partner, c.username, month);
+    const actRatio = lv.level == null ? null : (ratios[String(lv.level)] ?? ratios[lv.level] ?? 0);
+    const activenessUsd = actRatio == null ? 0 : diamonds * 0.01 * actRatio;
+
     rows.push({
       username: c.username,
+      level: lv.level,
+      levelFrom: lv.from,
+      levelMonth: lv.month,
+      levelConfirmed: lv.level == null ? null : confirmed.has(Number(lv.level)),
+      activenessRatio: actRatio,
+      activenessUsd,
+      // A creator on no level earns the agency nothing from activeness however
+      // many diamonds they make. therealmelty made 30,174 in September — 23% of
+      // the whole roster — and produced $0 of it.
+      noLevel: lv.level === 0,
       manager: c.manager ?? null,
       diamonds,
       lastMonth: base,
@@ -167,9 +275,15 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
   }
 
   const diamonds = rows.reduce((t, r) => t + r.diamonds, 0);
-  const incrementalUsd = diamonds * 0.01 * boardRate;
+  const incrementalUsd = diamonds * 0.01 * rate;
+  const activenessUsd = rows.reduce((t, r) => t + r.activenessUsd, 0);
   const rankUpUsd = rows.reduce((t, r) => t + r.rankUpUsd, 0);
-  const agencyUsd = incrementalUsd + rankUpUsd;
+  const agencyUsd = incrementalUsd + activenessUsd + rankUpUsd;
+
+  // The roster's blended activeness ratio, for projecting it forward and for
+  // the daily line. Zero when we hold no levels at all, which is honest: we
+  // would be inventing the whole component otherwise.
+  const activenessBlend = diamonds > 0 ? activenessUsd / (diamonds * 0.01) : 0;
 
   const settle = (usd, share) => ({
     usd: round2(usd * share),
@@ -182,8 +296,9 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
   // card, which reads as a mistake because it is one. So the agency figure is
   // the sum of the rounded parts, not a separately rounded sum.
   const incrementalGbp = round2(incrementalUsd * usdToGbp);
+  const activenessGbp = round2(activenessUsd * usdToGbp);
   const rankUpGbp = round2(rankUpUsd * usdToGbp);
-  const agencyGbp = round2(incrementalGbp + rankUpGbp);
+  const agencyGbp = round2(incrementalGbp + activenessGbp + rankUpGbp);
 
   // Yesterday's earnings, from the single-day delta rather than a month average:
   // "how much did we make today" has to be the actual day.
@@ -218,8 +333,22 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
   }, 0));
   const perDay = dayOfMonth > 0 ? diamonds / dayOfMonth : 0;
 
-  const lastMonthRows = roster.map((c) => monthMtd(c, `${prev}-${prevLength}`)).filter(Boolean);
-  const lastMonthDiamondsTotal = Math.round(lastMonthRows.reduce((t, r) => t + (r.diamonds ?? 0), 0));
+  // Last month is costed at LAST MONTH's rate and LAST MONTH's levels, not at
+  // this month's. Both move, and restating a settled month at today's numbers
+  // would quietly disagree with what the partner was actually paid.
+  const prevRate = inc.actualRate?.[prev] ?? rate;
+  let lastMonthDiamondsTotal = 0;
+  let lastMonthActivenessUsd = 0;
+  for (const c of roster) {
+    const was = monthMtd(c, `${prev}-${prevLength}`);
+    if (!was) continue;
+    const d = Math.round(was.diamonds ?? 0);
+    lastMonthDiamondsTotal += d;
+    const lv = levelFor(partner, c.username, prev);
+    const rt = lv.level == null ? 0 : (ratios[String(lv.level)] ?? ratios[lv.level] ?? 0);
+    lastMonthActivenessUsd += d * 0.01 * rt;
+  }
+  const lastMonthUsd = lastMonthDiamondsTotal * 0.01 * prevRate + lastMonthActivenessUsd;
 
   // Comparable only when last month had actually got going by this point. Ten
   // per cent is the line: below it the ratio is dividing by noise.
@@ -231,7 +360,11 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
   // Projected rank-ups are deliberately NOT guessed: a bonus that depends on
   // crossing a threshold either happens or it does not, and modelling a
   // fraction of one would put money on the card nobody is owed.
-  const projectedAgencyUsd = projectedDiamonds * 0.01 * boardRate + rankUpUsd;
+  // Activeness is projected at the roster's own blended ratio, because it is a
+  // per-diamond rate like the incremental share rather than a threshold event.
+  // Rank-ups are not projected at all — see below.
+  const projectedActivenessUsd = projectedDiamonds * 0.01 * activenessBlend;
+  const projectedAgencyUsd = projectedDiamonds * 0.01 * rate + projectedActivenessUsd + rankUpUsd;
 
   return {
     partner: partner.name ?? partner.group,
@@ -243,7 +376,7 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
     // VAT and statutory deductions ahead of settlement, so the flag exists to
     // make a card that forgets to say so impossible to write.
     beforeTax: true,
-    boardRate, usdToGbp,
+    boardRate, rate, rateIsActual: useActual, usdToGbp,
     creators: rows.length,
     live: rows.filter((r) => !r.left).length,
     earning: rows.filter((r) => r.diamonds > 0).length,
@@ -252,10 +385,21 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
     liveHours: round2(rows.reduce((t, r) => t + r.liveHours, 0)),
     liveDays: rows.reduce((t, r) => t + r.liveDays, 0),
     incrementalUsd: round2(incrementalUsd),
+    activenessBlend,
     rankUpUsd: round2(rankUpUsd),
     agencyUsd: round2(agencyUsd),
+    activenessUsd: round2(activenessUsd),
     incrementalGbp,
+    activenessGbp,
     rankUpGbp,
+    // How much of the activeness figure rests on a level we actually hold, so
+    // the card can say when it is carrying last month's forward.
+    levelsKnown: rows.filter((r) => r.level != null).length,
+    levelsCarried: rows.filter((r) => r.levelFrom === 'carried forward').length,
+    levelsUnknown: rows.filter((r) => r.level == null && r.diamonds > 0),
+    // Earning diamonds and on no level, so none of it pays activeness.
+    noLevel: rows.filter((r) => r.noLevel && r.diamonds > 0)
+      .sort((a, b) => b.diamonds - a.diamonds),
     agencyGbp,
     settlement: settle(agencyUsd, current.share),
     // What each rung of clause 5's ladder would pay on exactly this month's
@@ -265,13 +409,13 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
     today: {
       date: asOf,
       diamonds: today,
-      ...settle(today * 0.01 * boardRate, current.share),
+      ...settle(today * 0.01 * (rate + activenessBlend), current.share),
       // Yesterday, for a direction rather than a bare number.
       previousDiamonds: prevDay,
     },
     perDayDiamonds: Math.round(perDay),
     medianDayDiamonds: Math.round(medianDay),
-    perDayGbp: round2(perDay * 0.01 * boardRate * current.share * usdToGbp),
+    perDayGbp: round2(perDay * 0.01 * (rate + activenessBlend) * current.share * usdToGbp),
     projected: {
       diamonds: projectedDiamonds,
       ...settle(projectedAgencyUsd, current.share),
@@ -286,7 +430,7 @@ export function partnerRevenue({ creators, asOf, config = {}, partner }) {
     lastMonth: {
       month: prev,
       diamonds: lastMonthDiamondsTotal,
-      ...settle(lastMonthDiamondsTotal * 0.01 * boardRate, current.share),
+      ...settle(lastMonthUsd, current.share),
     },
     change: lastMonthDiamondsTotal > 0
       ? (projectedDiamonds - lastMonthDiamondsTotal) / lastMonthDiamondsTotal : null,

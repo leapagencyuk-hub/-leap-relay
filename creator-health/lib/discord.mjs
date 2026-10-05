@@ -1433,16 +1433,38 @@ export function partnerEarningsEmbed(r, { config = {} } = {}) {
   fields.push({
     name: 'The breakdown — BEFORE TAX',
     value: '```\n'
-      + row(`Incremental share (${pc(r.boardRate)})`, gbp(r.incrementalGbp))
+      + row(`Incremental share (${pc(r.rate)})`, gbp(r.incrementalGbp))
+      + row(`Activeness (${r.levelsKnown ? `avg ${(r.activenessBlend * 100).toFixed(1)}%` : 'no levels'})`, gbp(r.activenessGbp))
       + row(`Rank-up bonuses (${n(r.rankedUp.length)})`, gbp(r.rankUpGbp))
       + row('Agency revenue', gbp(r.agencyGbp))
       + row(`Your ${pc(r.tier.share)}`, gbp(r.settlement.gbp))
       + '```'
-      + '\n_Incremental share is a slice of every diamond your creators earn. A rank-up bonus is '
-      + 'paid when a creator finishes a month in a higher tier than they started it, and it pays on '
-      + `their WHOLE month. Quoted at ${pc(r.boardRate)}, which is the rate every card in this `
-      + 'system uses — a strong month comes in above it._',
+      + '\n_TikTok pays the agency three ways. **Incremental** is a slice of every diamond your '
+      + 'creators earn. **Activeness** is a second slice on top, at a rate set by how consistently '
+      + 'each creator goes LIVE — a creator on no activeness level earns nothing from it however '
+      + 'many diamonds they make. A **rank-up bonus** is paid when a creator finishes a month in a '
+      + 'higher tier than they started it, and it pays on their WHOLE month._'
+      + `\n_Incremental quoted at ${pc(r.rate)}${r.rateIsActual
+        ? ', which is the rate TikTok actually settled this month at'
+        : ' — provisional, because TikTok has not settled this month yet'}._`
+      + `${r.levelsCarried ? `\n_Activeness levels for ${plural(r.levelsCarried, 'creator')} are `
+        + 'carried over from last month, because this month\'s are not published yet._' : ''}`,
   });
+
+  // A creator earning well on no activeness level is money left on the table
+  // that no amount of extra diamonds will collect.
+  if (r.noLevel.length) {
+    const top = r.noLevel[0];
+    fields.push({
+      name: `Where you earn more — 0. creators on no activeness level — ${n(r.noLevel.length)}`,
+      value: `**${plural(r.noLevel.reduce((t, x) => t + x.diamonds, 0), 'diamond')} earning you nothing `
+        + 'from the activeness incentive.** A creator with no level is paid 0% of it whatever they make — '
+        + `@${top.username} alone is on ${n(top.diamonds)}. The level is set by how many days they go LIVE `
+        + 'and for how long, so it is the one thing here fixed purely by turning up.\n'
+        + fitJoin(r.noLevel.map((x) => `@${x.username} — ${n(x.diamonds)} diamonds, `
+          + `${plural(x.liveDays, 'LIVE day')}, ${x.liveHours.toFixed(1)} hours`), { sep: '\n' }),
+    });
+  }
 
   // The first lever, and on a young roster usually by far the biggest: a single
   // rank-up can be worth more than the whole month's share, because it pays on
@@ -1492,9 +1514,10 @@ export function partnerEarningsEmbed(r, { config = {} } = {}) {
     fields.push({
       name: 'Your creators',
       value: '```\n'
-        + fitJoin(perCreator.map((x) => `${String(x.username).slice(0, 20).padEnd(21)}`
+        + fitJoin(perCreator.map((x) => `${String(x.username).slice(0, 18).padEnd(19)}`
           + `${n(x.diamonds).padStart(8)}  ${String(x.liveDays).padStart(2)}d ${String(x.liveHours.toFixed(1)).padStart(6)}h`
-          + `${x.left ? '  left' : ''}`), { sep: '\n', max: 980 })
+          + `  ${x.level == null ? ' -' : x.level === 0 ? 'no lvl' : `L${x.level}`}`
+          + `${x.left ? ' left' : ''}`), { sep: '\n', max: 980 })
         + '\n```',
     });
   }

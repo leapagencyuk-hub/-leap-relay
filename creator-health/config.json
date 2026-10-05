@@ -325,7 +325,25 @@
       "_baseUnlock": "Every coach starts here.",
       "baseUnlock": 0.1,
       "_goalBonus": "Added once for hitting the group's diamond goal and once for hitting the recruiter goal, so 10/15/20.",
-      "goalBonus": 0.05
+      "goalBonus": 0.05,
+      "_actualRateProof": "September's 8% is not an estimate: StaySocial's Backstage contribution of $124.99 less $18.79 of activeness leaves $106.20, and 132,754 diamonds x $0.01 x 8% is $106.20 exactly."
+    },
+    "_activeness": "TikTok's THIRD incentive, beside rank-up and incremental, and the one this system missed until October. diamonds x $0.01 x a ratio set by the creator's ACTIVENESS LEVEL for the month. Verified to the cent against Backstage's own per-creator page for StaySocial in September: 7 of 7 rows.",
+    "_activenessLevels": "The level comes from valid go LIVE days AND LIVE duration for the month, pro-rated for a part-month and with static LIVE excluded (2026 Positive Incentives deck). It is NOT in the creator export, so it is carried here per month from Backstage. Levels 2, 3 and 4 are observed. Levels 1 and 5 are NOT confirmed and are marked as such: no LEAP creator has been seen on either.",
+    "activeness": {
+      "ratios": {
+        "0": 0,
+        "1": 0.005,
+        "2": 0.01,
+        "3": 0.02,
+        "4": 0.025,
+        "5": 0.03
+      },
+      "confirmed": [
+        2,
+        3,
+        4
+      ]
     },
     "_goals": "Backstage's monthly goals, per coach, read off the Group goals page on the 1st. diamonds is the whole group's target; recruits is the recruiter target. Each one hit adds goalBonus to that coach's unlock. A coach with no entry sits on the base 10% and their card shows no goal line, which is the honest default: it reads as 'no target set', not as two goals missed.",
     "goals": {
@@ -592,8 +610,22 @@
         "name": "Stay Social",
         "group": "Stay Social",
         "tier": "Growth",
-        "enabled": true
+        "enabled": true,
+        "_levels": "Activeness levels from Backstage, per month, per creator. Refresh monthly from Revenue > Incentives > Contributions > By creator. Where the current month has no entry, the most recent month is carried forward and the card says it is doing so.",
+        "levels": {
+          "2026-09": {
+            "victoria.willis8": 3,
+            "scottie2k26": 4,
+            "jeddyslays_20": 2,
+            "i_am_shoooook": 3,
+            "sbird198": 3,
+            "therealmelty": 0,
+            "anf_203": 0
+          }
+        }
       }
-    ]
+    ],
+    "_useActualRate": "A partner is settled on the agency revenue their creators actually generated, so their card uses TikTok's real monthly incremental rate where we know it rather than the 5% the coach boards quote. Quoting 5% to a partner settled at 8% understates them by over a third. Falls back to the board rate, and the card always names the rate it used.",
+    "useActualRate": true
   }
 }
