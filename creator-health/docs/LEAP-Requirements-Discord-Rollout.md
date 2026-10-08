@@ -163,13 +163,12 @@ delivery.
 | Pinned post, membership screening | manual, once |
 | Who is at day 5 / 25 / 80 and what they still need | **this service** |
 | Who just crossed 10,000 | **this service** |
-| Who lands in the 5,000-10,000 review band | **this service** |
 | Role changes, creator DMs, removals | **LEAP bot** |
 
 The cleanest handover is a JSON feed the bot reads each morning, rather than the
 service posting messages the bot then has to parse back. One row per creator
 with a deadline this week: username, coach, which rule, days or diamonds still
-needed, and a verdict of `nudge`, `review` or `remove`. The bot decides what to
+needed, and a verdict of `nudge` or `remove`. The bot decides what to
 send and which role to move.
 
 `/export` already carries every field this needs. A small endpoint shaped for
@@ -184,7 +183,7 @@ the bot is a short job once the thresholds are settled.
 3. Stand up the checkpoint feed; point the LEAP bot at it for roles and DMs.
 4. Run one full month. Count how many got nudged and then cleared the bar —
    that is the number that says whether the nudges work.
-5. Review the 5,000-10,000 band decisions with coaches after month one.
+5. Re-run the removal list at month end and check none of them came good.
 
 **Do not apply the rules retrospectively on day one.** 122 creators on the
 current roster have already missed one of these deadlines. Removing them in
@@ -192,7 +191,6 @@ the same week you announce the standard will read as a cull rather than a
 policy. Announce it, apply it to everyone joining from that date, and give the
 existing roster their own 30-day window to get to 10 LIVE days before the rules
 bite on them.
-
 
 ---
 
@@ -222,21 +220,6 @@ It also removes a contradiction. Without it, rule 2 removes people at day 30
 who have already cleared rule 3's bar — punishing a creator for the shape of
 their schedule after they have already delivered the outcome the rules exist
 to produce.
-
-### The gap the early exit does not close
-
-@hjixzzz — the one creator we know came good — is **still removed**. At his
-30-day gate he held 7,911 diamonds and four LIVE days: 79% of the way to the
-shortcut and 2,089 short. He earned 138,011 the following month.
-
-Ten creators since July have reached their 30-day gate with under 10 LIVE days
-and between 5,000 and 10,000 diamonds. Roughly three a month. That band should
-flag to the coach rather than auto-remove, because it is the only place in the
-rule set where a removal can cost something real.
-
-The signal to judge on is gift rate, not nights. Few nights plus good diamonds
-is a schedule problem and coachable; many nights plus no diamonds is an audience
-problem and mostly is not.
 
 **Speed to the bar, for planning the nudges:** of everyone who ever reaches
 10,000 diamonds, 45-60% get there inside their first month, 75-90% by the end

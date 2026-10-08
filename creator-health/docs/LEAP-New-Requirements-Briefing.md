@@ -47,19 +47,18 @@ remember who is due what.
 - Watching every creator's LIVE days and diamonds daily
 - Sending the countdown messages (all six are in section 3)
 - Flipping **NEW CREATOR → CREATOR** the second someone passes 10,000 diamonds
-- Flagging the **review band** to you instead of removing (section 4)
 - Carrying out removals once a deadline passes
 - Posting a daily checkpoint list to your channel: who is due what, this week
 
 **What feeds it:** the monitoring service already tracks every creator's daily
 LIVE days and diamonds. It publishes a checkpoint feed each morning — one row
 per creator with a deadline coming, carrying their coach, which rule, what they
-still need, and a verdict of `nudge`, `review` or `remove`. The bot reads that
-and acts.
+still need, and a verdict of `nudge` or `remove`. The bot reads that and acts.
 
-**What this means for you:** you are not responsible for spotting anybody. If
-a creator on your roster is in trouble, you will be told. Your job is what you
-do after you are told.
+**What this means for you:** you are not responsible for spotting anybody, and
+you are not asked to judge anybody either. The bars are the bars. If a creator
+on your roster is in trouble you will be told, and your job is to coach them
+over the line before the deadline — not to argue for them after it.
 
 ---
 
@@ -110,48 +109,7 @@ creators have been told.
 
 ---
 
-## 4. THE REVIEW BAND — THE ONE CALL THAT IS YOURS
-
-The bot does everything automatically **except one case.**
-
-> **If a creator reaches their 30-day gate with under 10 LIVE days BUT between
-> 5,000 and 10,000 diamonds, the bot flags them to you instead of removing
-> them. You decide.**
-
-### Why this exists
-
-One creator. **@hjixzzz** joined on 20 July. In his first month he managed
-**four LIVE days** and **7,911 diamonds** — 2,089 short of the shortcut, six
-days short of rule 2. A straight rule removes him on day 30.
-
-In September he earned **138,011 diamonds**.
-
-He is the single most expensive mistake these rules could make, and the
-shortcut alone does not save him — he was 79% of the way to it. The review band
-does.
-
-### How many, and how to judge it
-
-Across July, August and September, **ten creators** landed in this band. Call it
-**three a month across the whole network** — so roughly one each, every month or
-two. These are not a workload. They are the only decisions in the entire system
-that can cost us a real creator, so give them a proper five minutes.
-
-**The question is not "did they stream enough."** It is:
-
-> **Are they gifting well on the few nights they do show up?**
-
-- **Few nights, good diamonds** → a schedule problem. Coachable. Keep them, and
-  have the conversation about consistency.
-- **Many nights, no diamonds** → an audience problem. Mostly does not fix
-  itself. That one is a genuine removal.
-
-@hjixzzz was doing roughly 2,000 diamonds a night on the nights he appeared.
-That is not someone who can't do it. That is someone who wasn't turning up.
-
----
-
-## 5. WHY THESE THREE BARS
+## 4. WHY THESE THREE BARS
 
 We tested the rules against our own data before setting them, not after.
 
@@ -190,7 +148,7 @@ gone LIVE once.
 
 ---
 
-## 6. YOUR BACKLOG
+## 5. YOUR BACKLOG
 
 Creators who joined since July, are still active, and have **already** missed
 one of these deadlines.
@@ -211,15 +169,16 @@ one of these deadlines.
   TOTAL           365        118       179,956
 ```
 
-**Note on Unc's column:** 138,011 of that 141,888 is @hjixzzz, who the review
-band keeps. Strip him out and the entire affected group across every coach is
-worth **0.63% of September's diamonds**.
+**Note on Unc's column:** 138,011 of that 141,888 is a single creator,
+@hjixzzz, who missed the 30-day bar and then had a big September. He goes too.
+Strip him out and the entire affected group across every coach is worth
+**0.63% of September's diamonds**.
 
 This is a backlog, not a monthly load. It clears once.
 
 ---
 
-## 7. ROLLOUT
+## 6. ROLLOUT
 
 | when | what |
 |---|---|
@@ -233,7 +192,7 @@ thing people talk about instead of the rules.
 
 ---
 
-## 8. EXCEPTIONS — PAUSING A CLOCK
+## 7. EXCEPTIONS — PAUSING A CLOCK
 
 Illness, exams, bereavement, a family emergency, a broken setup, a house move.
 All of it is fine. All of it is pausable.
@@ -249,7 +208,7 @@ A paused clock costs nothing.
 
 ---
 
-## 9. WHAT THIS MEANS FOR RECRUITMENT
+## 8. WHAT THIS MEANS FOR RECRUITMENT
 
 In steady state, expect **70 to 80 removals a month** against about **105
 signings**.
@@ -264,14 +223,14 @@ land the same 70 keepers and the rules become paperwork.
 
 ---
 
-## 10. THE SHORT VERSION
+## 9. THE SHORT VERSION
 
 1. Three bars: LIVE in 7 days, 10 LIVE days in 30, 10,000 diamonds in 90.
 2. 10,000 diamonds at any point ends it early — clock stops, role flips.
-3. The bot does all of it. Roles, messages, flags, removals.
-4. **You own one decision:** under 10 days but 5,000–10,000 diamonds. Judge it
-   on gift rate, not nights. About one a month each.
-5. Flag anyone with a reason **before** their deadline.
+3. The bot does all of it. Roles, messages, removals.
+4. There is no appeal and no borderline. Hit the bars or you're off.
+5. Flag anyone with a genuine reason — illness, exams — **before** their
+   deadline. That is a paused clock, not an exception to the bar.
 6. New joiners from 1 Nov. Existing roster from 1 Dec.
 
 Questions in the coach channel, not DMs, so everybody sees the answer.

@@ -26,35 +26,7 @@ that to them when the conversation happens, because it is true and it matters.
 
 ---
 
-## POST 2 — the part that is your job
-
-The bot handles the roles, the countdown messages and the removals. There is
-one thing it will not decide for you.
-
-**The 5,000 to 10,000 review band.**
-
-If a creator reaches their 30-day gate with **under 10 LIVE days but between
-5,000 and 10,000 diamonds**, the bot flags them to you instead of removing
-them. You decide.
-
-This exists because of one creator. @hjixzzz joined on 20 July, managed four
-LIVE days in his first month, and sat on 7,911 diamonds at his 30-day gate —
-2,089 short of the shortcut. Under a straight rule he is gone. In September he
-earned **138,011 diamonds**.
-
-Across July, August and September there were ten creators in that band. Call it
-three a month. Three judgement calls each, and they are the only ones that can
-cost us a real creator. Take them seriously.
-
-The question to ask is not "did they stream enough" — it is **"are they gifting
-well on the few nights they do show up?"** That is the @hjixzzz pattern: not
-often, but heavily. Few nights plus good diamonds is a creator with a schedule
-problem, which you can coach. Many nights plus no diamonds is a creator with an
-audience problem, which mostly does not fix itself.
-
----
-
-## POST 3 — why we are doing this
+## POST 2 — why we are doing this
 
 We tested these rules against our own data before setting them, not after.
 
@@ -75,7 +47,7 @@ has never gone LIVE once.
 
 ---
 
-## POST 4 — your numbers
+## POST 3 — your numbers
 
 Creators who joined since July, still active, who have already missed one of
 these deadlines. This is your backlog, not your monthly load.
@@ -85,8 +57,8 @@ these deadlines. This is your backlog, not your monthly load.
   Sur3shot        118         48        10,812
   Cam              81         20         9,349
   Bean             42         20         1,487
-  Unc              31          9       141,888  <- 138,011 of this is @hjixzzz,
-  Surge            12          7         1,669     who the review band keeps
+  Unc              31          9       141,888  <- 138,011 of this is one
+  Surge            12          7         1,669     creator, @hjixzzz
   Slow             16          6           238
   Muju             29          4            23
   Reefman           8          2        14,455
@@ -96,8 +68,8 @@ these deadlines. This is your backlog, not your monthly load.
   TOTAL           365        118       179,956
 ```
 
-That whole column is **0.63% of the network's September diamonds**, and most of
-what is in it belongs to creators the review band will keep anyway.
+Strip @hjixzzz out and that whole column is **0.63% of the network's September
+diamonds**.
 
 If a name on your list has a reason — illness, exams, a family thing, a broken
 setup — **flag it before their deadline, not after.** We can pause a clock. We
@@ -105,7 +77,7 @@ cannot un-remove somebody gracefully.
 
 ---
 
-## POST 5 — how it rolls out
+## POST 4 — how it rolls out
 
 **Week 1.** Requirements posted and pinned in the creator server. Membership
 screening turned on, so every new creator ticks them before they can post.
