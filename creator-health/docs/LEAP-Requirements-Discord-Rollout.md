@@ -36,8 +36,13 @@ deadline. That is the part worth building.
 
 ```
 🌱 NEW CREATOR     on joining. Carries the 90-day clock.
-✅ CREATOR         granted at day 90 once all three are cleared.
+✅ CREATOR         granted the moment 10,000 diamonds is passed,
+                   or at day 90 once all three are cleared.
 ```
+
+The early exit is the best part of this. A 90-day probation is something you
+endure; a 90-day probation you can win in week one is a race. Nothing else in
+the rule set gives a creator a reason to go hard early.
 
 The role change at day 90 is the reward, and it costs nothing. A creator who
 can see `🌱 NEW CREATOR` on their own name knows they are on a clock without
@@ -64,6 +69,18 @@ Discord, with no extra tooling.
 >
 > Miss one and you come off the roster.
 >
+> ## THE SHORTCUT
+>
+> **Hit 10,000 diamonds at any point and you're done early.**
+>
+> The clock stops. 🌱 NEW CREATOR comes off, ✅ CREATOR goes on, and the
+> 10-days rule no longer applies to you. You've proved it — we're not going to
+> count your nights after that.
+>
+> Some of you will clear this in your first week. One creator did 326,000
+> diamonds across five nights. If that's you, you'll never even notice these
+> rules existed.
+>
 > **Why these three.** They are the lowest bar that tells us you actually want
 > to grow — and we checked them against our own numbers before setting them.
 >
@@ -73,6 +90,7 @@ Discord, with no extra tooling.
 > altogether within a few weeks.
 >
 > **None of this is hard if you want it.** 10 days in 30 is one night in three.
+> And if you'd rather go hard than go often, take the shortcut instead —
 > 10,000 diamonds across three months is about 110 a day. If that feels like a
 > lot, this is the wrong agency for you, and that's a fine thing to find out in
 > week one rather than month six.
@@ -112,6 +130,12 @@ after.
 > You need <10-N> more nights. An hour each counts.
 > If that's not happening, tell <COACH> today and we'll sort something.
 
+**On passing 10,000 — the one celebratory message in the set**
+
+> That's 10,000 diamonds. You're done — <NAME> is a ✅ CREATOR.
+> No more clock, no more day counting. You proved it faster than most.
+> Go and tell your room.
+
 **Day 80 — only if under 10,000 diamonds**
 
 > You're on <N> of 10,000 diamonds with 10 days left.
@@ -137,6 +161,7 @@ after.
 | Pinned post | manual, once |
 | Role changes | manual, or a Discord bot |
 | Checkpoint list for coaches | **the service can do this today** — a daily card naming who hits a deadline this week and what they still need |
+| Early-exit alert | **the service can do this today** — it already tracks diamonds daily, so it can name anyone who just crossed 10,000 |
 | DM to the creator | needs either the coach to send it, or a bot token |
 
 **Recommended first step:** the coach-facing checkpoint card. It needs no new
@@ -162,3 +187,38 @@ the same week you announce the standard will read as a cull rather than a
 policy. Announce it, apply it to everyone joining from that date, and give the
 existing roster their own 30-day window to get to 10 LIVE days before the rules
 bite on them.
+
+
+---
+
+## 6. What the early exit is worth
+
+Measured against every creator who has actually reached their 30-day gate
+since July (272 of them):
+
+```
+rescued by the early exit          3  (1 in 91)
+their diamonds to date       398,457
+
+@noxrl67     Malkin    joined 2026-07-05   5 LIVE days   326,425 at the gate
+@rhixn.xo    Cam       joined 2026-09-01   9 LIVE days    53,546
+@jackraptor  Sur3shot  joined 2026-08-03   9 LIVE days    18,484
+```
+
+@noxrl67 earned 326,425 diamonds across five nights and would have been
+removed on day 30 for not reaching ten. For scale, all 58 of September's
+removals produced 13,587 diamonds between them — he is 24 times that on his
+own.
+
+So the early exit costs one extra creator in 91 staying on the roster, and
+buys back the one failure mode in the rule set that could actually hurt.
+
+It also removes a contradiction. Without it, rule 2 removes people at day 30
+who have already cleared rule 3's bar — punishing a creator for the shape of
+their schedule after they have already delivered the outcome the rules exist
+to produce.
+
+**Speed to the bar, for planning the nudges:** of everyone who ever reaches
+10,000 diamonds, 45-60% get there inside their first month, 75-90% by the end
+of month two. The day-80 nudge will have a small audience; the early-exit
+alert will fire far more often.
