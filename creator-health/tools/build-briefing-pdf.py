@@ -6,8 +6,11 @@ from reportlab.lib.styles import ParagraphStyle
 from reportlab.platypus import (BaseDocTemplate, PageTemplate, Frame, Paragraph,
                                 Spacer, Table, TableStyle, KeepTogether, PageBreak)
 
-SRC = '/home/user/-leap-relay/creator-health/docs/LEAP-New-Requirements-Briefing.md'
-OUT = '/home/user/-leap-relay/creator-health/docs/LEAP-New-Requirements-Briefing.pdf'
+import sys
+# build-briefing-pdf.py <source.md> [out.pdf] [footer text]
+SRC = sys.argv[1] if len(sys.argv) > 1 else '/home/user/-leap-relay/creator-health/docs/LEAP-New-Requirements-Briefing.md'
+OUT = sys.argv[2] if len(sys.argv) > 2 else SRC.rsplit('.', 1)[0] + '.pdf'
+FOOT = sys.argv[3] if len(sys.argv) > 3 else 'LEAP — new creator requirements, staff briefing'
 INK, MUTE, RULE, ACC = colors.HexColor('#15181d'), colors.HexColor('#5b6572'), colors.HexColor('#dfe3e8'), colors.HexColor('#0f5ad6')
 BOX = colors.HexColor('#f4f6f9')
 
@@ -129,11 +132,11 @@ def deco(c, d):
     c.setStrokeColor(RULE); c.setLineWidth(0.5)
     c.line(23*mm, 16*mm, 196*mm, 16*mm)
     c.setFont('Helvetica', 7.4); c.setFillColor(MUTE)
-    c.drawString(23*mm, 11*mm, 'LEAP — new creator requirements, staff briefing')
+    c.drawString(23*mm, 11*mm, FOOT)
     c.drawRightString(196*mm, 11*mm, 'Page %d' % d.page)
     c.restoreState()
 
-doc = BaseDocTemplate(OUT, pagesize=A4, title='LEAP New Creator Requirements — Staff Briefing',
+doc = BaseDocTemplate(OUT, pagesize=A4, title=SRC.rsplit('/',1)[-1].rsplit('.',1)[0].replace('-',' '),
                       author='LEAP', leftMargin=23*mm, rightMargin=14*mm,
                       topMargin=18*mm, bottomMargin=22*mm)
 doc.addPageTemplates([PageTemplate(id='n',
