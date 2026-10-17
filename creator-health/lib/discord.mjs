@@ -368,43 +368,31 @@ function monthField(m, caseRecord) {
 }
 
 /**
- * Why, then what to ask. The coaches know how to help — this exists to point
- * them at the right conversation, not to script it.
+ * Why, in as few words as the data can be said in.
+ *
+ * This used to carry three more blocks — what to ask, what to check before
+ * calling, and extra levers worth pushing. All of it came out. Coaches know
+ * how to run the conversation; what they cannot see without this card is which
+ * number moved. So the card points at the number and stops.
+ *
+ * Campaigns and matches are left out on the same principle: they are a thing a
+ * coach might suggest, not evidence that a creator is slipping.
  */
+const CARD_SKIP_CAUSES = new Set(['STOPPED_CAMPAIGNS', 'NEVER_CAMPAIGNS']);
+
 function causeFields(caseRecord) {
-  const ranked = caseRecord.causes ?? [];
-  if (!ranked.length) return [];
-  const causes = ranked.filter((c) => c.kind !== KIND.LEVER);
-  const levers = ranked.filter((c) => c.kind === KIND.LEVER);
-  const out = [];
-
-  if (causes.length) {
-    out.push({
-      name: 'Most likely why',
-      value: causes.map((c) =>
-        `**${c.label}** _(${CONFIDENCE_LABEL[c.confidence]})_\n${c.evidence.map((e) => `• ${e}`).join('\n')}`,
-      ).join('\n\n').slice(0, 1024),
-    });
-    const top = causes[0];
-    out.push({
-      name: 'Ask them',
-      value: top.ask.map((a) => `• ${a}`).join('\n').slice(0, 1024),
-    });
-    if (top.check?.length) {
-      out.push({
-        name: 'Before you call',
-        value: `${top.check.join('; ')}${top.resolution ? `\n_${top.resolution}_` : ''}`.slice(0, 1024),
-      });
-    }
-  }
-
-  if (levers.length) {
-    out.push({
-      name: 'Also worth pushing',
-      value: levers.map((l) => `**${l.label}** — ${l.evidence[0]}`).join('\n').slice(0, 1024),
-    });
-  }
-  return out;
+  const causes = (caseRecord.causes ?? [])
+    .filter((c) => c.kind !== KIND.LEVER && !CARD_SKIP_CAUSES.has(c.id))
+    .slice(0, 2);
+  if (!causes.length) return [];
+  return [{
+    name: 'What the data says',
+    // One line each: the finding, then the single strongest number behind it.
+    value: causes
+      .map((c) => `**${c.label}**\n${c.evidence[0] ?? ''}`.trim())
+      .join('\n\n')
+      .slice(0, 1024),
+  }];
 }
 
 /**
@@ -482,6 +470,16 @@ function statusLine(c) {
   return 'Open';
 }
 
+// Which signals are the same story told twice. The week-on-week rule and the
+// month-on-month rule both fire on a creator whose diamonds fell, and the
+// sustained rule fires again if it has been going on for weeks.
+const SIGNAL_FAMILY = {
+  DIAMONDS_DOWN: 'diamonds', SUSTAINED_DIAMONDS_DOWN: 'diamonds', MONTH_DOWN: 'diamonds',
+  HOURS_DOWN: 'hours', SUSTAINED_HOURS_DOWN: 'hours', MONTH_HOURS_DOWN: 'hours',
+  LIVE_DAYS_DOWN: 'days', DARK: 'days',
+  FANCLUB_FANS_DOWN: 'fanclub', FANCLUB_DIAMONDS_DOWN: 'fanclub', CONCENTRATION_RISK: 'fanclub',
+};
+
 /** The card a coach sees when a creator starts slipping. */
 export function declineEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null, config = {} } = {}) {
   const m = alert.metrics;
@@ -494,10 +492,22 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
       title: `${SEVERITY_LABEL[caseRecord.severity] ?? 'Notice'} — ${book.title}`,
       description: (() => {
         const trend = monthlyTrend(m, 6);
-        // Labels only. The detail behind each one is repeated almost word for
-        // word under "Most likely why", and saying it twice makes the card
-        // twice as long without telling a coach anything new.
-        const signals = alert.signals.map((s) => `**${s.label}**`).join('  ·  ');
+        // One signal per thing that moved. The rules fire week-on-week and
+        // month-on-month separately and both land in this list, so a creator
+        // whose diamonds fell used to read "Diamonds -100% · Diamonds -100%
+        // below their normal" — the same fact twice, and the line ran to eight
+        // of them. Keep the first of each family, four at most.
+        const seen = new Set();
+        const signals = alert.signals
+          .filter((s) => {
+            const family = SIGNAL_FAMILY[s.code] ?? s.code;
+            if (seen.has(family)) return false;
+            seen.add(family);
+            return true;
+          })
+          .slice(0, 4)
+          .map((s) => `**${s.label}**`)
+          .join('  ·  ');
         return `${trend ? `\`${trend.spark}\`  ${trend.label}\n` : ''}${signals}`.slice(0, 3800);
       })(),
       color: COLOR[caseRecord.severity] ?? COLOR.neutral,
@@ -530,7 +540,6 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
           ]),
         ...causeFields(caseRecord),
         trafficField(m),
-        { name: `Check back in ${book.followUpDays} days`, value: book.success.slice(0, 1000) },
       ].filter(Boolean),
       footer: { text: footerText(caseRecord, config) },
       timestamp: new Date().toISOString(),
