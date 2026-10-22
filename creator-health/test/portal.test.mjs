@@ -1191,3 +1191,23 @@ test('no message a creator reads contains an em dash', () => {
     assert.equal(m.includes('–'), false, `en dash in: ${m.slice(0, 80)}`);
   }
 });
+
+test('withPortal adds the line to a card that was built without one', async () => {
+  const { withPortal } = await import('../lib/discord.mjs');
+  const card = { embeds: [{ title: 'x', fields: [{ name: 'a', value: 'b' }] }] };
+  const out = withPortal(card, 'https://x/portal', { username: 'BangedUpToes' });
+  const added = out.embeds[0].fields.at(-1);
+  assert.match(added.name, /HEAD TO THE PORTAL/);
+  assert.ok(added.value.includes('https://x/portal#c-bangeduptoes'), 'deep-linked to them');
+  assert.equal(out.embeds[0].fields.length, 2, 'and keeps what was already there');
+
+  // No portal, no change at all.
+  assert.deepEqual(withPortal(card, null, { username: 'a' }), card);
+  // No creator: the door to the whole portal.
+  assert.ok(withPortal(card, 'https://x/portal').embeds[0].fields.at(-1).value.includes('https://x/portal'));
+
+  // Discord caps an embed at 25 fields; a full card keeps its findings rather
+  // than dropping one to make room for a link.
+  const full = { embeds: [{ fields: Array.from({ length: 25 }, (_, i) => ({ name: `${i}`, value: 'v' })) }] };
+  assert.equal(withPortal(full, 'https://x/portal').embeds[0].fields.length, 25);
+});

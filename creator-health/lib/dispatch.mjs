@@ -7,6 +7,7 @@ import {
   Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
   dailyOverviewEmbed, teamPortalEmbed, declineBriefEmbed,
+  withPortal,
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
   hardestWorkerEmbed, creatorWeekEmbed, starlightEmbed, starlightOverviewEmbed,
@@ -410,11 +411,11 @@ export async function dispatch({
       await send('case-opened', c.coach, route, declineBriefEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config, portalUrl: portalFor(), diagnosis: diagnosisFor(c.creatorKey) }), c);
     } else if (c.kind === 'activation') {
       const r = activationRoute(c);
-      await send('activation-opened', c.coach, r, activationEmbed(c, { mention: r.mention, buttons, avatar: avatarConfig, metrics: metricsByKey.get(c.creatorKey), config }), c);
+      await send('activation-opened', c.coach, r, withPortal(activationEmbed(c, { mention: r.mention, buttons, avatar: avatarConfig, metrics: metricsByKey.get(c.creatorKey), config }), portalFor(), { username: c.username }), c);
     } else {
       const row = spotlightByKey.get(c.creatorKey);
       if (!row) continue;
-      await send('opportunity-opened', c.coach, route, opportunityEmbed(c, row, { mention: route.mention, buttons, avatar: avatarConfig, config }), c);
+      await send('opportunity-opened', c.coach, route, withPortal(opportunityEmbed(c, row, { mention: route.mention, buttons, avatar: avatarConfig, config }), portalFor(), { username: c.username }), c);
     }
   }
 
@@ -435,7 +436,7 @@ export async function dispatch({
   // --- follow-ups that came due --------------------------------------------
   for (const c of changes.dueFollowUps) {
     const route = c.kind === 'activation' ? activationRoute(c) : routeFor(c, discordConfig);
-    await send('follow-up', c.coach, route, followUpEmbed(c, { mention: route.mention, buttons, avatar: avatarConfig, config }), c);
+    await send('follow-up', c.coach, route, withPortal(followUpEmbed(c, { mention: route.mention, buttons, avatar: avatarConfig, config }), portalFor(), { username: c.username }), c);
   }
 
   // --- the weekly activation roster, per team -------------------------------
@@ -483,7 +484,7 @@ export async function dispatch({
     const route = routeFor({ coach: p.coach, group: p.group }, discordConfig);
     if (!route.webhook && !route.channelId) continue;
     await send(isPush ? 'graduation-push' : 'graduation-milestone', p.coach, route,
-      graduationEmbed(p, { mention: route.mention, finalPush: isPush, config }));
+      withPortal(graduationEmbed(p, { mention: route.mention, finalPush: isPush, config }), portalFor(), { username: p.username }));
   }
 
   // --- the activeness gate ---------------------------------------------------
@@ -510,7 +511,7 @@ export async function dispatch({
       for (const r of due) {
         const coachRoute = routeFor({ coach: r.coach, group: r.group }, discordConfig);
         await send('activeness-ping', r.coach, { ...pingRoute, mention: coachRoute.mention },
-          activenessPingEmbed(r, { mention: coachRoute.mention, config }));
+          withPortal(activenessPingEmbed(r, { mention: coachRoute.mention, config }), portalFor(), { username: r.username }));
       }
       if (!dryRun && due.length) recordPings(store, asOf, due);
     }
@@ -591,7 +592,7 @@ export async function dispatch({
     ? { webhook: discordConfig.escalationWebhook }
     : discordConfig.escalationChannelId ? { channelId: discordConfig.escalationChannelId } : null;
   if (changes.escalated.length && escalationRoute) {
-    await send('escalation', '(managers)', escalationRoute, escalationEmbed(changes.escalated, asOf, config));
+    await send('escalation', '(managers)', escalationRoute, withPortal(escalationEmbed(changes.escalated, asOf, config), portalFor()));
   }
 
   // --- daily roll-up --------------------------------------------------------
@@ -779,7 +780,7 @@ export async function dispatch({
           // The coach's mention, so the card lands on the person who has to
           // send the message rather than on everybody.
           const mention = discordConfig.coaches?.[String(row.quest.coach ?? '').toLowerCase()]?.mention ?? null;
-          const payload = sideQuestCardEmbed(row, { config, mention });
+          const payload = withPortal(sideQuestCardEmbed(row, { config, mention }), portalFor(), { username: row.quest.username });
           await (replaces('sidequests')
             ? replaceLast(`sidequest:${row.quest.username}`, row.quest.coach ?? '(none)', sqUpdates,
               payload, `sideQuest:${row.quest.username}`)
@@ -799,9 +800,9 @@ export async function dispatch({
           const usable = team?.webhook || (team?.channelId && discordConfig.botToken);
           if (!usable) continue;
           const mention = discordConfig.coaches?.[String(entry.coach ?? '').toLowerCase()]?.mention ?? null;
-          const card = sideQuestCoachEmbed(entry, phase, {
+          const card = withPortal(sideQuestCoachEmbed(entry, phase, {
             config, mention, nightsLeft: entry.rows[0]?.progress.nightsLeft ?? 0,
-          });
+          }), portalFor(), { label: 'HEAD TO YOUR PORTAL' });
           // A distinct slot per phase: the midpoint card should not delete the
           // launch brief a coach is still working from.
           await replaceLast(`sidequest-coach:${phase}`, entry.coach ?? '(none)',

@@ -2778,6 +2778,30 @@ const LEAP_BLUE = 0x004aad;
  * So: its own field, at the top, spelled out. A link somebody has to go
  * looking for is a link nobody clicks.
  */
+/**
+ * Add the portal line to a card that was built without one.
+ *
+ * Done this way rather than by threading a portalUrl through a dozen embed
+ * signatures: every per-creator card wants the same field in the same place,
+ * and the ones that do not get it are the ones a coach quietly learns to treat
+ * as the end of the trail.
+ *
+ * Deep-links to that creator where there is one, so "open their card" opens
+ * their card rather than the top of a page of thirty.
+ */
+export function withPortal(payload, portalUrl, { username = null, label } = {}) {
+  if (!portalUrl || !payload?.embeds?.length) return payload;
+  const anchor = String(username ?? '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  const url = anchor ? `${portalUrl}#c-${anchor}` : portalUrl;
+  const field = portalCallToAction(url, label ? { label } : {});
+  if (!field) return payload;
+  const [first, ...rest] = payload.embeds;
+  // Discord caps an embed at 25 fields; a card already at the limit keeps what
+  // it has rather than losing a finding to make room for a link.
+  if ((first.fields?.length ?? 0) >= 25) return payload;
+  return { ...payload, embeds: [{ ...first, fields: [...(first.fields ?? []), field] }, ...rest] };
+}
+
 function portalCallToAction(portalUrl, { label = 'HEAD TO THE PORTAL' } = {}) {
   if (!portalUrl) return null;
   return {
