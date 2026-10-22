@@ -97,6 +97,8 @@ vertical-align:middle;flex:0 0 auto}
 .dot.good,.good>.row .dot{background:var(--good)}
 .dot.idle,.idle>.row .dot{background:var(--idle)}
 .card.act{border-left:3px solid var(--act)}
+.card.protect{border-left:3px solid var(--brand-lift)}
+.dot.protect,.protect>.chead .dot{background:var(--brand-lift)}
 .card.watch{border-left:3px solid var(--watch)}
 .card.good{border-left:3px solid var(--good)}
 .card:target{outline:2px solid var(--brand-lift);outline-offset:3px;
@@ -418,6 +420,13 @@ ${e.goals ? `<br>Goals: ${e.goals.diamondsHit ? 'diamonds met' : `${n(e.goals.di
 <h2>Urgent <span class="count">(0)</span></h2>
 <div class="card"><div class="empty">Nobody earning is sliding today. That is the good version of this section.</div></div>`;
 
+  // 1b. Having a big month, and the week has eased off.
+  const protect = view.protect?.length ? `
+<h2>Protect the month <span class="count">(${view.protect.length})</span></h2>
+<p class="lede">Well up on last month, and the last week has come off the boil. Not an emergency —
+these are the ones to encourage, not to warn. Lead with the month.</p>
+<div class="cards">${view.protect.map((r) => creatorCard(r)).join('')}</div>` : '';
+
   // 2. The 200k chase.
   const chase = view.chase.length ? `
 <h2>200k graduation <span class="count">(${view.chase.length})</span></h2>
@@ -477,12 +486,13 @@ ${back ? `<p class="sub"><a href="${esc(back)}">&larr; all coaches</a></p>` : ''
 ${header(view.name, `${view.teams.join(' · ') || 'no team'} · data to ${view.asOf}`)}
 <div class="pills">
 <span class="pill"><span class="dot act"></span><b>${view.counts.act}</b> urgent</span>
+${view.counts.protect ? `<span class="pill"><span class="dot protect"></span><b>${view.counts.protect}</b> protect</span>` : ''}
 <span class="pill"><span class="dot watch"></span><b>${view.counts.watch}</b> in reach</span>
 <span class="pill"><span class="dot good"></span><b>${view.counts.good}</b> on track</span>
 <span class="pill"><b>${view.counts.roster}</b> creators</span>
 </div>
 ${stale(view.asOf, lastAsOf)}
-${earnings}${urgent}${chase}${rank}${quests}${activation}${roster}
+${earnings}${urgent}${protect}${chase}${rank}${quests}${activation}${roster}
 ${COPY_JS}
 ${hasMoney ? `<p class="note">${esc(EARNINGS_DISCLAIMER)}</p>` : ''}
 ${signedIn ? '<p class="note"><a href="/portal/logout">Sign out</a></p>' : ''}

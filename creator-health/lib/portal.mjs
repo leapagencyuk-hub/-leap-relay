@@ -27,10 +27,11 @@ import { isOpen } from './cases.mjs';
 import { avatarRoute } from './avatars.mjs';
 
 const num = (x) => (Number.isFinite(x) ? x : 0);
+const n0 = (x) => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-GB') : '—');
 const pct = (x) => (Number.isFinite(x) ? x : null);
 
 /** Red, amber, green, grey. The one thing a coach reads before any words. */
-export const STATE = { ACT: 'act', WATCH: 'watch', GOOD: 'good', IDLE: 'idle' };
+export const STATE = { ACT: 'act', PROTECT: 'protect', WATCH: 'watch', GOOD: 'good', IDLE: 'idle' };
 
 /**
  * What this creator needs, in a coach's words.
@@ -48,7 +49,19 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
   const daysBefore = num(m.prev7?.validLiveDays);
   const hdrNow = m.diamondsPerHour7;
   const hdrBefore = m.prev7?.liveHours > 0.5 ? m.prev7.diamonds / m.prev7.liveHours : null;
-  const hdrChange = hdrNow != null && hdrBefore ? (hdrNow - hdrBefore) / hdrBefore : null;
+  const hdrNormal = m.diamondsPerHour28;
+
+  // Compare against their own normal, not against last week, when last week was
+  // itself a freak. @itsmalkin did 6,157 an hour one week against a 28-day
+  // average of 3,586; measuring the next week off that spike produced "-45%"
+  // and called a record month a collapse. The honest figure is the one against
+  // their own baseline, and the card says which it used.
+  const spikeMultiple = config.portal?.spikeMultiple ?? 1.4;
+  const lastWeekWasASpike = hdrBefore != null && hdrNormal
+    && hdrBefore > hdrNormal * spikeMultiple;
+  const hdrBase = lastWeekWasASpike ? hdrNormal : hdrBefore;
+  const hdrChange = hdrNow != null && hdrBase ? (hdrNow - hdrBase) / hdrBase : null;
+  const hdrAgainst = lastWeekWasASpike ? 'their own normal' : 'last week';
   const fanSpend = pct(m.fanClub?.diamondsChange7);
   const monthChange = pct(m.monthOnMonth?.diamonds?.change);
 
@@ -74,7 +87,7 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
   // which is the whole reason it is flagged.
   const offAPeak = monthChange != null && monthChange >= (config.portal?.recordMonth ?? 0.5);
   const peakNote = offAPeak
-    ? ` Their month is still ${Math.round(monthChange * 100)}% up, so this is a big month starting to slip rather than a bad one — which is exactly when the call is worth making.`
+    ? ` Their month is ${Math.round(monthChange * 100)}% up on the same point last month, so this is a big month easing off rather than a bad one. The job is to protect it, not to sound an alarm.`
     : '';
 
   // Hours down with conversion holding is the cleanest call there is: the room
@@ -84,7 +97,7 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
     return {
       lever: 'hours',
       headline: offAPeak ? 'Hours slipping off a peak' : 'Hours, not the room',
-      detail: `LIVE hours ${Math.round(hoursChange * 100)}% on last week with diamonds per hour holding. The room converts the same, so the hours are the whole gap. Get the time back.${peakNote}`,
+      detail: `LIVE hours ${Math.round(hoursChange * 100)}% on last week, with diamonds per hour holding against ${hdrAgainst}. The room converts the same, so the hours are the whole gap. Get the time back.${peakNote}`,
       actions: [
         'Add LIVE days before you add session length. Frequency is cheaper for them and it is what the algorithm reads.',
         'Agree a schedule they will actually keep, not the one they wish they kept.',
@@ -98,8 +111,20 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
     return {
       lever: 'conversion',
       headline: offAPeak ? 'Coming off a peak' : 'Hours and conversion both down',
-      detail: `Hours ${Math.round(hoursChange * 100)}% and diamonds per hour ${Math.round(hdrChange * 100)}%. More time alone will not fix this. Back to basics on the stream: welcoming, thanking, a gift goal, revenue boost.${peakNote}`,
-      actions: [
+      // Two different sentences for two different situations. Telling somebody
+      // on a 126% month to get "back to basics" in the same breath as "this is
+      // a big month easing off" is the page arguing with itself again.
+      detail: offAPeak
+        ? `Hours ${Math.round(hoursChange * 100)}% on last week, and diamonds per hour ${Math.round(hdrChange * 100)}% against ${hdrAgainst}${
+          lastWeekWasASpike ? ` (${n0(hdrNormal)}/hour over 28 days — last week was an outlier at ${n0(hdrBefore)})` : ''}.${peakNote}`
+        : `Hours ${Math.round(hoursChange * 100)}% on last week, and diamonds per hour ${Math.round(hdrChange * 100)}% against ${hdrAgainst}${
+          lastWeekWasASpike ? ` (${n0(hdrNormal)}/hour over 28 days — last week was an outlier at ${n0(hdrBefore)})` : ''}. More time alone will not fix this. Back to basics on the stream: welcoming, thanking, a gift goal, revenue boost.`,
+      actions: offAPeak ? [
+        'Lead with the month, not the week. They are having a big one and they should hear that first.',
+        'Find out what made the big week work. That is the repeatable part, and nobody writes it down.',
+        'Only then, gently: the last few nights converted below their own normal. Ask what changed.',
+        'Do not send a "you are slipping" message to somebody having a record month.',
+      ] : [
         'Watch one of their LIVEs before the call. You cannot coach conversion off a spreadsheet.',
         'Back to basics: are they welcoming, thanking, introducing themselves?',
         'Is there a gift goal running, and are they revenue boosting it?',
@@ -128,7 +153,7 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
     return {
       lever: 'gifting',
       headline: 'Gifting is sliding',
-      detail: `Fan club spend ${Math.round(fanSpend * 100)}% on last week with the hours holding up. This is engagement and gifter management, not an hours problem.`,
+      detail: `Fan club spend ${Math.round(fanSpend * 100)}% on last week, with the hours holding up. This is engagement and gifter management, not an hours problem.`,
       needsInsights: true,
       actions: [
         'Check the real gift rate on the Creator Insights sheet before you call. This is our nearest reading, not the number itself.',
@@ -199,6 +224,7 @@ export function creatorMessage(lever, username) {
     days: `${at} 👋 noticed we've not had as many nights from you lately.\n\nGetting live more often is the single biggest thing for you right now — the algorithm rewards showing up more than it rewards long sessions. Can we pick some nights and stick to them this week? I'll back you the whole way 💙`,
     gifting: `Hey ${at} 💙 your hours are great — let's get the room giving back properly.\n\nThree things: welcome people in by name, thank every gift out loud, and keep a goal running so there's something to chase together. Getting you into the next campaign too, they make a massive difference.\n\nWhat do you fancy going for? 🔥`,
     rate: `${at} 🔥 you're putting the hours in and I want them to pay off properly.\n\nMore time on its own won't do it — let's work on the room instead. Fan club, goals and getting you matched up with other creators so new people find you. Free for a quick chat this week? 💙`,
+    protect: `${at} 🚀 just wanted to say — you are having a brilliant month, and that big week was something else.\n\nNo pressure at all, I just don't want us to lose the rhythm you found. Whatever you were doing on those nights, let's get back to it this week.\n\nProperly proud of you 💙`,
     anomaly: `${at} 🚀 you are having an absolutely unreal month and I'm not letting it go unnoticed.\n\nWhatever you've changed, keep doing it. Don't switch anything up right now — just keep showing up the way you are. Properly proud of you 💙`,
     hold: `${at} 💙 just a quick one — you're doing everything right at the minute. Keep going, keep showing up, and shout if you need anything 🙌`,
   };
@@ -246,7 +272,17 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
   // has never started is an activation job, and lives in its own list.
   const actFloor = config.portal?.actFloorDiamonds ?? 5000;
   const darkDays = config.portal?.darkDays ?? 4;
-  if (alert) state = STATE.ACT;
+
+  // A creator having a huge month whose week has eased off is not an emergency,
+  // and calling it one is how a coach stops trusting the page. @itsmalkin was
+  // filed under "Slipping now, worth the call" on a month running 127% ahead of
+  // the same point last month. The week is still worth a word — it just is not
+  // the same word.
+  const monthUp = pct(m?.monthOnMonth?.diamonds?.change);
+  const havingABigMonth = monthUp != null && monthUp >= (config.portal?.bigMonth ?? 0.5);
+
+  if (alert && havingABigMonth) state = STATE.PROTECT;
+  else if (alert) state = STATE.ACT;
   else if ((m?.darkStreak ?? 0) >= darkDays && mtd >= actFloor) state = STATE.ACT;
   else if (rank?.rankedUp || (grad?.done)) state = STATE.GOOD;
   else if (rank?.reachable && rank.gap > 0) state = STATE.WATCH;
@@ -337,7 +373,12 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
     }) : null,
     diagnosis: (() => {
       const d = diagnose(m, { rank, config });
-      return d ? { ...d, message: creatorMessage(d.lever, creator.username) } : d;
+      if (!d) return d;
+      // A creator having a big month gets the protective note, whatever lever
+      // the data tripped. Sending somebody on a record month a back-to-basics
+      // lecture is how a coach loses them.
+      const key = state === STATE.PROTECT ? 'protect' : d.lever;
+      return { ...d, message: creatorMessage(key, creator.username) };
     })(),
   };
 }
@@ -429,7 +470,9 @@ export function buildPortal({
     // backwards as an incentive, and it put 15,877-a-day creators at the top
     // of a list meant to be a morning's work.
     const chaseStretch = config.portal?.chaseStretch ?? 2;
-    const urgentKeys = new Set(rows.filter((r) => r.state === STATE.ACT).map((r) => r.key));
+    // Named somewhere above already — urgent or protect — so not named again.
+    const urgentKeys = new Set(rows
+      .filter((r) => r.state === STATE.ACT || r.state === STATE.PROTECT).map((r) => r.key));
     const inReach = (r) => {
       const need = r.graduation?.requiredPerDay;
       if (need == null) return false;
@@ -465,6 +508,9 @@ export function buildPortal({
     // Ordered by what is at stake, and capped. A coach has a morning, not a
     // day: the top of this list is where it should go, and the rest are still
     // on the roster table below with their colour on them.
+    const protect = rows
+      .filter((r) => r.state === STATE.PROTECT)
+      .sort((a, b) => b.diamonds - a.diamonds);
     const acting = rows
       .filter((r) => r.state === STATE.ACT)
       .sort((a, b) => (b.alert ? 1 : 0) - (a.alert ? 1 : 0) || b.diamonds - a.diamonds);
@@ -480,12 +526,13 @@ export function buildPortal({
       counts: {
         roster: rows.length,
         act: rows.filter((r) => r.state === STATE.ACT).length,
+        protect: protect.length,
         watch: rows.filter((r) => r.state === STATE.WATCH).length,
         good: rows.filter((r) => r.state === STATE.GOOD).length,
         idle: rows.filter((r) => r.state === STATE.IDLE).length,
       },
       diamonds: rows.reduce((n, r) => n + r.diamonds, 0),
-      upside, upsideTotal, banked, attention, attentionMore,
+      upside, upsideTotal, banked, attention, attentionMore, protect,
       perDiamond, chase, graduated, chaseOutOfReach,
       chaseTotal: chase.reduce((n, r) => n + r.worthIfGraduates, 0),
       atRiskTotal: rows.reduce((n, r) => n + (r.atRisk ?? 0), 0),
@@ -535,6 +582,7 @@ export function buildPortal({
         banked: merged.filter((r) => r.rank?.rankedUp || r.rank?.maintained),
         attention: acting.slice(0, cap),
         attentionMore: Math.max(0, acting.length - cap),
+        protect: merged.filter((r) => r.state === STATE.PROTECT),
         perDiamond: 0,
         chase: merged.filter((r) => r.graduation && !r.graduation.done && r.diamonds > 0
           && r.graduation.requiredPerDay != null && r.perDay7 > 0

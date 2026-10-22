@@ -412,8 +412,11 @@ test('a big month slipping is not reported as a collapse', () => {
   }));
   assert.equal(d.lever, 'conversion', 'still flagged, because the week is real');
   assert.equal(d.headline, 'Coming off a peak');
-  assert.match(d.detail, /still 126% up/);
-  assert.match(d.detail, /big month starting to slip rather than a bad one/);
+  assert.match(d.detail, /126% up on the same point last month/);
+  assert.match(d.detail, /big month easing off rather than a bad one/);
+  // And it no longer tells somebody on a record month to get back to basics in
+  // the same sentence as "this is not an alarm".
+  assert.equal(/Back to basics/.test(d.detail), false);
 });
 
 test('the 200k chase only names creators who can still get there', () => {
@@ -788,4 +791,65 @@ test('no message carries markdown a TikTok DM would show as asterisks', () => {
     assert.equal(m.includes('**'), false, `markdown in: ${m.slice(0, 60)}`);
     assert.equal(/\[.+\]\(.+\)/.test(m), false, 'and no markdown links');
   }
+});
+
+// --- a big month easing off is not an emergency ---------------------------------
+
+test('a creator having a record month is not filed under urgent', () => {
+  // @itsmalkin was listed as "Slipping now, worth the call" on a month running
+  // 127% ahead of the same point last month. The week is worth a word; it is
+  // not the same word.
+  const c = creator('bigmonth');
+  const m = metrics({
+    curr7: { diamonds: 65587, liveHours: 39.9, validLiveDays: 6, fanClubDiamonds: 50000 },
+    prev7: { diamonds: 384978, liveHours: 62.5, validLiveDays: 7, fanClubDiamonds: 300000 },
+    change7: { diamonds: -0.83, liveHours: -0.36 },
+    diamondsPerHour7: 1645, diamondsPerHour28: 3586,
+    monthToDate: { diamonds: 574323 },
+    monthOnMonth: { diamonds: { monthToDate: 574323, change: 1.26, lastMonthToSamePoint: 253653 } },
+  });
+  const view = portalOf([{ creator: c, metrics: m, alert: { creator: c, metrics: m, severity: 'warn', signals: [] } }])
+    .byCoach.get('josh@leap.com');
+
+  assert.equal(view.counts.act, 0, 'not urgent');
+  assert.equal(view.protect.length, 1, 'but still surfaced');
+  const page = coachPage(view, { config: {} });
+  assert.ok(page.includes('Protect the month'));
+  assert.ok(page.includes('not to warn'));
+});
+
+test('a week is measured against their own normal when last week was a freak', () => {
+  // 6,157/hour one week against a 28-day average of 3,586 is an outlier.
+  // Measuring the next week off that spike produced "-45%" and called a record
+  // month a collapse; against their own normal it is -54%, and the card says so.
+  const d = diagnose(metrics({
+    curr7: { diamonds: 65587, liveHours: 39.9, validLiveDays: 6, fanClubDiamonds: 50000 },
+    prev7: { diamonds: 384978, liveHours: 62.5, validLiveDays: 7, fanClubDiamonds: 300000 },
+    change7: { diamonds: -0.83, liveHours: -0.36 },
+    diamondsPerHour7: 1645, diamondsPerHour28: 3586,
+    monthOnMonth: { diamonds: { monthToDate: 574323, change: 1.26 } },
+  }));
+  assert.match(d.detail, /against their own normal/);
+  assert.match(d.detail, /last week was an outlier at 6,1\d\d/);
+  assert.match(d.detail, /on last week/, 'and every figure names its window');
+  assert.match(d.detail, /126% up on the same point last month/);
+  assert.match(d.detail, /protect it, not to sound an alarm/);
+  assert.equal(/Back to basics/.test(d.detail), false);
+});
+
+test('a creator on a record month is sent encouragement, not a lecture', () => {
+  const c = creator('bigmonth');
+  const m = metrics({
+    change7: { liveHours: -0.36 }, diamondsPerHour7: 1645, diamondsPerHour28: 3586,
+    prev7: { diamonds: 384978, liveHours: 62.5, validLiveDays: 7, fanClubDiamonds: 300000 },
+    curr7: { diamonds: 65587, liveHours: 39.9, validLiveDays: 6, fanClubDiamonds: 50000 },
+    monthOnMonth: { diamonds: { monthToDate: 574323, change: 1.26 } },
+  });
+  const view = portalOf([{ creator: c, metrics: m, alert: { creator: c, metrics: m, severity: 'warn', signals: [] } }])
+    .byCoach.get('josh@leap.com');
+  const msg = view.protect[0].diagnosis.message;
+  assert.match(msg, /brilliant month/);
+  assert.equal(/slipping|down|problem/i.test(msg), false, 'nothing that reads as a telling-off');
+  // And the advice to the coach matches.
+  assert.ok(view.protect[0].diagnosis.actions.some((a) => /Lead with the month/.test(a)));
 });
