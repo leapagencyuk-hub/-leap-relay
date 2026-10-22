@@ -670,3 +670,85 @@ test('a team card in a shared channel still shows no money', () => {
   assert.equal(JSON.stringify(out).includes('£'), false);
   assert.equal(out.components[0].components[0].url, 'https://x/portal');
 });
+
+test('a percentage on a card always shows the figure it is measured against', () => {
+  const c = creator('a');
+  const m = metrics({
+    monthToDate: { diamonds: 527439, liveHours: 62, validLiveDays: 18 },
+    monthOnMonth: {
+      diamonds: { monthToDate: 527439, change: -0.41, lastMonthToSamePoint: 894000 },
+      liveHours: { change: -0.05, lastMonthToSamePoint: 65.3 },
+      validLiveDays: { change: 0.17, lastMonthToSamePoint: 15.4 },
+    },
+    fanClub: { activeFans: 305, activeFansChange14: 0.4, activeFans14: 218 },
+  });
+  const view = portalOf([{ creator: c, metrics: m, alert: { creator: c, metrics: m, severity: 'urgent', signals: [] } }])
+    .byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+
+  assert.ok(page.includes('from 894,000'), 'diamonds show last month to the same point');
+  assert.ok(page.includes('from 65.3h'), 'hours too');
+  assert.ok(page.includes('from 15 by this point last month'), 'and LIVE days');
+  // The month figures compare to the SAME POINT last month, never to the whole
+  // of it: on the 19th a part month against a whole one reads as a collapse
+  // for somebody doing exactly what they always do.
+  assert.ok(page.includes('by this point last month'));
+  // Fan club is a 14-day window, the only one we hold, and says so.
+  assert.ok(page.includes('from 218 two weeks ago'));
+});
+
+test('banked rank ups render as cards, not a heading with nothing under it', () => {
+  // Sur3shot's page showed "RANK UP & MAINTAIN (69)" and then empty space:
+  // all 69 were banked, and banked was hidden behind a fold.
+  const rows = Array.from({ length: 5 }, (_, i) => {
+    const c = creator(`banked${i}`);
+    return {
+      creator: c,
+      metrics: metrics(),
+      rank: {
+        creator: c, rankedUp: i === 0, maintained: i !== 0, reachable: true,
+        fromTier: 2, toTier: i === 0 ? 3 : 2, gap: 0, needPerDay: null,
+        worthIfCrossed: 0, worth: 10,
+      },
+    };
+  });
+  const view = portalOf(rows).byCoach.get('josh@leap.com');
+  assert.equal(view.upside.length, 0, 'nothing in reach');
+  assert.equal(view.banked.length, 5);
+
+  const page = coachPage(view, { config: {} });
+  assert.ok(page.includes('Rank up &amp; maintain'));
+  // Every banked creator is named on the page, not folded away.
+  for (let i = 0; i < 5; i++) assert.ok(page.includes(`@banked${i}`), `banked${i} is missing`);
+  assert.ok(page.includes('1 ranked up, 4 maintaining'));
+  assert.equal(page.includes('<details class="fold"><summary>Banked'), false, 'not behind a fold');
+});
+
+test('a maintain that is sliding is marked out from the rest', () => {
+  const steady = creator('steady');
+  const sliding = creator('sliding');
+  const rank = (c) => ({ creator: c, rankedUp: false, maintained: true, reachable: true,
+    fromTier: 2, toTier: 2, gap: 0, needPerDay: null, worthIfCrossed: 0, worth: 10 });
+  const view = portalOf([
+    { creator: steady, metrics: metrics(), rank: rank(steady) },
+    {
+      creator: sliding,
+      metrics: metrics({ monthOnMonth: { diamonds: { monthToDate: 1000, change: -0.45 } } }),
+      rank: rank(sliding),
+    },
+  ]).byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+  // The one losing ground gets the amber rail; the steady one does not.
+  assert.ok(/class="m watch"[\s\S]{0,400}@sliding/.test(page), 'the sliding maintain is amber');
+  assert.equal(/class="m watch"[\s\S]{0,400}@steady/.test(page), false);
+});
+
+test('creator lists tile on a desktop instead of running down the middle', () => {
+  const view = portalOf([{
+    creator: creator('a'),
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }),
+  }]).byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+  assert.ok(page.includes('<div class="cards">'), 'cards sit in a grid');
+  assert.ok(page.includes('max-width:1400px'), 'and the page uses the screen');
+});

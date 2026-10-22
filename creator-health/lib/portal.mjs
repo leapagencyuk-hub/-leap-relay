@@ -254,11 +254,39 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
     // month. `monthOnMonth` carries the comparison and is null for anyone with
     // no previous month, so the value falls back to this month's own total and
     // the change reads as unavailable rather than as zero.
+    // Each one carries the figure its percentage is measured against, because a
+    // percentage with nothing behind it is half a fact. For the month stats
+    // that figure is LAST MONTH TO THE SAME POINT, not last month's total: on
+    // the 19th, comparing a part month against a whole one would read as a
+    // collapse for somebody doing exactly what they always do.
+    //
+    // Fan club is the odd one out and is labelled as such — it is a 14-day
+    // change, the only window we hold for it.
     month: {
-      diamonds: { now: Math.round(num(m?.monthToDate?.diamonds)), change: pct(m?.monthOnMonth?.diamonds?.change) },
-      hours: { now: num(m?.monthToDate?.liveHours), change: pct(m?.monthOnMonth?.liveHours?.change) },
-      liveDays: { now: Math.round(num(m?.monthToDate?.validLiveDays)), change: pct(m?.monthOnMonth?.validLiveDays?.change) },
-      fanClub: { now: m?.fanClub?.activeFans ?? null, change: pct(m?.fanClub?.activeFansChange14) },
+      diamonds: {
+        now: Math.round(num(m?.monthToDate?.diamonds)),
+        change: pct(m?.monthOnMonth?.diamonds?.change),
+        then: m?.monthOnMonth?.diamonds?.lastMonthToSamePoint ?? null,
+        thenNote: 'by this point last month',
+      },
+      hours: {
+        now: num(m?.monthToDate?.liveHours),
+        change: pct(m?.monthOnMonth?.liveHours?.change),
+        then: m?.monthOnMonth?.liveHours?.lastMonthToSamePoint ?? null,
+        thenNote: 'by this point last month',
+      },
+      liveDays: {
+        now: Math.round(num(m?.monthToDate?.validLiveDays)),
+        change: pct(m?.monthOnMonth?.validLiveDays?.change),
+        then: m?.monthOnMonth?.validLiveDays?.lastMonthToSamePoint ?? null,
+        thenNote: 'by this point last month',
+      },
+      fanClub: {
+        now: m?.fanClub?.activeFans ?? null,
+        change: pct(m?.fanClub?.activeFansChange14),
+        then: m?.fanClub?.activeFans14 ?? null,
+        thenNote: 'two weeks ago',
+      },
     },
     perDay7: Math.round(num(m?.dailyDiamonds7)),
     darkStreak: m?.darkStreak ?? 0,

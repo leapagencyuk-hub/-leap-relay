@@ -342,6 +342,9 @@ export function computeMetrics(creator, endDate) {
       activeFans: fansNow?.activeFanClubFans ?? null,
       activeFansChange7: pctChange(fansNow?.activeFanClubFans, fans7?.activeFanClubFans),
       activeFansChange14: pctChange(fansNow?.activeFanClubFans, fans14?.activeFanClubFans),
+      // The figure the change is against, so a card can print it rather than
+      // leave a percentage with nothing behind it.
+      activeFans14: fans14?.activeFanClubFans ?? null,
       totalFans: fansNow?.totalFans ?? null,
       totalFansChange14: pctChange(fansNow?.totalFans, fans14?.totalFans),
       contribution: fansNow?.fanContribution ?? null,

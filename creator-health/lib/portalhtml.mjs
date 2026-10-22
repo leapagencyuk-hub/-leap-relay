@@ -58,7 +58,7 @@ linear-gradient(180deg,var(--navy) 0%,var(--bg) 55%);
 background-attachment:fixed;
 font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 -webkit-text-size-adjust:100%}
-.wrap{max-width:980px;margin:0 auto;
+.wrap{max-width:1400px;margin:0 auto;
 padding-left:max(16px,env(safe-area-inset-left,0px));
 padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px}
 .brandbar{display:flex;align-items:center;gap:11px;margin-bottom:14px}
@@ -111,12 +111,21 @@ border:2px solid rgba(255,255,255,.92);box-shadow:0 0 14px rgba(255,255,255,.35)
 background:var(--card-2);order:2}
 .ava.none{display:flex;align-items:center;justify-content:center;color:var(--dim);
 font-size:19px;font-weight:700;border-color:rgba(255,255,255,.3);box-shadow:none}
-.quad{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:11px}
+/* Creator cards tile across a desktop and stack on a phone. The portal was
+   using a thousand pixels of a three-thousand pixel screen. */
+.cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(440px,1fr));
+gap:9px;align-items:start}
+@media(max-width:920px){.cards{grid-template-columns:1fr}}
+/* auto-fit rather than a fixed four, so the tiles fall to two rows inside a
+   narrow card instead of being squeezed. */
+.quad{display:grid;grid-template-columns:repeat(auto-fit,minmax(96px,1fr));gap:7px;margin-top:11px}
 .q{background:rgba(3,11,30,.55);border:1px solid var(--line);border-radius:10px;padding:7px 8px;min-width:0}
 .q .k{color:var(--dim);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
 .q .v{font-size:14px;font-weight:680;font-variant-numeric:tabular-nums;margin-top:2px;
 white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .q .c{font-size:10.5px;font-variant-numeric:tabular-nums;margin-top:1px}
+.q .then{color:var(--dim);font-size:10px;margin-top:2px;line-height:1.3;
+font-variant-numeric:tabular-nums}
 .msg{margin-top:11px;background:rgba(3,11,30,.6);border:1px solid var(--line);
 border-radius:10px;padding:10px}
 .msg .k{color:var(--dim);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;
@@ -126,6 +135,22 @@ font-size:12.5px;line-height:1.5;resize:vertical;min-height:112px;padding:0}
 .msg textarea:focus{outline:2px solid var(--brand-lift);outline-offset:4px;border-radius:4px}
 .copied{color:var(--good);font-size:11.5px;margin-left:8px}
 @media(max-width:430px){.quad{grid-template-columns:repeat(2,1fr)}}
+/* The banked list: dense, because there can be seventy of them and a coach
+   wants to see the whole wall at once. */
+.mini{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+.m{background:linear-gradient(180deg,rgba(13,30,66,.92),rgba(7,18,40,.92));
+border:1px solid var(--line);border-left:3px solid var(--good);border-radius:12px;
+padding:10px 11px;display:flex;gap:10px;align-items:center;min-width:0}
+.m.watch{border-left-color:var(--watch)}
+.m img,.m .ph{width:38px;height:38px;border-radius:50%;flex:0 0 auto;object-fit:cover;
+border:2px solid rgba(255,255,255,.9);box-shadow:0 0 10px rgba(255,255,255,.3);
+background:var(--card-2);display:flex;align-items:center;justify-content:center;
+color:var(--dim);font-weight:700;font-size:14px}
+.m .b{min-width:0;flex:1}
+.m .h{font-weight:660;font-size:13.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.m .s{color:var(--dim);font-size:11.5px;font-variant-numeric:tabular-nums;margin-top:2px}
+.m a.go{color:var(--brand-lift);font-size:11.5px;text-decoration:none;flex:0 0 auto}
+.m a.go:hover{color:#fff}
 .worth{color:var(--good);font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
 .risk{color:var(--act);font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
 .up{color:var(--good)}.down{color:var(--act)}.flat{color:var(--dim)}
@@ -212,15 +237,21 @@ function creatorCard(r, { money: moneyLine = null, need = null } = {}) {
   // Four numbers, each against the same point last month. A change we cannot
   // compute reads as a dash, never as zero — a creator in their first month has
   // no last month, and "0%" would say they stood still.
-  const q = (label, value, change) => `<div class="q"><div class="k">${esc(label)}</div>
-<div class="v">${value}</div>
-<div class="c ${toneOf(change)}">${change == null ? '<span class="flat">no last month</span>' : signed(change)}</div></div>`;
+  const q = (label, stat, fmt) => {
+    const change = stat?.change;
+    const then = stat?.then;
+    return `<div class="q"><div class="k">${esc(label)}</div>
+<div class="v">${stat?.now == null ? '—' : fmt(stat.now)}</div>
+<div class="c ${toneOf(change)}">${change == null ? '<span class="flat">no last month</span>' : signed(change)}</div>
+${then == null ? '' : `<div class="then">from ${fmt(then)} ${esc(stat.thenNote ?? '')}</div>`}</div>`;
+  };
   const mo = r.month ?? {};
+  const hours = (x) => `${Number(x).toFixed(1)}h`;
   const quad = `<div class="quad">
-${q('Diamonds', n(mo.diamonds?.now), mo.diamonds?.change)}
-${q('Hours', mo.hours?.now != null ? `${mo.hours.now.toFixed(1)}h` : '—', mo.hours?.change)}
-${q('LIVE days', n(mo.liveDays?.now), mo.liveDays?.change)}
-${q('Fan club', mo.fanClub?.now == null ? '—' : n(mo.fanClub.now), mo.fanClub?.change)}
+${q('Diamonds', mo.diamonds, n)}
+${q('Hours', mo.hours, hours)}
+${q('LIVE days', mo.liveDays, n)}
+${q('Fan club', mo.fanClub, n)}
 </div>`;
 
   const msgId = `m-${esc(String(r.key ?? r.username).replace(/[^a-zA-Z0-9]/g, ''))}`;
@@ -275,6 +306,29 @@ document.addEventListener('click', function (ev) {
 });
 </script>`;
 
+/**
+ * A banked rank up or maintain, in one line.
+ *
+ * These are not problems, so they do not get a full card — but there can be
+ * seventy of them, they are money already on the table, and hiding them behind
+ * a fold made the whole section render as a heading with nothing under it. The
+ * job is "see the wall, spot the one wobbling", which is a dense grid.
+ */
+function bankedCard(r) {
+  const initial = esc(String(r.username ?? '?').replace(/^@/, '').charAt(0).toUpperCase());
+  const ava = r.avatar
+    ? `<img src="${esc(r.avatar)}" alt="" width="38" height="38" loading="lazy">`
+    : `<div class="ph" aria-hidden="true">${initial}</div>`;
+  // A maintain that is sliding is the one worth looking at, so it goes amber.
+  const wobbling = r.rank?.maintained && r.change != null && r.change < -0.2;
+  return `<div class="m${wobbling ? ' watch' : ''}">${ava}
+<div class="b"><div class="h">@${esc(r.username)}</div>
+<div class="s">${n(r.diamonds)} <span class="${toneOf(r.change)}">${signed(r.change) || ''}</span>
+ · tier ${r.rank.fromTier}&rarr;${r.rank.toTier} · ${r.rank.rankedUp ? 'ranked up' : 'maintaining'}</div></div>
+${r.tiktok ? `<a class="go" href="${esc(r.tiktok)}" target="_blank" rel="noopener noreferrer">TikTok</a>` : ''}
+</div>`;
+}
+
 /** The coach's own page. Their creators, nobody else's. */
 export function coachPage(view, { lastAsOf = null, config = {}, signedIn = false, back = null } = {}) {
   const e = view.earnings;
@@ -300,11 +354,11 @@ ${e.goals ? `<br>Goals: ${e.goals.diamondsHit ? 'diamonds met' : `${n(e.goals.di
 <h2>Urgent <span class="count">(${view.attention.length})</span></h2>
 <p class="lede">Slipping now, and still earning enough to be worth the call.${
   hasMoney && view.atRiskTotal > 0 ? ` About ${money(view.atRiskTotal, cur)} a week of your pay is in this list.` : ''}</p>
-${view.attention.map((r) => creatorCard(r, {
+<div class="cards">${view.attention.map((r) => creatorCard(r, {
     // Below a pound it is not an incentive, it is clutter pretending to be one.
     money: hasMoney && r.atRisk >= (config.portal?.minMoneyShown ?? 1)
       ? `<span class="risk">${money(r.atRisk, cur)}/wk at risk</span>` : null,
-  })).join('')}${
+  })).join('')}</div>${
   view.attentionMore ? `<div class="card"><div class="meta">${view.attentionMore} more are flagged and are in the full roster below. These are the ones worth your morning.</div></div>` : ''}` : `
 <h2>Urgent <span class="count">(0)</span></h2>
 <div class="card"><div class="empty">Nobody earning is sliding today. That is the good version of this section.</div></div>`;
@@ -316,11 +370,11 @@ ${view.attention.map((r) => creatorCard(r, {
 Closest first, and only those who can still get there at something like their current rate.${
   hasMoney && view.chaseTotal > 0 ? ` Closing every gap here is ${money(view.chaseTotal, cur)} to you.` : ''}${
   view.chaseOutOfReach ? ` ${view.chaseOutOfReach} more are inside their 90 days but too far off this month to chase.` : ''}</p>
-${view.chase.map((r) => creatorCard(r, {
+<div class="cards">${view.chase.map((r) => creatorCard(r, {
     money: hasMoney && r.worthIfGraduates >= (config.portal?.minMoneyShown ?? 1)
       ? `<span class="worth">${money(r.worthIfGraduates, cur)}</span>` : null,
     need: `${n(r.graduation.remaining)} to go, ${n(r.graduation.requiredPerDay)}/day`,
-  })).join('')}
+  })).join('')}</div>
 ${view.graduated.length ? `<div class="card good"><div class="meta">${view.graduated.length} already past 200,000 this month: ${
   view.graduated.map((r) => `@${esc(r.username)}`).join(', ')}</div></div>` : ''}` : '';
 
@@ -330,21 +384,19 @@ ${view.graduated.length ? `<div class="card good"><div class="meta">${view.gradu
 <p class="lede">The highest-value thing on this page per creator. A rank up pays you on their whole month; a maintain lost in the last week costs the same as a rank up never made.</p>
 ${view.upside.length ? `<div class="card"><div class="meta">${view.upside.length} still in reach${
   hasMoney ? `, worth <span class="worth">${money(view.upsideTotal, cur)}</span> if you land them all` : ''}. Only creators who can still get there are listed.</div></div>
-${view.upside.map((r) => creatorCard(r, {
+<div class="cards">${view.upside.map((r) => creatorCard(r, {
     money: hasMoney && r.rank.worthIfCrossed >= (config.portal?.minMoneyShown ?? 1)
       ? `<span class="worth">${money(r.rank.worthIfCrossed, cur)}</span>` : null,
     need: `${n(r.rank.gap)} to tier ${r.rank.toTier + 1}, ${n(r.rank.needPerDay)}/day`,
-  })).join('')}` : ''}
-${view.banked.length ? `<details class="fold"><summary>Banked — do not lose these (${view.banked.length})</summary>
-<div class="card"><table><tr><th>Creator</th><th class="num">Diamonds</th><th class="num hide-s">Tier</th><th class="num">State</th></tr>
-${view.banked.map((r) => `<tr><td><span class="dot good"></span>${
-  r.tiktok ? `<a href="${esc(r.tiktok)}" target="_blank" rel="noopener noreferrer">@${esc(r.username)}</a>` : `@${esc(r.username)}`}</td>
-<td class="num">${n(r.diamonds)}</td><td class="num hide-s">${r.rank.fromTier} &rarr; ${r.rank.toTier}</td>
-<td class="num">${r.rank.rankedUp ? 'ranked up' : 'maintained'}</td></tr>`).join('')}</table></div></details>` : ''}` : '';
+  })).join('')}</div>` : ''}
+${view.banked.length ? `<div class="card"><div class="meta">
+<b>Banked: ${view.banked.filter((r) => r.rank.rankedUp).length} ranked up, ${view.banked.filter((r) => r.rank.maintained).length} maintaining.</b>
+Already yours. Amber is a maintain that has started sliding — those are the ones that get lost in the last week of the month.</div></div>
+<div class="mini">${view.banked.map(bankedCard).join('')}</div>` : ''}` : '';
 
   const quests = view.quests.length ? `
 <h2>Side quests <span class="count">(${view.quests.length})</span></h2>
-${view.quests.map((r) => creatorCard(r)).join('')}` : '';
+<div class="cards">${view.quests.map((r) => creatorCard(r)).join('')}</div>` : '';
 
   const activation = view.activation.length ? `
 <details class="fold"><summary>Never started (${view.activation.length})</summary>
