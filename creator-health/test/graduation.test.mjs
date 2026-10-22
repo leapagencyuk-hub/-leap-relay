@@ -6,6 +6,9 @@ import path from 'node:path';
 import { graduationEvents, milestoneReached, graduationLadder, MILESTONES } from '../lib/graduation.mjs';
 import { graduationEmbed } from '../lib/discord.mjs';
 import { CaseStore } from '../lib/cases.mjs';
+import { computeMetrics } from '../lib/metrics.mjs';
+import { evaluateRamp } from '../lib/ramp.mjs';
+import { applySnapshot } from '../lib/store.mjs';
 
 const config = {
   ramp: { targetDiamonds: 200000, windowDays: 90 },
@@ -166,4 +169,62 @@ test('a whole month fires each mark exactly once', () => {
     'every mark, in order, and none of them twice');
   assert.equal(new Set(fired).size, MILESTONES.length);
   fs.rmSync(s.path, { force: true });
+});
+
+// --- a creator in their first calendar month ---------------------------------
+//
+// @syn1880 joined on 15 October and had 86,678 diamonds by the 19th, the best
+// on Team Hotel by a distance. The team summary left him off the 200k chase
+// entirely and named three creators on "0" as the best placed, because
+// month-to-date was being read off the month-ON-month comparison, which is null
+// for anyone with no previous month to compare against. 90 creators read as
+// zero that day. This runs the real pipeline, not a hand-built ramp row,
+// because a hand-built row is exactly what hid it.
+
+test('a first-month creator carries their real month-to-date into the 200k chase', () => {
+  const rampConfig = {
+    ramp: { targetDiamonds: 200000, windowDays: 90, atRiskRatio: 0.6,
+      sustainableHoursPerDay: 4, maxHoursPerDay: 6, sustainableDaysPerWeek: 6 },
+    graduation: { enabled: true, finalPushDays: 5, finalPushReach: 50000, finalPushStretch: 4 },
+    policy: { cohortMonths: 3 },
+  };
+  const one = (asOf, mtd) => ({
+    asOf, periodStart: '2026-10-01', quit: [], skipped: 0,
+    active: [{
+      creatorId: '880', username: 'syn1880', periodStart: '2026-10-01', asOf,
+      group: 'Team Hotel', manager: 'itsmalkintiktok@gmail.com',
+      joinDate: '2026-10-15', daysSinceJoining: Number(asOf.slice(8, 10)) - 15,
+      mtd: { diamonds: 0, liveHours: 0, validLiveDays: 0, liveStreams: 0, newFollowers: 0,
+        newFans: 0, fanClubDiamonds: 0, matches: 0, diamondsFromMatches: 0,
+        diamondsFromMultiGuest: 0, ...mtd },
+      level: { totalFans: 300, activeFanClubFans: 46, fanContribution: 0.99 },
+      // Nothing last month: they were not with us. This is the whole case.
+      lastMonth: { diamonds: null, liveHours: null, validLiveDays: null, newFollowers: null },
+      quit: false, graduationStatus: 'Not graduated', tierStatus: 'Maintained',
+      isNewLiveCreator: true,
+    }],
+  });
+
+  const series = { creators: {}, lastAsOf: null };
+  applySnapshot(series, one('2026-10-17', { diamonds: 40000, liveHours: 18, validLiveDays: 3 }));
+  applySnapshot(series, one('2026-10-18', { diamonds: 63043, liveHours: 30.6, validLiveDays: 4 }));
+  applySnapshot(series, one('2026-10-19', { diamonds: 86678, liveHours: 36.5, validLiveDays: 5 }));
+
+  const creators = Object.values(series.creators);
+  const metricsByKey = new Map(creators.map((c) => [c.key, computeMetrics(c, '2026-10-19')]));
+  const metrics = metricsByKey.get(creators[0].key);
+
+  assert.equal(metrics.monthOnMonth.diamonds, null, 'there is still nothing to compare against');
+  assert.equal(metrics.monthToDate.diamonds, 86678, 'but the month has a total of its own');
+
+  const ramp = evaluateRamp(creators, metricsByKey, rampConfig);
+  assert.equal(ramp.length, 1);
+  assert.equal(ramp[0].monthToDate, 86678, 'and the chase reads it');
+  assert.ok(ramp[0].projected > 0, 'so the projection is not a flat zero');
+
+  const { rows } = graduationEvents({ ramp, store: { data: {} }, asOf: '2026-10-19',
+    config: rampConfig, persist: false });
+  const ladder = graduationLadder(rows, 'Team Hotel');
+  assert.equal(ladder.bestPlaced[0].username, 'syn1880', 'and the card names them');
+  assert.equal(ladder.bestPlaced[0].monthToDate, 86678);
 });

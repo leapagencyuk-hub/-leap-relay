@@ -40,8 +40,12 @@ const num = (x) => (Number.isFinite(x) ? x : 0);
 /** Diamonds this month, and the same point last month, for one creator. */
 function monthPair(m) {
   const d = m?.monthOnMonth?.diamonds;
-  if (!d) return { toDate: num(m?.curr28?.diamonds), lastToSamePoint: null, change: null };
-  return { toDate: num(d.monthToDate), lastToSamePoint: d.lastMonthToSamePoint, change: d.change };
+  // Month-to-date comes from the month's own totals either way: `monthOnMonth`
+  // only carries the comparison, which is null for a creator with no previous
+  // month, and a 28-day window is not this month.
+  const toDate = num(m?.monthToDate?.diamonds ?? d?.monthToDate ?? m?.curr28?.diamonds);
+  if (!d) return { toDate, lastToSamePoint: null, change: null };
+  return { toDate, lastToSamePoint: d.lastMonthToSamePoint, change: d.change };
 }
 
 /**

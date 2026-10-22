@@ -226,7 +226,9 @@ export function computeMetrics(creator, endDate) {
   // snapshots, which is exact and lets us compare any two months; or the
   // export's own "last month" columns, which are all that exist before this tool
   // has seen a full month go by.
-  const lastObsForMonth = creator.obs[creator.obs.length - 1] ?? null;
+  // Bounded to the as-of date on purpose: taking the newest observation
+  // outright reads the future when the rules are re-run against an earlier day.
+  const lastObsForMonth = creator.obs.filter((o) => o.date <= endDate).at(-1) ?? null;
   const monthOnMonth = (() => {
     if (!lastObsForMonth) return null;
     const dayOfMonth = Number(endDate.slice(8, 10));
@@ -257,6 +259,44 @@ export function computeMetrics(creator, endDate) {
       liveHours: build('liveHours', creator.lastMonth?.liveHours ?? null),
       validLiveDays: build('validLiveDays', creator.lastMonth?.validLiveDays ?? null),
       newFollowers: build('newFollowers', creator.lastMonth?.newFollowers ?? null),
+    };
+  })();
+
+  // This calendar month's running totals, on their own.
+  //
+  // Deliberately separate from `monthOnMonth`, which is a COMPARISON: every
+  // field in it is null when there is no previous month to compare against,
+  // which is exactly the case for a creator in their first calendar month with
+  // us. Reading month-to-date off that comparison made every first-month
+  // creator read as zero diamonds, and a first-month creator is precisely who
+  // the 200k graduation chase is about. @syn1880 sat on 86,678 for Team Hotel
+  // and the team summary named three creators on "0" ahead of him.
+  //
+  // The export's own cumulative column is the exact figure, so prefer it. Fall
+  // back to what we accrued from our own snapshots for a creator whose newest
+  // observation predates this month.
+  const monthToDate = (() => {
+    const month = endDate.slice(0, 7);
+    const inMonth = lastObsForMonth?.date?.slice(0, 7) === month ? lastObsForMonth : null;
+    const accrued = (field) => {
+      let total = 0;
+      for (const [day, v] of byDay) {
+        if (day.slice(0, 7) === month && day <= endDate) total += v[field] ?? 0;
+      }
+      return total;
+    };
+    const pick = (field) => {
+      const exported = inMonth?.mtd?.[field];
+      return Math.round((exported ?? accrued(field)) * 100) / 100;
+    };
+    return {
+      month,
+      dayOfMonth: Number(endDate.slice(8, 10)),
+      source: inMonth ? 'export' : 'observed',
+      diamonds: pick('diamonds'),
+      liveHours: pick('liveHours'),
+      validLiveDays: pick('validLiveDays'),
+      newFollowers: pick('newFollowers'),
     };
   })();
 
@@ -309,6 +349,7 @@ export function computeMetrics(creator, endDate) {
       share7: curr7.diamonds > 0 ? curr7.fanClubDiamonds / curr7.diamonds : null,
     },
     monthOnMonth,
+    monthToDate,
     // Per calendar month, because the 200k target is a monthly one: a creator
     // has to land 200,000 inside a single month, not accumulate it over three.
     monthlyDiamonds: monthlyTotals(byDay, 'diamonds'),

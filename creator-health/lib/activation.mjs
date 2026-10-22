@@ -89,7 +89,9 @@ export function evaluateActivation(creators, metricsByKey, config) {
     if (!m) continue;
 
     const day = m.daysSinceJoining;
-    const thisMonth = m.monthOnMonth?.diamonds?.monthToDate ?? 0;
+    // The month's own total. `monthOnMonth` is null without a previous month,
+    // and a creator in their first month is the typical activation case.
+    const thisMonth = m.monthToDate?.diamonds ?? m.monthOnMonth?.diamonds?.monthToDate ?? 0;
     const lastMonth = m.monthOnMonth?.diamonds?.lastMonthTotal ?? 0;
     if (thisMonth > cfg.minDiamonds) continue;
 

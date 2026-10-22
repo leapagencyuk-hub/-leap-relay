@@ -140,7 +140,10 @@ export function evaluateRamp(creators, metricsByKey, config) {
     const daysLeftInMonth = attempt
       ? Math.max(0, Math.min(monthLength, dayOfMonth + (cfg.windowDays - day)) - dayOfMonth)
       : 0;
-    const mtd = Math.round(m.monthOnMonth?.diamonds?.monthToDate ?? 0);
+    // From the month's own totals, not from the month-on-month comparison:
+    // that comparison is null for anyone without a previous month, which is
+    // most of this cohort, and reading it here zeroed them all.
+    const mtd = Math.round(m.monthToDate?.diamonds ?? m.monthOnMonth?.diamonds?.monthToDate ?? 0);
     const paceTarget = Math.round(cfg.targetDiamonds * (dayOfMonth / monthLength));
     const projected = dayOfMonth > 0 ? Math.round((mtd / dayOfMonth) * monthLength) : 0;
     const requiredPerDay = daysLeftInMonth > 0

@@ -344,7 +344,7 @@ export function reconcile({
     // earnings means they started, which is the whole point of the case.
     if (c.kind === 'activation') {
       const m = metricsByKey.get(c.creatorKey);
-      const earned = m?.monthOnMonth?.diamonds?.monthToDate ?? 0;
+      const earned = m?.monthToDate?.diamonds ?? m?.monthOnMonth?.diamonds?.monthToDate ?? 0;
       if (earned > (config.activation?.minDiamonds ?? 100)) {
         c.status = STATUS.RESOLVED;
         c.outcome = { on: asOf, verdict: 'recovered', activated: true, earned: Math.round(earned) };
