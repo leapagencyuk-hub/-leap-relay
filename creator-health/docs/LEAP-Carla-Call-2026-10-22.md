@@ -53,6 +53,77 @@ the Creator data export:
 - Lifestyle creators get their own pull — send Carla handles as they come. The
   tiers sheet becomes useful as the lifestyle section grows.
 
+### The sheet itself
+
+Read off the screen share. Lark, `bytedance.sg.larkoffice.com`, document
+**"[Leap Agency] Business Centre"**, owned by Carla Harris, marked External /
+L1-Public. Tabs along the bottom:
+
+`Performance Tracking - 19 Oct` · `Co-Management 19 Oct` ·
+`All Fan clubs - 19 Oct - 1d` · `New Creator Grad Evaluated - 20 Oct` ·
+`Promising New Creators who joined last 30 days - 19 Oct` · `Tiers - Sep` ·
+`Tiers - 20 Oct` · (more off-screen)
+
+The Performance Tracking tab is the one the whole diagnosis runs on. Columns,
+in order, every metric followed by its own month-on-month percentage:
+
+| Col | Header | Have it? |
+| --- | --- | --- |
+| D | **Dynamic Tier** — `1. Top` / `2. Pre-top` / `3. Mature` | ours differs |
+| E | **Diamonds** | yes |
+| F | MoM % | yes |
+| G | **# LIVE Days** | yes (`validLiveDays`) |
+| H | MoM % | yes |
+| I | **LIVE Duration (h)** | yes (`liveHours`) |
+| J | MoM % | yes |
+| K | **Go LIVE Rate** | yes (derivable) |
+| L | MoM % | yes — identical to H, because the rate is days over a fixed period |
+| M | **# PKs** | yes (`matches`) |
+| N | MoM % | yes |
+| O | **PK Duration (h)** | **no** |
+| P | MoM % | **no** |
+| Q | **ACU** — average concurrent users | **no** |
+| R | MoM % | **no** |
+| S | **Gift Rate** | **no** |
+| T | MoM % | **no** |
+| U | **Watch Duration (h)** — total audience hours | **no** |
+| V | MoM % | **no** |
+| W | **Static Tier 30d Diamonds** | **no** |
+| X | **Incremental** | derivable |
+
+**This is the finding that matters.** The three columns Carla's whole method
+turns on — **ACU, Gift Rate and Watch Duration** — are not in the Creator data
+export we ingest, and cannot be derived from it. Neither is PK duration. If we
+want the diagnosis in the product rather than in a human's head on a Thursday,
+**we have to ingest this sheet.** There is no clever way round it.
+
+**Incremental is just the uplift**, verified against three rows on screen:
+`Incremental = this month's diamonds − last month's diamonds`. The 1,626,897 row
+at +7,658.60% MoM gives 1,626,897 − 20,969 = **1,605,928**, which is exactly
+what the cell reads. It goes negative freely — the top row on the sheet is
+−774,816.
+
+**Static Tier 30d Diamonds** is the 30-day figure the creator's *static* tier was
+assigned on, which is why it can sit wildly out of step with the current month:
+one row shows 27,367 against 1,626,897 earned this month. Dynamic Tier (col D) is
+the live one.
+
+### Sassy Gurley, row 14 — the whole method in one row
+
+Carla's example reads straight off the sheet, and it is the best test case we
+have for whatever we build:
+
+| Diamonds | LIVE Days | LIVE Duration | Go LIVE Rate | ACU | Gift Rate | Watch Duration |
+| --- | --- | --- | --- | --- | --- | --- |
+| 306,692 | 5 | 8.7h | 25% | 2.2 | **13.00%** | 88.8h |
+| −26.80% | **−70.60%** | **−75.90%** | −70.60% | −73.30% | **+145.80%** | **−84.60%** |
+
+Gift rate of 13% is extraordinary and rising hard. Everything else has fallen off
+a cliff. There is nothing wrong with the content — **she is not going live
+enough**, and that is the only sentence a coach needs. Note the trap: read the
+gift rate alone and she looks like a star; read the diamonds MoM alone (−26.8%)
+and she looks mildly off. Only the pair gives the answer.
+
 ### The rules, as given
 
 **Always: ignore PKs / battles for any non-lifestyle creator.** They are noise
@@ -65,7 +136,8 @@ for a gaming roster.
 | More LIVE days, shorter sessions, **HDR unchanged** | Purely an hours problem | Add hours — the money follows directly |
 | More LIVE days, shorter sessions, **HDR also down** | Not just hours | Treat as a conversion problem, below |
 | **Gift rate down month-on-month** | Engagement and gifter management | See the gift-rate list below |
-| **Watch duration down** | One of exactly two things | Going live less (can't watch more), or going live and people aren't staying → content review |
+| **Watch duration down, ACU flat** | Volume, not content | They went live less — you cannot watch more than was broadcast |
+| **Watch duration down, ACU down too** | People are not staying | Content review — change the game, or back to basics |
 | Stream length **in red** | Streaming too long | Shorten, or change the game |
 | Incremental down overall | Comes back to HDR | As above |
 | Very high gift rate, low volume | Nothing wrong with the content | They are not going live enough |
