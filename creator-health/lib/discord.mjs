@@ -2768,6 +2768,25 @@ export function overviewEmbed({
 const LEAP_BLUE = 0x004aad;
 
 /**
+ * The line that sends somebody to the portal.
+ *
+ * It has to live inside the embed rather than in a button, because these cards
+ * go out through incoming webhooks and Discord does not let a webhook attach
+ * message components. The button was being silently dropped, which left the
+ * card saying "the portal has the numbers" and offering no way to reach it.
+ *
+ * So: its own field, at the top, spelled out. A link somebody has to go
+ * looking for is a link nobody clicks.
+ */
+function portalCallToAction(portalUrl, { label = 'HEAD TO THE PORTAL' } = {}) {
+  if (!portalUrl) return null;
+  return {
+    name: label,
+    value: `**[Open it here](${portalUrl})**\nEverything below, with the numbers behind it and a message you can send.`,
+  };
+}
+
+/**
  * The owners' morning card: six things, and the door.
  *
  * Six because that is what fits on a phone without scrolling, and because a
@@ -2816,9 +2835,12 @@ export function dailyOverviewEmbed({ portal, asOf, config = {}, portalUrl = null
       title: `Daily overview — ${asOf}`,
       description: 'Six things worth knowing this morning. Everything behind them is in the portal.',
       color: urgent.length ? COLOR.warn : LEAP_BLUE,
-      fields: items.map(([name, value], i) => ({ name: `${i + 1}. ${name}`, value })),
+      fields: [
+        portalCallToAction(portalUrl),
+        ...items.map(([name, value], i) => ({ name: `${i + 1}. ${name}`, value })),
+      ].filter(Boolean),
       ...(portalUrl ? { url: portalUrl } : {}),
-      footer: { text: portalUrl ? 'Open the portal to work any of these' : `as of ${asOf}` },
+      footer: { text: `as of ${asOf}` },
       timestamp: new Date().toISOString(),
     }],
     ...(portalUrl ? {
@@ -2872,14 +2894,15 @@ export function teamPortalEmbed({ view, team, asOf, config = {}, portalUrl = nul
     });
   }
 
+  const cta = portalCallToAction(portalUrl, { label: 'HEAD TO YOUR PORTAL' });
   return {
     embeds: [{
       title: `${team} — ${asOf}`,
       description: `${view.counts.roster} creators · ${n(view.diamonds)} diamonds this month`,
       color: view.counts.act ? COLOR.warn : LEAP_BLUE,
-      fields,
+      fields: [cta, ...fields].filter(Boolean),
       ...(portalUrl ? { url: portalUrl } : {}),
-      footer: { text: portalUrl ? 'The portal has the numbers, the reason and what to send' : `as of ${asOf}` },
+      footer: { text: `as of ${asOf}` },
       timestamp: new Date().toISOString(),
     }],
     ...(portalUrl ? {
@@ -2925,7 +2948,7 @@ export function declineBriefEmbed(caseRecord, alert, { mention = null, buttons =
       color: COLOR[caseRecord.severity] ?? COLOR.warn,
       fields: [
         { name: 'This week', value: moved || 'No week-on-week movement recorded.', inline: false },
-        { name: 'In the portal', value: `[Open their card](${cardUrl}) — the numbers against last month, what the data says, and a message you can send them.` },
+        { name: 'HEAD TO THE PORTAL', value: `**[Open their card](${cardUrl})**\nThe numbers against last month, what the data says, and a message you can send them.` },
       ],
       url: cardUrl,
       footer: { text: footerText(caseRecord, config) },

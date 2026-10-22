@@ -694,11 +694,20 @@ test('the owners card is six things and a door', () => {
     metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }),
   }]);
   const out = dailyOverviewEmbed({ portal, asOf: '2026-10-19', config: {}, portalUrl: 'https://x/portal' });
-  assert.equal(out.embeds[0].fields.length, 6, 'six, because that is what fits on a phone');
-  assert.match(out.embeds[0].fields[0].name, /^1\. /);
-  assert.equal(out.components[0].components[0].url, 'https://x/portal');
+  const fields = out.embeds[0].fields;
+
+  // The link lives in the embed, first, because these go out through incoming
+  // webhooks and Discord drops message components from those. The button was
+  // being silently removed, leaving a card that mentioned the portal and gave
+  // no way to reach it.
+  assert.match(fields[0].name, /HEAD TO THE PORTAL/);
+  assert.ok(fields[0].value.includes('https://x/portal'));
+
+  assert.equal(fields.length, 7, 'the door, then six things');
+  assert.match(fields[1].name, /^1\. /);
+  assert.equal(out.components[0].components[0].url, 'https://x/portal', 'button too, for bot posts');
   // Counts are never bare: every line that has somebody on it names somebody.
-  assert.match(out.embeds[0].fields[0].value, /@a/);
+  assert.match(fields[1].value, /@a/);
 });
 
 test('a team card in a shared channel still shows no money', () => {
@@ -712,6 +721,34 @@ test('a team card in a shared channel still shows no money', () => {
   });
   assert.equal(JSON.stringify(out).includes('£'), false);
   assert.equal(out.components[0].components[0].url, 'https://x/portal');
+  // And the link is in the embed, where a webhook can actually carry it.
+  assert.match(out.embeds[0].fields[0].name, /HEAD TO YOUR PORTAL/);
+  assert.ok(out.embeds[0].fields[0].value.includes('https://x/portal'));
+});
+
+test('every card carries its link inside the embed, not only in a button', () => {
+  // An incoming webhook cannot attach components. A card whose only route to
+  // the portal is a button is a card with no route to the portal.
+  const portal = portalOf([{
+    creator: creator('a'),
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }),
+  }]);
+  const cards = [
+    dailyOverviewEmbed({ portal, asOf: '2026-10-19', config: {}, portalUrl: 'https://x/portal' }),
+    teamPortalEmbed({ view: portal.byTeam.get('Team Alpha'), team: 'Team Alpha', asOf: '2026-10-19',
+      config: {}, portalUrl: 'https://x/portal' }),
+    declineBriefEmbed(
+      { id: 'x', username: 'a', creatorKey: 'id:1', coach: 'j@l', group: 'T', severity: 'urgent',
+        kind: 'decline', openedOn: '2026-10-19', firstSeenOn: '2026-10-19', playbookId: 'DIAMONDS_DOWN' },
+      { creator: { username: 'a' }, metrics: metrics({ darkStreak: 4 }) },
+      { buttons: false, config: {}, portalUrl: 'https://x/portal', diagnosis: { headline: 'H', detail: 'D' } },
+    ),
+  ];
+  for (const card of cards) {
+    const inEmbed = JSON.stringify(card.embeds).includes('https://x/portal');
+    assert.ok(inEmbed, `${card.embeds[0].title} has no link in its embed`);
+    assert.ok(/HEAD TO/.test(JSON.stringify(card.embeds)), 'and says so plainly');
+  }
 });
 
 test('a percentage on a card always shows the figure it is measured against', () => {
