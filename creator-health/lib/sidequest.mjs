@@ -260,10 +260,10 @@ export function questProgress(quest, creator, asOf) {
 export function creatorMessage(quest, progress) {
   const n = (x) => Math.round(x).toLocaleString('en-GB');
   const head = quest.kind === 'HOLD'
-    ? `SIDE QUEST — hold Tier ${quest.tier}`
-    : `SIDE QUEST — reach Tier ${quest.tier}`;
+    ? `SIDE QUEST: hold Tier ${quest.tier}`
+    : `SIDE QUEST: reach Tier ${quest.tier}`;
   if (progress.done) {
-    return [`${head}`, '', `You did it. ${n(progress.now)} diamonds — that's the target cleared.`,
+    return [`${head}`, '', `You did it. ${n(progress.now)} diamonds, that's the target cleared.`,
       '', `Your ${quest.kind === 'HOLD' ? 'Maintain' : 'Rank Up'} Incentive pays as normal, plus ${n(quest.questCoins)} Side Quest coins on top, plus your Uni Wheel entry.`,
       '', 'Proper effort. Enjoy it.'].join('\n');
   }
@@ -273,7 +273,7 @@ export function creatorMessage(quest, progress) {
   return [
     head, '',
     `You're on ${n(progress.now)} diamonds. Target is ${n(quest.target)}.`,
-    `${n(progress.left)} to go — about ${n(progress.perNightNeeded)} a night. ${urgency}`,
+    `${n(progress.left)} to go, about ${n(progress.perNightNeeded)} a night. ${urgency}`,
     '',
     progress.onCourse
       ? `You're on pace. Hold it and it's yours.`
@@ -281,7 +281,7 @@ export function creatorMessage(quest, progress) {
     '',
     `Hit it and you get your ${quest.kind === 'HOLD' ? 'Maintain' : 'Rank Up'} Incentive as normal, PLUS ${n(quest.questCoins)} Side Quest coins on top, PLUS 1 entry to this month's Uni Wheel.`,
     '',
-    'Tell your room what you\'re chasing — it works.',
+    'Tell your room what you\'re chasing. It works.',
   ].join('\n');
 }
 

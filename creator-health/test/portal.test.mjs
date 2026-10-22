@@ -1132,3 +1132,25 @@ test('a side quest reaches the coach who has to chase it', () => {
   assert.equal(view.quests[0].username, 'quester');
   assert.ok(coachPage(view, { config: {} }).includes('Side quests'));
 });
+
+test('no message a creator reads contains an em dash', () => {
+  // The tell. Nobody types one in a DM, so one in a message is a signature
+  // that it came out of a tool rather than off a phone.
+  const facts = {
+    perHour: 3586, perHourNormal: 6157, hoursNow: 39.9, hoursBefore: 62.5,
+    daysNow: 4, daysBefore: 7, monthNow: 574323, monthThen: 253653,
+    perFan: 420, perFanBefore: 1100, darkDays: 6, lastLive: '16 October',
+  };
+  const all = [
+    ...LEVERS.map((l) => creatorMessage(l, 'a', facts)),
+    ...LEVERS.map((l) => creatorMessage(l, 'a')),
+    rankMessage('a', { gap: 7337, perDay: 611, tier: 5, daysLeft: 10 }),
+    rankMessage('a', { gap: 0, perDay: null, tier: 5, daysLeft: 10 }),
+    shortFormMessage('a', { verdict: 'cold', daysSince: 9, last7: 0 }),
+    shortFormMessage('a', { verdict: 'good', last7: 5 }),
+  ];
+  for (const m of all) {
+    assert.equal(m.includes('—'), false, `em dash in: ${m.slice(0, 80)}`);
+    assert.equal(m.includes('–'), false, `en dash in: ${m.slice(0, 80)}`);
+  }
+});

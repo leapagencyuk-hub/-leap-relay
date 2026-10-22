@@ -341,11 +341,11 @@ export function creatorMessage(lever, username, facts = {}) {
 
   const MESSAGES = {
     dark: [
-      `${at}, not seen you live${bit(dark, ` in ${dark} days`)}${lastLive ? ` — last one was ${lastLive}` : ''}. Everything alright?`,
+      `${at}, not seen you live${bit(dark, ` in ${dark} days`)}${lastLive ? `, last one was ${lastLive}` : ''}. Everything alright?`,
       'No pressure, just checking in. If you are ready to get back on, tell me which night and I will make sure we are pushing you for it.',
     ],
     hours: [
-      `${at}, your room is converting well${bit(perHour, ` — ${perHour} diamonds an hour`)}. The thing costing you right now is time on, not content.`,
+      `${at}, your room is converting well${bit(perHour, `, ${perHour} diamonds an hour`)}. The thing costing you right now is time on, not content.`,
       hoursNow && hoursBefore
         ? `You did ${hoursNow} hours last week against ${hoursBefore} the week before.`
         : 'Your hours have come down on last week.',
@@ -363,7 +363,7 @@ export function creatorMessage(lever, username, facts = {}) {
       daysNow && daysBefore
         ? `${at}, you went live ${daysNow} days last week against ${daysBefore} the week before.`
         : `${at}, your live days have dropped off this week.`,
-      'Frequency matters more than session length — the algorithm rewards showing up. Can we pick some nights and lock them in this week?',
+      'Frequency matters more than session length. The algorithm rewards showing up. Can we pick some nights and lock them in this week?',
     ],
     gifting: [
       `${at}, your hours are good but the fan club spend has dropped off.`,
@@ -375,25 +375,25 @@ export function creatorMessage(lever, username, facts = {}) {
     ],
     rate: [
       `${at}, you are putting the hours in and I want them to pay off properly.`,
-      perHour ? `More time on its own will not do it — you are at ${perHour} an hour.` : 'More time on its own will not do it.',
+      perHour ? `More time on its own will not do it. You are at ${perHour} an hour.` : 'More time on its own will not do it.',
       'Let us work on the room instead: fan club, goals, and getting you matched with other creators so new people find you. Free for a quick chat this week?',
     ],
     protect: [
       monthNow && monthThen
-        ? `${at}, just wanted to say you are having a brilliant month — ${monthNow} diamonds so far against ${monthThen} by this point last month.`
+        ? `${at}, just wanted to say you are having a brilliant month. ${monthNow} diamonds so far against ${monthThen} by this point last month.`
         : `${at}, just wanted to say you are having a brilliant month.`,
       'Last week came off a bit. No pressure, I just do not want us to lose the rhythm you found.',
       'Whatever you were doing on those big nights, let us get back to it. Properly proud of you.',
     ],
     anomaly: [
       monthNow && monthThen
-        ? `${at}, you are having an unreal month — ${monthNow} diamonds against ${monthThen} by this point last month.`
+        ? `${at}, you are having an unreal month. ${monthNow} diamonds against ${monthThen} by this point last month.`
         : `${at}, you are having an unreal month.`,
       'Whatever you have changed, keep doing it. Do not switch anything up right now.',
       'Properly proud of you.',
     ],
     hold: [
-      `${at}, quick one — you are doing everything right at the minute.`,
+      `${at}, quick one. You are doing everything right at the minute.`,
       'Keep going, and shout if you need anything.',
     ],
   };
@@ -418,7 +418,7 @@ export function rankMessage(username, { gap, perDay, tier, daysLeft }) {
   const nf = (x) => Math.round(x).toLocaleString('en-GB');
   if (!gap || gap <= 0) {
     return [
-      `${at}, you have already done it this month — you are holding your tier, and that is money in your pocket.`,
+      `${at}, you have already done it this month. You are holding your tier, and that is money in your pocket.`,
       'Do not ease off now. Keep the nights you have been doing and let us finish strong.',
     ].join('\n\n');
   }
