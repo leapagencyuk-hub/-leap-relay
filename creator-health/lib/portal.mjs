@@ -57,6 +57,11 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
       lever: 'dark',
       headline: `No LIVE for ${m.darkStreak} days`,
       detail: 'Nothing else in the data means anything until they are back on. Find out why.',
+      actions: [
+        'Call them. Not a message — a call.',
+        'Find out whether it is life, burnout, or they have gone somewhere else.',
+        'Agree one date they will go back on, and put it in writing.',
+      ],
     };
   }
 
@@ -79,6 +84,11 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
       lever: 'hours',
       headline: offAPeak ? 'Hours slipping off a peak' : 'Hours, not the room',
       detail: `LIVE hours ${Math.round(hoursChange * 100)}% on last week with diamonds per hour holding. The room converts the same, so the hours are the whole gap. Get the time back.${peakNote}`,
+      actions: [
+        'Add LIVE days before you add session length. Frequency is cheaper for them and it is what the algorithm reads.',
+        'Agree a schedule they will actually keep, not the one they wish they kept.',
+        'Nothing about content needs changing. Say that — it is the reassuring half of this call.',
+      ],
     };
   }
 
@@ -88,6 +98,12 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
       lever: 'conversion',
       headline: offAPeak ? 'Coming off a peak' : 'Hours and conversion both down',
       detail: `Hours ${Math.round(hoursChange * 100)}% and diamonds per hour ${Math.round(hdrChange * 100)}%. More time alone will not fix this. Back to basics on the stream: welcoming, thanking, a gift goal, revenue boost.${peakNote}`,
+      actions: [
+        'Watch one of their LIVEs before the call. You cannot coach conversion off a spreadsheet.',
+        'Back to basics: are they welcoming, thanking, introducing themselves?',
+        'Is there a gift goal running, and are they revenue boosting it?',
+        'If the room is flat, the game may be the problem. Ask what else they could play.',
+      ],
     };
   }
 
@@ -97,6 +113,11 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
       lever: 'days',
       headline: 'Going live less',
       detail: `${daysNow} LIVE days last week against ${daysBefore} the week before. Frequency first — it is cheaper than longer sessions and it is what the algorithm reads.`,
+      actions: [
+        'Find out what changed. A dropped night is usually a life reason, not a TikTok one.',
+        'Get one night back first. One is a habit; four is a negotiation.',
+        'Check their LIVE duration too — fewer, longer sessions is a different problem from fewer, shorter ones.',
+      ],
     };
   }
 
@@ -106,8 +127,15 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
     return {
       lever: 'gifting',
       headline: 'Gifting is sliding',
-      detail: `Fan club spend ${Math.round(fanSpend * 100)}% on last week with the hours holding up. This is engagement and gifter management: welcoming and thanking as the base, then viewer wishes, gift goals, fan club campaigns, interactive gaming. Check the real gift rate on the Insights sheet before the call.`,
+      detail: `Fan club spend ${Math.round(fanSpend * 100)}% on last week with the hours holding up. This is engagement and gifter management, not an hours problem.`,
       needsInsights: true,
+      actions: [
+        'Check the real gift rate on the Creator Insights sheet before you call. This is our nearest reading, not the number itself.',
+        'The base layer first: welcoming and thanking. People forget they stopped.',
+        'Then the drivers: viewer wishes, gift goals, fan club campaigns, interactive gaming.',
+        'Are they in a campaign? Campaigns spike gift rate more than anything else on this list.',
+        'We cannot ask for gifts. We can make it obvious how someone supports them.',
+      ],
     };
   }
 
@@ -117,16 +145,35 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
     return {
       lever: 'anomaly',
       headline: 'Record month, nothing off in the data',
-      detail: 'Nothing here explains it and nothing needs fixing. Protect it: content review and gifter management, and find out what changed so it can be repeated.',
+      detail: 'Nothing here explains it and nothing needs fixing. The job is to protect it and to learn from it.',
+      actions: [
+        'Find out what changed. A record month always has a reason, and the reason is repeatable.',
+        'Content review: watch a LIVE and write down what they are doing differently.',
+        'Gifter management — who is carrying this month, and what happens when they stop?',
+        'Do not change anything mid-run. Protect it, then build on it next month.',
+      ],
     };
   }
 
   // Still short of a target with nothing broken: it is a plan, not a problem.
   if (rank?.needPerDay != null && rank.needPerDay > 0) {
     const plan = planFor(m, rank.needPerDay, config.ramp ?? {});
-    return { lever: plan.lever, headline: 'On the chase', detail: plan.ask };
+    return {
+      lever: plan.lever,
+      headline: 'On the chase',
+      detail: plan.ask,
+      actions: [
+        'Tell them the number. A creator who does not know the target cannot chase it.',
+        'Agree the nights this week, not the month. The month is the goal; the week is the plan.',
+      ],
+    };
   }
-  return { lever: 'hold', headline: 'Nothing to fix', detail: 'Holding. Keep them excited for the rest of the month.' };
+  return {
+    lever: 'hold',
+    headline: 'Nothing to fix',
+    detail: 'Holding. Keep them excited for the rest of the month.',
+    actions: ['Nothing needed. Keep them excited and leave them alone.'],
+  };
 }
 
 /** One roster line. Everything a coach sorts on, and the colour. */
@@ -154,6 +201,10 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config }) {
   return {
     key: creator.key,
     username: creator.username,
+    // Straight to their profile. Half of Carla's method is things the export
+    // cannot see — are they posting short form, what does the room look like —
+    // and a coach should not have to retype a handle to go and look.
+    tiktok: creator.username ? `https://www.tiktok.com/@${encodeURIComponent(creator.username)}` : null,
     group: creator.group ?? null,
     joinDate: creator.joinDate ?? null,
     state,
@@ -237,10 +288,61 @@ export function buildPortal({
     const rows = bucket.rows.sort((a, b) => b.diamonds - a.diamonds);
     const rev = revenue?.byCoach?.get(coach) ?? null;
 
+    // What one diamond is worth to THIS coach, at their current unlock. The
+    // whole point of putting money on a creator card is that it is their money:
+    // a coach on both goals earns twice what a coach on neither does for the
+    // same creator, and quoting the network average would be a lie to both.
+    const incCfg = config.revenue?.incremental ?? {};
+    const unlock = rev?.unlock ?? (incCfg.baseUnlock ?? 0.10);
+    const perDiamond = 0.01 * (incCfg.boardRate ?? 0.05) * unlock
+      * (config.revenue?.usdToGbp ?? 0.754073884);
+
+    for (const r of rows) {
+      // Closing a 200k gap pays the coach their diamond share on every diamond
+      // of it. Landing a rank up pays the rank-up rate on the whole month.
+      r.worthIfGraduates = r.graduation && !r.graduation.done
+        ? r.graduation.remaining * perDiamond : 0;
+      r.worthIfRanksUp = r.rank && !r.rank.rankedUp ? (r.rank.worthIfCrossed ?? 0) : 0;
+      // What walking away costs. A creator sliding takes their diamonds with
+      // them, and for an urgent card that is the number that moves somebody.
+      r.atRisk = r.state === STATE.ACT ? Math.max(0, r.perDay7 * 7) * perDiamond : 0;
+    }
+
+    // Carla's three questions, in the order a coach should answer them, and
+    // each list filtered to people the coach can still change the outcome for.
+    //
+    // The 200k list needs the reach test more than any of them. Without it the
+    // section listed ten creators and quoted the LARGEST payout against the
+    // one furthest away — because closing a gap pays per diamond, so a creator
+    // 190,000 short "is worth" more than one 50,000 short. That is exactly
+    // backwards as an incentive, and it put 15,877-a-day creators at the top
+    // of a list meant to be a morning's work.
+    const chaseStretch = config.portal?.chaseStretch ?? 2;
+    const urgentKeys = new Set(rows.filter((r) => r.state === STATE.ACT).map((r) => r.key));
+    const inReach = (r) => {
+      const need = r.graduation?.requiredPerDay;
+      if (need == null) return false;
+      if (need <= 0) return true;
+      const doing = r.perDay7;
+      return doing > 0 && need <= doing * chaseStretch;
+    };
+    const chase = rows
+      .filter((r) => r.graduation && !r.graduation.done && r.diamonds > 0 && inReach(r))
+      // A creator already named under Urgent is not named again here. The coach
+      // has one call to make, not two, and the urgent card is the one that says
+      // what is wrong.
+      .filter((r) => !urgentKeys.has(r.key))
+      .sort((a, b) => a.graduation.remaining - b.graduation.remaining)
+      .slice(0, config.portal?.chaseCount ?? 6);
+    const chaseOutOfReach = rows
+      .filter((r) => r.graduation && !r.graduation.done && r.diamonds > 0 && !inReach(r)).length;
+    const graduated = rows.filter((r) => r.graduation?.done);
+
     // Carla's first rule, applied: the upside list names only creators a coach
     // can still change the outcome for, ordered by what it is worth to them.
     const upside = rows
       .filter((r) => r.rank && !r.rank.rankedUp && r.rank.reachable && r.rank.gap > 0)
+      .filter((r) => !urgentKeys.has(r.key))
       .sort((a, b) => b.rank.worthIfCrossed - a.rank.worthIfCrossed)
       .slice(0, config.portal?.upsideCount ?? 8);
     const upsideTotal = upside.reduce((n, r) => n + r.rank.worthIfCrossed, 0);
@@ -273,6 +375,9 @@ export function buildPortal({
       },
       diamonds: rows.reduce((n, r) => n + r.diamonds, 0),
       upside, upsideTotal, banked, attention, attentionMore,
+      perDiamond, chase, graduated, chaseOutOfReach,
+      chaseTotal: chase.reduce((n, r) => n + r.worthIfGraduates, 0),
+      atRiskTotal: rows.reduce((n, r) => n + (r.atRisk ?? 0), 0),
       quests: rows.filter((r) => r.quest),
       activation: rows.filter((r) => activationByKey.has(r.key)),
       cases: rows.filter((r) => caseByKey.has(r.key))
@@ -319,6 +424,16 @@ export function buildPortal({
         banked: merged.filter((r) => r.rank?.rankedUp || r.rank?.maintained),
         attention: acting.slice(0, cap),
         attentionMore: Math.max(0, acting.length - cap),
+        perDiamond: 0,
+        chase: merged.filter((r) => r.graduation && !r.graduation.done && r.diamonds > 0
+          && r.graduation.requiredPerDay != null && r.perDay7 > 0
+          && r.graduation.requiredPerDay <= r.perDay7 * (config.portal?.chaseStretch ?? 2))
+          .sort((a, b) => a.graduation.remaining - b.graduation.remaining)
+          .slice(0, config.portal?.chaseCount ?? 6),
+        chaseOutOfReach: 0,
+        graduated: merged.filter((r) => r.graduation?.done),
+        chaseTotal: 0,
+        atRiskTotal: 0,
         quests: merged.filter((r) => r.quest),
         activation: merged.filter((r) => activationByKey.has(r.key)),
         cases: [],

@@ -75,7 +75,8 @@ function portalOf(rows, config = {}) {
   const metricsByKey = new Map(rows.map((r) => [r.creator.key, r.metrics]));
   return buildPortal({
     result: { creators, metricsByKey, alerts: rows.filter((r) => r.alert).map((r) => r.alert),
-      ramp: [], activation: [], asOf: '2026-10-19' },
+      ramp: rows.filter((r) => r.ramp).map((r) => r.ramp), activation: [], asOf: '2026-10-19' },
+    rankUp: { rows: rows.filter((r) => r.rank).map((r) => r.rank) },
     config: { ramp: { targetDiamonds: 200000 }, ...config },
   });
 }
@@ -164,7 +165,12 @@ test('gifting sliding sends them to the Insights sheet rather than guessing', ()
   const d = diagnose(metrics({ fanClub: { activeFans: 30, diamondsChange7: -0.6, activeFansChange14: 0 } }));
   assert.equal(d.lever, 'gifting');
   assert.equal(d.needsInsights, true);
-  assert.match(d.detail, /Insights sheet/);
+  assert.match(d.detail, /engagement and gifter management/);
+  // The steps are the point: a coach told "gifting is down" and nothing else
+  // has been given a fact, not a call to make.
+  assert.ok(d.actions.some((a) => /Creator Insights sheet/.test(a)));
+  assert.ok(d.actions.some((a) => /welcoming and thanking/.test(a)));
+  assert.ok(d.actions.some((a) => /campaign/i.test(a)), 'campaigns spike gift rate');
 });
 
 test('dark beats every other reading', () => {
@@ -183,11 +189,77 @@ test('a username cannot smuggle markup onto the page', () => {
   assert.equal(esc('<&">\''), '&lt;&amp;&quot;&gt;&#39;');
 });
 
-test('money on a coach page always carries the disclaimer', () => {
-  const view = portalOf([{ creator: creator('a'), metrics: metrics() }]).byCoach.get('josh@leap.com');
-  assert.ok(coachPage(view, { config: {} }).includes(EARNINGS_DISCLAIMER));
-  assert.ok(directorPage(portalOf([{ creator: creator('a'), metrics: metrics() }]), [], {})
-    .includes(EARNINGS_DISCLAIMER));
+test('any page that shows money carries the disclaimer', () => {
+  // The real invariant, which is stronger than "the coach page has the line":
+  // wherever a pound sign reaches a coach, so does the sentence. A page with no
+  // earnings on it needs no disclaimer about earnings.
+  const rows = [{ creator: creator('a'), metrics: metrics() }];
+  const portal = portalOf(rows);
+  for (const [label, page] of [
+    ['coach', coachPage(portal.byCoach.get('josh@leap.com'), { config: {} })],
+    ['director', directorPage(portal, [], {})],
+    ['team', coachPage(portal.byTeam.get('Team Alpha'), { config: {} })],
+  ]) {
+    if (page.includes('£')) {
+      assert.ok(page.includes(EARNINGS_DISCLAIMER), `${label} page shows money without the line`);
+    }
+  }
+  // And the director page always shows money, so it always carries it.
+  assert.ok(directorPage(portal, [], {}).includes('£'));
+  assert.ok(directorPage(portal, [], {}).includes(EARNINGS_DISCLAIMER));
+});
+
+test('a creator card links out to their TikTok', () => {
+  const view = portalOf([{ creator: creator('bangeduptoes'), metrics: metrics() }])
+    .byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+  assert.ok(page.includes('https://www.tiktok.com/@bangeduptoes'));
+  assert.ok(page.includes('rel="noopener noreferrer"'), 'and does not hand over the opener');
+});
+
+test('the page is built around the three questions, in order', () => {
+  const sliding = creator('sliding');
+  const chasing = creator('chasing');
+  const climbing = creator('climbing');
+  const view = portalOf([
+    { creator: sliding, metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }) },
+    {
+      creator: chasing,
+      metrics: metrics({ monthToDate: { diamonds: 150000 } }),
+      ramp: { creator: chasing, monthToDate: 150000, requiredPerDay: 1500 },
+    },
+    {
+      creator: climbing,
+      metrics: metrics(),
+      rank: {
+        creator: climbing, rankedUp: false, maintained: false, reachable: true,
+        fromTier: 2, toTier: 2, gap: 20000, needPerDay: 2000, worthIfCrossed: 15.08, worth: 0,
+      },
+    },
+  ]).byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+  const at = (s) => page.indexOf(s);
+  assert.ok(at('Urgent') > 0 && at('200k graduation') > 0 && at('Rank up') > 0,
+    'all three sections render');
+  assert.ok(at('Urgent') < at('200k graduation'), 'urgent first');
+  assert.ok(at('200k graduation') < at('Rank up'), 'then the 200k chase, then rank ups');
+});
+
+test('a creator in the 200k chase is told what closing the gap pays the coach', () => {
+  const c = creator('a');
+  const portal = portalOf([{
+    creator: c,
+    metrics: metrics({ monthToDate: { diamonds: 150000 } }),
+    // Doing 1,000 a day; needs 1,500. Inside the stretch, so a real chase.
+    ramp: { creator: c, monthToDate: 150000, requiredPerDay: 1500 },
+  }]);
+  const view = portal.byCoach.get('josh@leap.com');
+  assert.equal(view.chase.length, 1);
+  assert.equal(view.chase[0].graduation.remaining, 50000);
+  // 50,000 diamonds at the coach's own share rate, not the network average.
+  assert.ok(view.chase[0].worthIfGraduates > 0);
+  assert.equal(Math.round(view.chase[0].worthIfGraduates * 10000) / 10000,
+    Math.round(50000 * view.perDiamond * 10000) / 10000);
 });
 
 test('coach-facing pages stay free of emoji, like the coach cards', () => {
@@ -342,4 +414,47 @@ test('a big month slipping is not reported as a collapse', () => {
   assert.equal(d.headline, 'Coming off a peak');
   assert.match(d.detail, /still 126% up/);
   assert.match(d.detail, /big month starting to slip rather than a bad one/);
+});
+
+test('the 200k chase only names creators who can still get there', () => {
+  // Without the reach test this section listed ten creators and put the LARGEST
+  // payout against the one furthest away, because closing a gap pays per
+  // diamond. A creator needing 15,877 a day was top of a list meant to be a
+  // morning's work.
+  const near = creator('near');
+  const far = creator('far');
+  const view = portalOf([
+    {
+      creator: near, metrics: metrics({ monthToDate: { diamonds: 150000 } }),
+      ramp: { creator: near, monthToDate: 150000, requiredPerDay: 1500 },
+    },
+    {
+      creator: far, metrics: metrics({ monthToDate: { diamonds: 10000 } }),
+      ramp: { creator: far, monthToDate: 10000, requiredPerDay: 15877 },
+    },
+  ]).byCoach.get('josh@leap.com');
+
+  assert.deepEqual(view.chase.map((r) => r.username), ['near']);
+  assert.equal(view.chaseOutOfReach, 1, 'and the rest are counted, not hidden');
+  assert.ok(coachPage(view, { config: {} }).includes('1 more are inside their 90 days'));
+});
+
+test('a creator who is urgent is not also listed under the other two sections', () => {
+  const c = creator('both');
+  const view = portalOf([{
+    creator: c,
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 150000 } }),
+    ramp: { creator: c, monthToDate: 150000, requiredPerDay: 1500 },
+    rank: {
+      creator: c, rankedUp: false, maintained: false, reachable: true,
+      fromTier: 2, toTier: 2, gap: 20000, needPerDay: 2000, worthIfCrossed: 15.08, worth: 0,
+    },
+  }]).byCoach.get('josh@leap.com');
+
+  assert.equal(view.attention.length, 1, 'urgent wins');
+  assert.equal(view.chase.length, 0);
+  assert.equal(view.upside.length, 0);
+  // One call to make, not three.
+  const page = coachPage(view, { config: {} });
+  assert.equal(page.split('@both').length - 1 > 0, true);
 });
