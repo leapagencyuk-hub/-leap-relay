@@ -581,6 +581,29 @@
       "minHours": 1
     }
   },
+  "sideQuests": {
+    "_note": "Set seven nights before month end. One target per creator, frozen the day it is set.",
+    "enabled": true,
+    "_excludeGroups": "Partner agencies. Nobody at LEAP coaches them and LEAP settles most of the revenue back, so coins spent here buy a fraction of the upside.",
+    "excludeGroups": [
+      "Surge Agency",
+      "Stay Social",
+      "Team Ratty"
+    ],
+    "_minWorthGbp": "Floor on what a quest is worth to LEAP before it is worth paying coins for.",
+    "minWorthGbp": 25,
+    "_formCap": "Skip anyone already doing this multiple of the nightly rate they need. In September every creator above 2x hit anyway.",
+    "formCap": 1.2,
+    "_stalledAfterDays": "No quest for a creator who has not been LIVE in this many days. A target they cannot reach is a card that lies.",
+    "stalledAfterDays": 3,
+    "_reachMultiple": "The gap must be closable in the nights left at this multiple of their current pace.",
+    "reachMultiple": 1.5,
+    "_teamCards": "When each coach's own room gets a Side Quest card. Counted in nights left, because that is what decides whether a coach can still act. Three in total: the day they are set, a midpoint nudge, and a last push. Daily detail lives in the Side Quest channels instead.",
+    "teamCards": {
+      "midpointNightsLeft": 4,
+      "finalNightsLeft": 1
+    }
+  },
   "partners": {
     "enabled": true,
     "_note": "Partner agencies under the Agency Partner Programme Agreement. They recruit and manage their own creators, who stay contractually under LEAP's TikTok registration, and LEAP settles a share of the agency revenue those creators generate (clauses 2 and 5). Separate from monitoring.ignoreGroups, which keeps their creators off LEAP's coaching boards — that is right, because nobody at LEAP coaches them, and it must not keep them off the revenue card, because the money is real.",

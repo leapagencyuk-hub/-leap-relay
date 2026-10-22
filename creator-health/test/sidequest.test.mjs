@@ -217,3 +217,122 @@ test('recent form cannot be read when the data stops short', () => {
   assert.equal(recentForm(c, '2026-10-24', 3), null);
   assert.ok(recentForm(c, '2026-10-14', 3));
 });
+
+// --- the three pushes into coaches' own rooms --------------------------------
+
+import { questPhase, questsByCoach } from '../lib/sidequest.mjs';
+import { sideQuestCoachEmbed } from '../lib/discord.mjs';
+
+const span = { setOn: '2026-10-24', endsOn: '2026-10-31' };
+
+test('a coach is pushed three times, not seven', () => {
+  const fired = [];
+  for (let d = 24; d <= 31; d++) {
+    const asOf = `2026-10-${d}`;
+    const p = questPhase(asOf, span, config);
+    if (p) fired.push([asOf, p]);
+  }
+  assert.equal(fired.length, 3, `fired on ${fired.map((f) => f.join(':')).join(', ')}`);
+  assert.deepEqual(fired.map((f) => f[1]), ['launch', 'midpoint', 'final']);
+  assert.equal(fired[0][0], '2026-10-24', 'launch is the day they are set');
+  assert.equal(fired[2][0], '2026-10-30', 'final leaves one night to act');
+});
+
+test('the schedule is configurable', () => {
+  const tight = { sideQuests: { teamCards: { midpointNightsLeft: 2, finalNightsLeft: 1 } } };
+  assert.equal(questPhase('2026-10-29', span, tight), 'midpoint');
+  assert.equal(questPhase('2026-10-27', span, tight), null);
+});
+
+test('nothing fires outside the quest window', () => {
+  assert.equal(questPhase('2026-10-23', span, config), null);
+  assert.equal(questPhase('2026-11-01', span, config), null);
+});
+
+test('each coach only ever sees their own creators', () => {
+  const store = { data: {} };
+  saveQuests(store, '2026-10', [
+    { creatorKey: 'id:a', username: 'mine', coach: 'coach1@x.com', group: 'Team Alpha', kind: 'HOLD', tier: 3,
+      month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31', startedAt: 190000, target: 200000,
+      need: 10000, perNight: 1500, formAtSet: 2000, worthGbp: 80, questCoins: 800, incentiveCoins: 1000 },
+    { creatorKey: 'id:b', username: 'theirs', coach: 'coach2@x.com', group: 'Team Bravo', kind: 'HOLD', tier: 3,
+      month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31', startedAt: 190000, target: 200000,
+      need: 10000, perNight: 1500, formAtSet: 2000, worthGbp: 90, questCoins: 900, incentiveCoins: 1000 },
+  ]);
+  const creators = [
+    { key: 'id:a', username: 'mine', obs: [{ date: '2026-10-27', periodStart: '2026-10-01', mtd: { diamonds: 195000 } }] },
+    { key: 'id:b', username: 'theirs', obs: [{ date: '2026-10-27', periodStart: '2026-10-01', mtd: { diamonds: 195000 } }] },
+  ];
+  const groups = questsByCoach(questBoard({ creators, asOf: '2026-10-27', store, config }));
+  assert.equal(groups.length, 2);
+  for (const g of groups) {
+    assert.equal(g.rows.length, 1);
+    const card = sideQuestCoachEmbed(g, 'midpoint', { config, mention: '<@1>', nightsLeft: 4 });
+    const text = JSON.stringify(card);
+    const mine = g.rows[0].quest.username;
+    const other = mine === 'mine' ? 'theirs' : 'mine';
+    assert.ok(text.includes(mine));
+    assert.ok(!text.includes(other), `${g.coach} can see ${other}`);
+  }
+});
+
+test('the launch card carries the message, the later ones carry the scoreboard', () => {
+  const store = { data: {} };
+  saveQuests(store, '2026-10', [
+    { creatorKey: 'id:a', username: 'a', coach: 'c@x.com', group: 'Team Alpha', kind: 'CROSS', tier: 4,
+      month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31', startedAt: 250000, target: 300000,
+      need: 50000, perNight: 7200, formAtSet: 4000, worthGbp: 200, questCoins: 2000, incentiveCoins: 3000 },
+  ]);
+  const at = (d, dia) => questsByCoach(questBoard({
+    creators: [{ key: 'id:a', username: 'a', obs: [{ date: d, periodStart: '2026-10-01', mtd: { diamonds: dia } }] }],
+    asOf: d, store, config,
+  }))[0];
+  const launch = sideQuestCoachEmbed(at('2026-10-24', 250000), 'launch', { config, nightsLeft: 7 });
+  assert.ok(JSON.stringify(launch).includes('SIDE QUEST'), 'launch hands the coach the words');
+  assert.ok(launch.embeds[0].fields.some((f) => f.value.includes('```')));
+  const final = sideQuestCoachEmbed(at('2026-10-30', 262000), 'final', { config, nightsLeft: 1 });
+  assert.ok(!JSON.stringify(final).includes('SIDE QUEST —'), 'the last push is a scoreboard, not a re-brief');
+  assert.ok(final.embeds[0].fields.some((f) => f.name === 'Need you tonight'));
+});
+
+test('a creator who has done nothing is called out by name', () => {
+  const store = { data: {} };
+  saveQuests(store, '2026-10', [
+    { creatorKey: 'id:z', username: 'ghost', coach: 'c@x.com', group: 'Team Alpha', kind: 'HOLD', tier: 3,
+      month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31', startedAt: 190000, target: 200000,
+      need: 10000, perNight: 1500, formAtSet: 900, worthGbp: 80, questCoins: 800, incentiveCoins: 1000 },
+    { creatorKey: 'id:y', username: 'mover', coach: 'c@x.com', group: 'Team Alpha', kind: 'HOLD', tier: 3,
+      month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31', startedAt: 190000, target: 200000,
+      need: 10000, perNight: 1500, formAtSet: 900, worthGbp: 80, questCoins: 800, incentiveCoins: 1000 },
+  ]);
+  const entry = questsByCoach(questBoard({
+    creators: [
+      { key: 'id:z', username: 'ghost', obs: [{ date: '2026-10-27', periodStart: '2026-10-01', mtd: { diamonds: 190000 } }] },
+      { key: 'id:y', username: 'mover', obs: [{ date: '2026-10-27', periodStart: '2026-10-01', mtd: { diamonds: 197000 } }] },
+    ], asOf: '2026-10-27', store, config,
+  }))[0];
+  const card = sideQuestCoachEmbed(entry, 'midpoint', { config, nightsLeft: 4 });
+  const untouched = card.embeds[0].fields.find((f) => f.name === 'Not been near it');
+  assert.ok(untouched, 'the one who has not started gets their own block');
+  assert.ok(untouched.value.includes('ghost'));
+  assert.ok(!untouched.value.includes('mover'), 'somebody who moved is not shamed with them');
+});
+
+test('coach cards stay inside Discord limits with a full roster', () => {
+  const store = { data: {} };
+  saveQuests(store, '2026-10', Array.from({ length: 10 }, (_, i) => ({
+    creatorKey: `id:${i}`, username: `a_long_creator_name_${i}`, coach: 'c@x.com', group: 'Team Alpha',
+    kind: 'CROSS', tier: 6, month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31',
+    startedAt: 500000, target: 700000, need: 200000, perNight: 28600, formAtSet: 12000,
+    worthGbp: 400, questCoins: 4000, incentiveCoins: 7000,
+  })));
+  const creators = Array.from({ length: 10 }, (_, i) => ({ key: `id:${i}`, username: `a_long_creator_name_${i}`,
+    obs: [{ date: '2026-10-27', periodStart: '2026-10-01', mtd: { diamonds: 540000 } }] }));
+  const entry = questsByCoach(questBoard({ creators, asOf: '2026-10-27', store, config }))[0];
+  for (const phase of ['launch', 'midpoint', 'final']) {
+    const e = sideQuestCoachEmbed(entry, phase, { config, nightsLeft: 4 }).embeds[0];
+    assert.ok(JSON.stringify(e).length < 6000, `${phase} embed too big`);
+    assert.ok(e.fields.length <= 25, `${phase} too many fields`);
+    for (const f of e.fields) assert.ok(f.value.length <= 1024, `${phase}: field ${f.name} over 1024`);
+  }
+});

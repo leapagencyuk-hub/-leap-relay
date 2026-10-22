@@ -9,7 +9,7 @@ import {
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
   hardestWorkerEmbed, creatorWeekEmbed, starlightEmbed, starlightOverviewEmbed,
-  sideQuestTerminalEmbed, sideQuestCardEmbed,
+  sideQuestTerminalEmbed, sideQuestCardEmbed, sideQuestCoachEmbed,
   partnerEarningsEmbed,
   leapedEmbed, leapedOverviewEmbed,
   redoButton,
@@ -23,7 +23,7 @@ import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { hardestWorkerBoard, hardestWorkerDue } from './hardestworker.mjs';
 import { creatorWeekBoard, creatorWeekDue, recordWeekBoard } from './creatorweek.mjs';
 import { starlightTeams, starlightSummary, starlightDue } from './starlight.mjs';
-import { questBoard, questsRunning } from './sidequest.mjs';
+import { questBoard, questsRunning, questPhase, questsByCoach } from './sidequest.mjs';
 import { readRoster } from './starlightroster.mjs';
 import { partnerRevenues, partnerDue } from './partner.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
@@ -742,6 +742,28 @@ export async function dispatch({
               payload, `sideQuest:${row.quest.username}`)
             : replaceLast(`sidequest:${row.quest.username}`, row.quest.coach ?? '(none)', sqUpdates,
               payload, null));
+        }
+      }
+      // --- and three pushes into the coaches' own rooms ---------------------
+      // Launch, midpoint, last night. Routed to the team channel, because that
+      // is where a coach actually talks, and tagged so it lands on them rather
+      // than on everybody.
+      const phase = questPhase(asOf, { setOn: board.quests[0].quest.setOn, endsOn: board.quests[0].quest.endsOn }, config);
+      if (phase) {
+        for (const entry of questsByCoach(board)) {
+          const team = entry.group ? discordConfig.teamSummaries?.[groupKey(entry.group)]
+            ?? discordConfig.groups?.[groupKey(entry.group)] : null;
+          const usable = team?.webhook || (team?.channelId && discordConfig.botToken);
+          if (!usable) continue;
+          const mention = discordConfig.coaches?.[String(entry.coach ?? '').toLowerCase()]?.mention ?? null;
+          const card = sideQuestCoachEmbed(entry, phase, {
+            config, mention, nightsLeft: entry.rows[0]?.progress.nightsLeft ?? 0,
+          });
+          // A distinct slot per phase: the midpoint card should not delete the
+          // launch brief a coach is still working from.
+          await replaceLast(`sidequest-coach:${phase}`, entry.coach ?? '(none)',
+            { webhook: team.webhook, channelId: team.channelId }, card,
+            `sideQuestCoach:${phase}:${groupKey(entry.group ?? 'none')}`);
         }
       }
       if (!dryRun) store.data.lastSideQuestOn = asOf;

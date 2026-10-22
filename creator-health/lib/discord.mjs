@@ -573,6 +573,100 @@ export function sideQuestCardEmbed(row, { config = {}, mention = null } = {}) {
   };
 }
 
+/**
+ * The card that lands in a coach's own room, three times across a quest.
+ *
+ * Launch is a brief: here are yours, here is what to send. Midpoint and final
+ * are a prod: who has moved, who has not been touched, how long is left. A
+ * coach gets three of these rather than seven, because a daily card in a team
+ * room is a card nobody reads by Wednesday — the daily picture lives in the
+ * Side Quest channels for whoever wants it.
+ */
+export function sideQuestCoachEmbed(entry, phase, { config = {}, mention = null, nightsLeft = 0 } = {}) {
+  const rows = entry.rows;
+  const live = rows.filter((r) => !r.progress.done);
+  const head = {
+    launch: `**${rows.length} of your creators ${rows.length === 1 ? 'has' : 'have'} a Side Quest.** Seven nights, one target each.`,
+    midpoint: `**${nightsLeft} nights left.** ${entry.done} hit, ${live.length} still live.`,
+    final: nightsLeft === 1
+      ? `**Last night.** ${entry.done} hit, ${live.length} still to get over the line.`
+      : `**${nightsLeft} nights left.** ${entry.done} hit, ${live.length} still to get over the line.`,
+  }[phase] ?? '';
+  const title = {
+    launch: 'Side Quests — your creators',
+    midpoint: 'Side Quests — halfway',
+    final: 'Side Quests — last push',
+  }[phase] ?? 'Side Quests';
+
+  const fields = [];
+  if (phase === 'launch') {
+    // On launch the card IS the brief: every creator, the ask, the message.
+    for (const r of rows.slice(0, 8)) {
+      const q = r.quest; const p = r.progress;
+      fields.push({
+        name: `@${q.username} — ${q.kind === 'HOLD' ? 'hold' : 'reach'} Tier ${q.tier}`,
+        value: [
+          `**${n(q.need)}** to go · **${n(q.perNight)}** a night · they were doing **${n(q.formAtSet)}**`,
+          `Wins **${n(q.questCoins)}** quest coins${q.incentiveCoins ? ` + **${n(q.incentiveCoins)}** incentive` : ''} + a Uni Wheel entry`,
+          '```', creatorMessage(q, p).slice(0, 700), '```',
+        ].join('\n').slice(0, 1024),
+      });
+    }
+  } else {
+    // Later, the card is a scoreboard: who moved, who has not been touched.
+    const line = (r) => {
+      const q = r.quest; const p = r.progress;
+      if (p.done) return `✅ **@${q.username}** — done. ${n(q.questCoins + q.incentiveCoins)} coins won.`;
+      const moved = p.gained > 0;
+      return `${p.onCourse ? '🟢' : '🔴'} **@${q.username}** — ${n(p.left)} to go, ${n(p.perNightNeeded)}/night`
+        + (moved ? ` · ${n(p.gained)} since it was set` : ' · **nothing since it was set**');
+    };
+    const done = rows.filter((r) => r.progress.done);
+    const behind = rows.filter((r) => !r.progress.done && !r.progress.onCourse);
+    const onCourse = rows.filter((r) => !r.progress.done && r.progress.onCourse);
+    const untouched = rows.filter((r) => !r.progress.done && r.progress.gained <= 0);
+    const allUntouched = untouched.length && untouched.length === behind.length + onCourse.length;
+    if (behind.length) {
+      fields.push({
+        name: phase === 'final' ? 'Need you tonight' : 'Behind',
+        value: (behind.map(line).join('\n')
+          + (allUntouched ? `\n\n${behind.length === 1 ? 'This one has' : 'None of these have'} earned anything since the quest landed. A message tonight is the whole job.` : ''))
+          .slice(0, 1024),
+      });
+    }
+    if (onCourse.length) fields.push({ name: 'On pace', value: onCourse.map(line).join('\n').slice(0, 1024) });
+    if (done.length) fields.push({ name: 'Already won', value: done.map(line).join('\n').slice(0, 1024) });
+    // Only worth its own block when it is not simply a restatement of the
+    // behind list — each of those lines already ends in "nothing since it was
+    // set", and saying it twice makes the card longer without adding a name.
+    if (untouched.length && untouched.length < behind.length + onCourse.length) {
+      fields.push({
+        name: 'Not been near it',
+        value: `${untouched.map((r) => `@${r.quest.username}`).join(', ')}\n`
+          + `${untouched.length === 1 ? 'This one has' : 'These have'} earned nothing since the quest landed. `
+          + 'A message tonight is the whole job.',
+      });
+    }
+  }
+  fields.push({
+    name: 'At stake for your team',
+    value: entry.wonGbp
+      ? `£${n(entry.worthGbp)} across ${rows.length} quest${rows.length === 1 ? '' : 's'} · **£${n(entry.wonGbp)} banked** · ${n(entry.coinsWon)} coins won so far`
+      : `£${n(entry.worthGbp)} across ${rows.length} quest${rows.length === 1 ? '' : 's'}`,
+  });
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      title,
+      description: head,
+      color: phase === 'final' ? COLOR.warn : phase === 'launch' ? COLOR.good : COLOR.neutral,
+      fields: fields.slice(0, 25),
+      footer: { text: `Side Quests · ends ${rows[0]?.quest.endsOn ?? ''} · full detail in the Side Quest channels` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
+
 /** The card a coach sees when a creator starts slipping. */
 export function declineEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null, config = {} } = {}) {
   const m = alert.metrics;

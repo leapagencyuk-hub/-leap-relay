@@ -285,6 +285,61 @@ export function creatorMessage(quest, progress) {
   ].join('\n');
 }
 
+/**
+ * The three moments a coach gets pushed, and nothing in between.
+ *
+ * A card every morning in a team room is a card nobody reads by Wednesday. So
+ * the team channels get three, spaced where they change what a coach does:
+ *
+ *   launch    the day quests are set. Here are yours, here is the message.
+ *   midpoint  halfway. Who has moved and who has not touched it.
+ *   final     one night left. The last chance to get anyone over the line.
+ *
+ * The Side Quest channels still carry the daily picture — this is the push
+ * into the rooms where coaches actually talk, and it only fires three times.
+ */
+export function questPhase(asOf, { setOn, endsOn }, config = {}) {
+  if (!setOn || !endsOn) return null;
+  if (asOf === setOn) return 'launch';
+  const total = between(setOn, endsOn);
+  const run = between(setOn, asOf);
+  if (run < 0 || run > total) return null;
+  const left = total - run;
+  // Counted in nights REMAINING rather than nights elapsed, because that is
+  // what decides whether a coach can still do anything about it. Asked for as
+  // "day 5" and "two days before the end", which on a seven-night quest are
+  // the same evening — so they are spread, and both are configurable.
+  const cfg = config.sideQuests?.teamCards ?? {};
+  if (left === (cfg.finalNightsLeft ?? 1)) return 'final';
+  if (left === (cfg.midpointNightsLeft ?? 4)) return 'midpoint';
+  return null;
+}
+
+/**
+ * The same board, split by coach, for the cards that go to team rooms.
+ *
+ * A coach should never open their own room and read about somebody else's
+ * creator, so this groups rather than filters a shared list.
+ */
+export function questsByCoach(board) {
+  const out = new Map();
+  for (const row of board.quests) {
+    const key = row.quest.coach ?? 'unassigned';
+    if (!out.has(key)) out.set(key, { coach: key, label: row.coachLabel, group: row.quest.group, rows: [] });
+    out.get(key).rows.push(row);
+  }
+  for (const entry of out.values()) {
+    entry.rows.sort((a, b) => b.quest.worthGbp - a.quest.worthGbp);
+    entry.done = entry.rows.filter((r) => r.progress.done).length;
+    entry.behind = entry.rows.filter((r) => !r.progress.done && !r.progress.fresh && !r.progress.onCourse).length;
+    entry.worthGbp = Math.round(entry.rows.reduce((a, r) => a + r.quest.worthGbp, 0));
+    entry.wonGbp = Math.round(entry.rows.filter((r) => r.progress.done).reduce((a, r) => a + r.quest.worthGbp, 0));
+    entry.coinsWon = entry.rows.filter((r) => r.progress.done)
+      .reduce((a, r) => a + r.quest.questCoins + r.quest.incentiveCoins, 0);
+  }
+  return [...out.values()].sort((a, b) => b.worthGbp - a.worthGbp);
+}
+
 /** Read and write the month's quests. The store is the record, not the roster. */
 export function readQuests(store, month) {
   return store?.data?.sideQuests?.[month] ?? null;
