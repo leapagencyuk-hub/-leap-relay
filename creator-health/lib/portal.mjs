@@ -60,14 +60,25 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
     };
   }
 
+  // A creator whose month is far ahead but whose week is falling is coming off
+  // a peak, not collapsing. The card said "+126% this month" and "both down" in
+  // the same breath and read like a contradiction, so the sentence that
+  // reconciles them has to be on the card: they are still having a big month,
+  // and this is the week it starts slipping. That is the week to make the call,
+  // which is the whole reason it is flagged.
+  const offAPeak = monthChange != null && monthChange >= (config.portal?.recordMonth ?? 0.5);
+  const peakNote = offAPeak
+    ? ` Their month is still ${Math.round(monthChange * 100)}% up, so this is a big month starting to slip rather than a bad one — which is exactly when the call is worth making.`
+    : '';
+
   // Hours down with conversion holding is the cleanest call there is: the room
   // still pays the same per hour, so the hours ARE the money.
   const hoursDown = hoursChange != null && hoursChange <= -(config.portal?.hoursDrop ?? 0.15);
   if (hoursDown && hdrChange != null && hdrChange > -(config.portal?.hdrDrop ?? 0.15)) {
     return {
       lever: 'hours',
-      headline: 'Hours, not the room',
-      detail: `LIVE hours ${Math.round(hoursChange * 100)}% on last week with diamonds per hour holding. The room converts the same, so the hours are the whole gap. Get the time back.`,
+      headline: offAPeak ? 'Hours slipping off a peak' : 'Hours, not the room',
+      detail: `LIVE hours ${Math.round(hoursChange * 100)}% on last week with diamonds per hour holding. The room converts the same, so the hours are the whole gap. Get the time back.${peakNote}`,
     };
   }
 
@@ -75,8 +86,8 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
   if (hoursDown && hdrChange != null && hdrChange <= -(config.portal?.hdrDrop ?? 0.15)) {
     return {
       lever: 'conversion',
-      headline: 'Hours and conversion both down',
-      detail: `Hours ${Math.round(hoursChange * 100)}% and diamonds per hour ${Math.round(hdrChange * 100)}%. More time alone will not fix this. Back to basics on the stream: welcoming, thanking, a gift goal, revenue boost.`,
+      headline: offAPeak ? 'Coming off a peak' : 'Hours and conversion both down',
+      detail: `Hours ${Math.round(hoursChange * 100)}% and diamonds per hour ${Math.round(hdrChange * 100)}%. More time alone will not fix this. Back to basics on the stream: welcoming, thanking, a gift goal, revenue boost.${peakNote}`,
     };
   }
 

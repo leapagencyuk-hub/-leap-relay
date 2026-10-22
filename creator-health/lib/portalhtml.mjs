@@ -75,6 +75,15 @@ border-radius:12px;margin-bottom:8px}
 border-top:1px solid var(--line);padding-top:12px}
 .warn{background:#2a1d10;border-color:#5a3a16;color:#ffce8a}
 .empty{color:var(--dim);font-size:13px;padding:4px 0}
+details{margin:0}
+details>summary{list-style:none;cursor:pointer;font-size:13px;letter-spacing:.08em;
+text-transform:uppercase;color:var(--dim);margin:28px 0 10px;font-weight:600;
+display:flex;align-items:center;gap:8px}
+details>summary::-webkit-details-marker{display:none}
+details>summary::after{content:"";width:7px;height:7px;border-right:2px solid var(--dim);
+border-bottom:2px solid var(--dim);transform:rotate(45deg);margin-top:-4px}
+details[open]>summary::after{transform:rotate(-135deg);margin-top:2px}
+details>summary:hover{color:var(--ink)}
 .tag{display:inline-block;font-size:11px;color:var(--dim);border:1px solid var(--line);
 border-radius:999px;padding:1px 8px;margin-left:6px;vertical-align:middle}
 @media(max-width:560px){.wrap{padding:12px}.hide-s{display:none}}
@@ -140,26 +149,26 @@ ${view.upside.map((r) => creatorCard(r, { showWorth: true })).join('')}` : '';
   view.attentionMore ? `<div class="card"><div class="meta">${view.attentionMore} more are flagged and are in the roster below. These are the ones worth your morning.</div></div>` : ''}` : '';
 
   const banked = view.banked.length ? `
-<h2>Banked — do not lose these</h2>
+<details><summary>Banked — do not lose these (${view.banked.length})</summary>
 <div class="card"><div class="meta">${view.banked.filter((r) => r.rank.rankedUp).length} ranked up,
 ${view.banked.filter((r) => r.rank.maintained).length} maintaining. A maintain lost in the last week costs the same as a rank up never made.</div></div>
 <div class="card"><table><tr><th>Creator</th><th class="num">Diamonds</th><th class="num hide-s">Tier</th><th class="num">State</th></tr>
 ${view.banked.map((r) => `<tr><td><span class="dot good"></span>@${esc(r.username)}</td>
 <td class="num">${n(r.diamonds)}</td><td class="num hide-s">${r.rank.fromTier} → ${r.rank.toTier}</td>
-<td class="num">${r.rank.rankedUp ? 'ranked up' : 'maintained'}</td></tr>`).join('')}</table></div>` : '';
+<td class="num">${r.rank.rankedUp ? 'ranked up' : 'maintained'}</td></tr>`).join('')}</table></div></details>` : '';
 
   const quests = view.quests.length ? `
 <h2>Side quests</h2>${view.quests.map((r) => creatorCard(r)).join('')}` : '';
 
   const activation = view.activation.length ? `
-<h2>Never started (${view.activation.length})</h2>
+<details><summary>Never started (${view.activation.length})</summary>
 <div class="card"><div class="meta">These have not earned yet. That is an activation
 conversation, not a coaching one, and it is a different call to make.</div></div>
 <div class="card"><table><tr><th>Creator</th><th class="num">Joined</th><th class="num">Diamonds</th><th class="num hide-s">Days/7</th></tr>
 ${view.activation.slice(0, 25).map((r) => `<tr><td><span class="dot idle"></span>@${esc(r.username)}</td>
 <td class="num">${esc(r.joinDate ?? '—')}</td><td class="num">${n(r.diamonds)}</td>
 <td class="num hide-s">${r.liveDays7}</td></tr>`).join('')}</table>
-${view.activation.length > 25 ? `<div class="meta">and ${view.activation.length - 25} more</div>` : ''}</div>` : '';
+${view.activation.length > 25 ? `<div class="meta">and ${view.activation.length - 25} more</div>` : ''}</div></details>` : '';
 
   const grad = view.graduation.filter((g) => g.ladder.total > 0).map((g) => {
     const l = g.ladder;
@@ -172,13 +181,13 @@ ${named.length ? `<div class="meta">${named.map((r) => `@${esc(r.username)} ${n(
 
   const rest = view.rows.filter((r) => r.state !== STATE.ACT);
   const roster = `
-<h2>Everyone (${view.counts.roster})</h2>
+<details><summary>Everyone (${view.counts.roster})</summary>
 <div class="card"><table>
 <tr><th>Creator</th><th class="num">Diamonds</th><th class="num">MoM</th><th class="num hide-s">Days/7</th><th class="num hide-s">Hours/7</th></tr>
 ${rest.map((r) => `<tr><td><span class="dot ${esc(r.state)}"></span>@${esc(r.username)}</td>
 <td class="num">${n(r.diamonds)}</td><td class="num ${toneOf(r.change)}">${signed(r.change) || '—'}</td>
 <td class="num hide-s">${r.liveDays7}</td><td class="num hide-s">${r.hours7.toFixed(1)}</td></tr>`).join('')}
-</table></div>`;
+</table></div></details>`;
 
   return page(`${view.name} — LEAP`, `
 ${back ? `<p class="sub"><a href="${esc(back)}">&larr; all coaches</a></p>` : ''}

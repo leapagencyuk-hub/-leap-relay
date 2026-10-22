@@ -326,3 +326,20 @@ test('with no Discord app configured there is no login', () => {
   assert.equal(redirectUri({ portal: { baseUrl: 'https://leap.example/' } }, {}),
     'https://leap.example/portal/callback');
 });
+
+test('a big month slipping is not reported as a collapse', () => {
+  // @itsmalkin read "+126% this month" beside "hours and conversion both down",
+  // which looks like the page arguing with itself. Both facts are true: the
+  // month is huge and the week is falling. The card has to say so.
+  const d = diagnose(metrics({
+    curr7: { diamonds: 1000, liveHours: 10, validLiveDays: 5, fanClubDiamonds: 800 },
+    prev7: { diamonds: 7000, liveHours: 20, validLiveDays: 5, fanClubDiamonds: 5000 },
+    change7: { diamonds: -0.86, liveHours: -0.5 },
+    diamondsPerHour7: 100,
+    monthOnMonth: { diamonds: { monthToDate: 574323, change: 1.26 } },
+  }));
+  assert.equal(d.lever, 'conversion', 'still flagged, because the week is real');
+  assert.equal(d.headline, 'Coming off a peak');
+  assert.match(d.detail, /still 126% up/);
+  assert.match(d.detail, /big month starting to slip rather than a bad one/);
+});
