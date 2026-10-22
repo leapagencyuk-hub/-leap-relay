@@ -345,6 +345,20 @@ export function computeMetrics(creator, endDate) {
       // The figure the change is against, so a card can print it rather than
       // leave a percentage with nothing behind it.
       activeFans14: fans14?.activeFanClubFans ?? null,
+      // Our own engagement measure, and deliberately not called a gift rate.
+      //
+      // TikTok's gift rate is gifters over viewers. The Creator data export
+      // carries neither number, so that figure cannot be reproduced here and
+      // pretending otherwise would put a made-up percentage on a coach's card.
+      //
+      // What the export does carry is the fan side: what the fan club spent and
+      // how many of them were active. Spend per active fan answers the same
+      // question from the other end — are the people who do engage giving more
+      // or less than they were — and every number in it is one TikTok gave us.
+      spendPerFan: fansNow?.activeFanClubFans > 0
+        ? curr28.fanClubDiamonds / fansNow.activeFanClubFans : null,
+      spendPerFanBefore: fans14?.activeFanClubFans > 0
+        ? prev28.fanClubDiamonds / fans14.activeFanClubFans : null,
       totalFans: fansNow?.totalFans ?? null,
       totalFansChange14: pctChange(fansNow?.totalFans, fans14?.totalFans),
       contribution: fansNow?.fanContribution ?? null,

@@ -121,9 +121,21 @@ export function shortFormAdvice(r) {
 export function shortFormMessage(username, r) {
   const at = `@${String(username ?? '').replace(/^@/, '')}`;
   if (r?.verdict === 'good') {
-    return `${at} 🔥 noticed you've been posting properly — keep it up, that's exactly what feeds your LIVE.\n\nThe clips that work best are the ones that make someone want to come and watch you right now. More of those 💙`;
+    return [
+      `${at}, noticed you have been posting properly${Number.isFinite(r.last7) ? ` — ${r.last7} in the last 7 days` : ''}. That is exactly what feeds your live, keep it up.`,
+      'The clips that work best are the ones that make someone want to come and watch you right now.',
+    ].join('\n\n');
   }
-  return `${at} 👀 quick one that'll make a real difference — short form.\n\n15 to 30 seconds, straight from your LIVE. "Every time someone joins my live, this happens", "I'm playing this game in my live" — that kind of thing. It doesn't have to be fancy, it just has to make someone want to come in.\n\nPeople watch the clip, tap into your LIVE, and the algorithm pushes both further. Posting every day is the goal.\n\nIf you want a hand with editing, say the word 💙`;
+  const gap = Number.isFinite(r?.daysSince) && r.daysSince > 0
+    ? `You have not posted in ${r.daysSince} days.`
+    : 'There is nothing on your profile at the minute.';
+  return [
+    `${at}, quick one that will make a real difference — short form.`,
+    gap,
+    '15 to 30 seconds, straight from your live. "Every time someone joins my live, this happens", "I am playing this game in my live" — that kind of thing. It does not need to be fancy, it just needs to make someone want to come in.',
+    'People watch the clip, tap into your live, and the algorithm pushes both further. 70% of my own traffic comes from short form. Posting every day is the goal.',
+    'If you want a hand with the editing, say the word.',
+  ].join('\n\n');
 }
 
 /**

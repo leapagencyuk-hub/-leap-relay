@@ -74,7 +74,6 @@ export const ACTIONS = {
     'If the room is flat, the game may be the problem. Ask what else they could play.',
   ],
   gifting: [
-    'Check the real gift rate on the Creator Insights sheet before you call. This is our nearest reading, not the number itself.',
     'The base layer first: welcoming and thanking. People forget they stopped.',
     'Then the drivers: viewer wishes, gift goals, fan club campaigns, interactive gaming.',
     'Are they in a campaign? Campaigns spike gift rate more than anything else on this list.',
@@ -116,11 +115,11 @@ export function leverFromSignals(signals = []) {
 /**
  * What this creator needs, in a coach's words.
  *
- * Carla's if-this-then-that, as far as our own export can carry it. The three
- * columns her method really turns on — ACU, gift rate and watch duration — are
- * on her Creator Insights sheet and are not derivable from the Creator data
- * export, so where one of them would change the answer this says so rather than
- * guessing. An honest "check the Insights sheet" beats a confident wrong lever.
+ * Carla's if-this-then-that, built from what the Creator data export actually
+ * carries. Three of the columns her method leans on — ACU, gift rate and watch
+ * duration — are not in it and cannot be derived from it, so nothing here
+ * claims them. Where the question is engagement, the card answers it with the
+ * fan-club numbers the export does give, in our own terms.
  */
 export function diagnose(m, { rank = null, config = {}, alert = null } = {}) {
   if (!m) return null;
@@ -227,16 +226,21 @@ export function diagnose(m, { rank = null, config = {}, alert = null } = {}) {
     };
   }
 
-  // Our nearest reading of gift rate. The real one is on the Insights sheet;
-  // fan club spend is the part of it we hold, and it moves with it.
+  // Fan club spend falling while the hours hold up. Reported in our own terms,
+  // never as "gift rate": TikTok's gift rate is gifters over viewers and the
+  // export carries neither, so a card claiming one would be inventing it.
   if (fanSpend != null && fanSpend <= -(config.portal?.giftDrop ?? 0.25)) {
+    const perFan = m.fanClub?.spendPerFan;
+    const perFanBefore = m.fanClub?.spendPerFanBefore;
+    const perFanLine = perFan
+      ? ` Each active fan club member is worth ${n0(perFan)} diamonds over 28 days${
+        perFanBefore ? `, against ${n0(perFanBefore)} before` : ''}.`
+      : '';
     return {
       lever: 'gifting',
       headline: 'Gifting is sliding',
-      detail: `Fan club spend ${Math.round(fanSpend * 100)}% on last week, with the hours holding up. This is engagement and gifter management, not an hours problem.`,
-      needsInsights: true,
+      detail: `Fan club spend ${Math.round(fanSpend * 100)}% on last week, with the hours holding up.${perFanLine} This is engagement and gifter management, not an hours problem.`,
       actions: [
-        'Check the real gift rate on the Creator Insights sheet before you call. This is our nearest reading, not the number itself.',
         'The base layer first: welcoming and thanking. People forget they stopped.',
         'Then the drivers: viewer wishes, gift goals, fan club campaigns, interactive gaming.',
         'Are they in a campaign? Campaigns spike gift rate more than anything else on this list.',
@@ -302,30 +306,98 @@ export function diagnose(m, { rank = null, config = {}, alert = null } = {}) {
 /**
  * Something the coach can actually send.
  *
- * The gap this closes: a card tells a coach what is wrong and they still have
- * to work out how to say it to a 19-year-old at 11pm. These are written to be
- * pasted as they are.
+ * Written to be pasted into a DM as it is: plain sentences, no emojis, no
+ * markdown, and a real number wherever we hold one. Perry's own note to the
+ * roster is the register — short lines, the fact, then what to do about it.
  *
- * Creator-facing, so the same rules the creator cards follow apply here and
- * are not negotiable: NO FIGURES. No diamonds, no hours, no LIVE days, no fan
- * club numbers, no team names, no coach names, no money. A creator who gets
- * sent their own diamond count has been shown the agency's books. Warmth and
- * emojis are fine — these are not coach cards.
+ * A creator may be told their own numbers. They can see them in their own LIVE
+ * Backstage anyway, and Carla's rule from the 22 October call is that a creator
+ * who does not know the number cannot chase it. What never appears is anybody
+ * else's figures, what the agency earns, or what their coach is paid.
+ *
+ * Where a figure is missing the sentence carrying it is dropped rather than
+ * printed with a hole in it.
  */
-export function creatorMessage(lever, username) {
+export function creatorMessage(lever, username, facts = {}) {
   const at = `@${String(username ?? '').replace(/^@/, '')}`;
+  const nf = (x) => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-GB') : null);
+  const h1 = (x) => (Number.isFinite(x) ? Number(x).toFixed(1) : null);
+  // Only include a figure when we actually have it. A sentence with a gap in
+  // it where a number should be is worse than one sentence fewer.
+  const bit = (value, text) => (value == null ? '' : text);
+
+  const perHour = nf(facts.perHour);
+  const perHourNormal = nf(facts.perHourNormal);
+  const hoursNow = h1(facts.hoursNow);
+  const hoursBefore = h1(facts.hoursBefore);
+  const daysNow = nf(facts.daysNow);
+  const daysBefore = nf(facts.daysBefore);
+  const monthNow = nf(facts.monthNow);
+  const monthThen = nf(facts.monthThen);
+  const perFan = nf(facts.perFan);
+  const perFanBefore = nf(facts.perFanBefore);
+  const lastLive = facts.lastLive ?? null;
+  const dark = nf(facts.darkDays);
+
   const MESSAGES = {
-    dark: `Hey ${at} 👀 not seen you go live in a bit and just wanted to check in — all good your end?\n\nNo pressure at all, just here if something's up. And if you're ready to get back on, tell me which night and I'll make sure we're behind you for it 💙`,
-    hours: `${at} 🔥 your room is converting brilliantly right now — the people who turn up are properly backing you.\n\nThe only thing holding you back is how often we're seeing you. Nothing about the content needs changing, we just need you on more. What nights can you lock in this week? 💙`,
-    conversion: `Hey ${at} 💙 want to help you get the room buzzing again.\n\nQuick reset — welcome people in by name, thank every single gift out loud, and keep a goal running so the room knows what they're building towards. It sounds basic and it's the thing that moves it most.\n\nI'll jump in your next live and we'll go from there 🙌`,
-    days: `${at} 👋 noticed we've not had as many nights from you lately.\n\nGetting live more often is the single biggest thing for you right now — the algorithm rewards showing up more than it rewards long sessions. Can we pick some nights and stick to them this week? I'll back you the whole way 💙`,
-    gifting: `Hey ${at} 💙 your hours are great — let's get the room giving back properly.\n\nThree things: welcome people in by name, thank every gift out loud, and keep a goal running so there's something to chase together. Getting you into the next campaign too, they make a massive difference.\n\nWhat do you fancy going for? 🔥`,
-    rate: `${at} 🔥 you're putting the hours in and I want them to pay off properly.\n\nMore time on its own won't do it — let's work on the room instead. Fan club, goals and getting you matched up with other creators so new people find you. Free for a quick chat this week? 💙`,
-    protect: `${at} 🚀 just wanted to say — you are having a brilliant month, and that big week was something else.\n\nNo pressure at all, I just don't want us to lose the rhythm you found. Whatever you were doing on those nights, let's get back to it this week.\n\nProperly proud of you 💙`,
-    anomaly: `${at} 🚀 you are having an absolutely unreal month and I'm not letting it go unnoticed.\n\nWhatever you've changed, keep doing it. Don't switch anything up right now — just keep showing up the way you are. Properly proud of you 💙`,
-    hold: `${at} 💙 just a quick one — you're doing everything right at the minute. Keep going, keep showing up, and shout if you need anything 🙌`,
+    dark: [
+      `${at}, not seen you live${bit(dark, ` in ${dark} days`)}${lastLive ? ` — last one was ${lastLive}` : ''}. Everything alright?`,
+      'No pressure, just checking in. If you are ready to get back on, tell me which night and I will make sure we are pushing you for it.',
+    ],
+    hours: [
+      `${at}, your room is converting well${bit(perHour, ` — ${perHour} diamonds an hour`)}. The thing costing you right now is time on, not content.`,
+      hoursNow && hoursBefore
+        ? `You did ${hoursNow} hours last week against ${hoursBefore} the week before.`
+        : 'Your hours have come down on last week.',
+      'Nothing about what you are doing needs changing. We just need you on more. What nights can you commit to this week?',
+    ],
+    conversion: [
+      `${at}, want to get your room moving again.`,
+      perHour && perHourNormal
+        ? `You are converting at ${perHour} an hour against ${perHourNormal} normally. That is a room thing rather than a time thing.`
+        : 'Your conversion has dropped off against where you normally sit.',
+      'Quick reset: welcome people in by name, thank every gift out loud, and keep a goal running so the room knows what it is building towards.',
+      'I will jump in your next live and we can go from there.',
+    ],
+    days: [
+      daysNow && daysBefore
+        ? `${at}, you went live ${daysNow} days last week against ${daysBefore} the week before.`
+        : `${at}, your live days have dropped off this week.`,
+      'Frequency matters more than session length — the algorithm rewards showing up. Can we pick some nights and lock them in this week?',
+    ],
+    gifting: [
+      `${at}, your hours are good but the fan club spend has dropped off.`,
+      perFan && perFanBefore
+        ? `Each active member is giving ${perFan} diamonds over 28 days, against ${perFanBefore} before.`
+        : '',
+      'Three things that move this: welcome people in by name, thank every gift out loud, and keep a goal running.',
+      'I am also getting you into the next campaign. They make the biggest difference to this. What do you fancy going for?',
+    ],
+    rate: [
+      `${at}, you are putting the hours in and I want them to pay off properly.`,
+      perHour ? `More time on its own will not do it — you are at ${perHour} an hour.` : 'More time on its own will not do it.',
+      'Let us work on the room instead: fan club, goals, and getting you matched with other creators so new people find you. Free for a quick chat this week?',
+    ],
+    protect: [
+      monthNow && monthThen
+        ? `${at}, just wanted to say you are having a brilliant month — ${monthNow} diamonds so far against ${monthThen} by this point last month.`
+        : `${at}, just wanted to say you are having a brilliant month.`,
+      'Last week came off a bit. No pressure, I just do not want us to lose the rhythm you found.',
+      'Whatever you were doing on those big nights, let us get back to it. Properly proud of you.',
+    ],
+    anomaly: [
+      monthNow && monthThen
+        ? `${at}, you are having an unreal month — ${monthNow} diamonds against ${monthThen} by this point last month.`
+        : `${at}, you are having an unreal month.`,
+      'Whatever you have changed, keep doing it. Do not switch anything up right now.',
+      'Properly proud of you.',
+    ],
+    hold: [
+      `${at}, quick one — you are doing everything right at the minute.`,
+      'Keep going, and shout if you need anything.',
+    ],
   };
-  return MESSAGES[lever] ?? MESSAGES.hold;
+  return (MESSAGES[lever] ?? MESSAGES.hold).filter(Boolean).join('\n\n');
 }
 
 /**
@@ -345,12 +417,17 @@ export function rankMessage(username, { gap, perDay, tier, daysLeft }) {
   const at = `@${String(username ?? '').replace(/^@/, '')}`;
   const nf = (x) => Math.round(x).toLocaleString('en-GB');
   if (!gap || gap <= 0) {
-    return `${at} 🔥 you've already done it this month — you're holding your tier and that is money in your pocket.\n\nDon't ease off now. Keep the nights you've been doing and let's finish strong 💙`;
+    return [
+      `${at}, you have already done it this month — you are holding your tier, and that is money in your pocket.`,
+      'Do not ease off now. Keep the nights you have been doing and let us finish strong.',
+    ].join('\n\n');
   }
   const days = daysLeft > 0 ? daysLeft : 1;
-  // Plain text, no markdown. A coach might paste this into Discord, where
-  // **bold** renders, or into a TikTok DM, where it shows as asterisks.
-  return `${at} 👀 you are closer than you think.\n\n${nf(gap)} diamonds off Tier ${tier} — that's about ${nf(perDay ?? gap / days)} a day for the rest of the month. Completely doable if we lock the nights in.\n\nTell your community what you're going for, they'll get behind it. Let's go 🔥💙`;
+  return [
+    `${at}, you are closer than you think.`,
+    `${nf(gap)} diamonds off Tier ${tier}. That is about ${nf(perDay ?? gap / days)} a day for the rest of the month, which is completely doable if we lock the nights in.`,
+    'Tell your community what you are going for. They will get behind it.',
+  ].join('\n\n');
 }
 
 /** One roster line. Everything a coach sorts on, and the colour. */
@@ -475,7 +552,24 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
       // the data tripped. Sending somebody on a record month a back-to-basics
       // lecture is how a coach loses them.
       const key = state === STATE.PROTECT ? 'protect' : d.lever;
-      return { ...d, message: creatorMessage(key, creator.username) };
+      // The message gets the same numbers the card shows, so a coach is never
+      // pasting a sentence that disagrees with the tile above it.
+      return {
+        ...d,
+        message: creatorMessage(key, creator.username, {
+          perHour: m?.diamondsPerHour7,
+          perHourNormal: m?.diamondsPerHour28,
+          hoursNow: m?.curr7?.liveHours,
+          hoursBefore: m?.prev7?.liveHours,
+          daysNow: m?.curr7?.validLiveDays,
+          daysBefore: m?.prev7?.validLiveDays,
+          monthNow: m?.monthToDate?.diamonds,
+          monthThen: m?.monthOnMonth?.diamonds?.lastMonthToSamePoint,
+          perFan: m?.fanClub?.spendPerFan,
+          perFanBefore: m?.fanClub?.spendPerFanBefore,
+          darkDays: m?.darkStreak,
+        }),
+      };
     })(),
   };
 }
@@ -498,7 +592,12 @@ export function buildPortal({
   const alertByKey = new Map(alerts.map((a) => [a.creator.key, a]));
   const rankByKey = new Map((rankUp?.rows ?? []).map((r) => [r.creator.key, r]));
   const gradByKey = new Map(ramp.map((r) => [r.creator.key, r]));
-  const questByKey = new Map((quests?.quests ?? []).map((q) => [q.key, q]));
+  // questBoard returns { quest, progress, coachLabel }, keyed on the quest's
+  // own creatorKey. Keying on q.key matched nothing, so no side quest has ever
+  // reached a coach's page.
+  const questByKey = new Map((quests?.quests ?? [])
+    .filter((q) => q?.quest?.creatorKey)
+    .map((q) => [q.quest.creatorKey, q]));
   const openCases = (caseStore?.all?.() ?? []).filter(isOpen);
   const caseByKey = new Map(openCases.map((c) => [c.creatorKey, c]));
   const activationByKey = new Map(activation.map((a) => [a.creator.key, a]));

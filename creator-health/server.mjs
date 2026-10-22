@@ -72,6 +72,7 @@ import { rankUpBoard } from './lib/tiers.mjs';
 import { questBoard } from './lib/sidequest.mjs';
 import { refreshAvatars, avatarBytes, hasAvatar, avatarKey } from './lib/avatars.mjs';
 import { checkShortForm, cachedShortForm, shortFormAdvice, shortFormMessage, handleKey } from './lib/shortform.mjs';
+import { recordVisit, readActivity, coachPerformance } from './lib/coachactivity.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -824,8 +825,15 @@ async function handlePortal(req, res, url, route) {
     const links = portal.coaches.map((c) => ({
       coach: c.coach, name: c.name, url: `/portal/t/${encodeURIComponent(c.coach)}`,
     }));
-    return html(res, 200, directorPage(portal, links, { lastAsOf, config, signedIn }));
+    const performance = coachPerformance({
+      portal, activity: readActivity(config.dataDir), asOf: portal.asOf, config,
+    });
+    return html(res, 200, directorPage(portal, links, { lastAsOf, config, signedIn, performance }));
   }
+
+  // Noted once a day, and only for a coach opening their own page. A director
+  // looking at somebody's roster is not that coach using the tool.
+  recordVisit(config.dataDir, claim.subject);
 
   const view = portal.byCoach.get(claim.subject);
   // A coach with nobody on their roster today still gets their own page rather

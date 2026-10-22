@@ -340,7 +340,6 @@ ${d ? `<details class="why"><summary><span class="acts">
 <span class="btn">What the data says</span>${tt}</span></summary>
 <div class="body"><b>${esc(d.headline)}</b><p>${esc(d.detail)}</p>
 ${d.actions?.length ? `<ul>${d.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
-${d.needsInsights ? '<div class="flag">Gift rate, ACU and watch duration are on the Creator Insights sheet, not here. Check it before the call.</div>' : ''}
 ${sf}
 ${message}
 </div></details>` : `<div class="acts">${tt}</div>`}
@@ -562,12 +561,13 @@ ${COPY_JS}
 ${hasMoney ? `<p class="note">${esc(EARNINGS_DISCLAIMER)}</p>` : ''}
 ${signedIn ? '<p class="note"><a href="/portal/logout">Sign out</a></p>' : ''}
 <p class="note">Diamonds are month to date and reset on the 1st. The export runs a day
-behind, so today's streams appear tomorrow. Gift rate, ACU and watch duration live on the
-Creator Insights sheet and are not in this data yet.</p>`);
+behind, so today's streams appear tomorrow. Spend per fan is our own measure — fan club
+diamonds over active fan club members — not TikTok's gift rate, which needs viewer
+numbers the export does not carry.</p>`);
 }
 
 /** The directors' page: the whole network, every coach a door. */
-export function directorPage(portal, links, { lastAsOf = null, config = {}, signedIn = false } = {}) {
+export function directorPage(portal, links, { lastAsOf = null, config = {}, signedIn = false, performance = null } = {}) {
   const cur = config.leaped?.currency ?? 'GBP';
   const net = portal.network;
   const linkFor = (coach) => links?.find((l) => l.coach === coach)?.url ?? null;
@@ -596,9 +596,35 @@ ${portal.coaches.map((c) => {
     return url ? `<a class="teamlink" href="${esc(url)}">${inner}</a>`
       : `<div class="card">${inner}</div>`;
   }).join('')}
+${performance ? `
+<h2>Coach performance <span class="count">(${performance.rows.length})</span></h2>
+<p class="lede">Is each coach using the tool, and is their team moving. Both columns on
+purpose: a coach who opens it daily with a falling team is a different conversation from
+one who never opens it with a team that is flying.
+${performance.neverOpened ? `<b>${performance.neverOpened} have never opened it.</b>` : 'Everybody has opened it at least once.'}
+${performance.usingIt} of ${performance.rows.length} in the last ${performance.seenCutoff} days.</p>
+<div class="card"><table>
+<tr><th>Coach</th><th class="num">Last in</th><th class="num hide-s">Days this month</th>
+<th class="num">Diamonds</th><th class="num">vs last month</th>
+<th class="num hide-s">Recruits</th><th class="num hide-s">Leaped</th>
+<th class="num hide-s">Rank ups</th><th class="num">Urgent</th></tr>
+${performance.rows.map((r) => `<tr>
+<td>${esc(r.name)}<div class="meta">${r.roster} creators</div></td>
+<td class="num ${r.daysSince == null ? 'down' : r.daysSince <= performance.seenCutoff ? 'up' : 'flat'}">${
+  r.daysSince == null ? 'never' : r.daysSince === 0 ? 'today' : `${r.daysSince}d ago`}</td>
+<td class="num hide-s">${r.daysThisMonth}</td>
+<td class="num">${n(r.diamonds)}</td>
+<td class="num ${toneOf(r.growth)}">${r.growth == null ? '—' : signed(r.growth)}</td>
+<td class="num hide-s">${r.recruited}</td>
+<td class="num hide-s">${r.leaped}</td>
+<td class="num hide-s">${r.rankUps}</td>
+<td class="num ${r.urgent ? 'down' : ''}">${r.urgent}</td>
+</tr>`).join('')}
+</table></div>` : ''}
 <p class="note">${esc(EARNINGS_DISCLAIMER)}</p>
 ${signedIn ? '<p class="note"><a href="/portal/logout">Sign out</a></p>' : ''}
-<p class="note">A coach's own link shows them their roster and nobody else's.</p>`);
+<p class="note">A coach's own link shows them their roster and nobody else's. "Last in"
+counts days a coach opened their own page, not what they looked at.</p>`);
 }
 
 /** Offered when Discord is configured but the visitor has not signed in. */

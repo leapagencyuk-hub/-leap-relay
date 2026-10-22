@@ -161,16 +161,37 @@ test('a record month with nothing wrong says so instead of inventing a cause', (
   assert.match(d.detail, /Nothing here explains it/);
 });
 
-test('gifting sliding sends them to the Insights sheet rather than guessing', () => {
-  const d = diagnose(metrics({ fanClub: { activeFans: 30, diamondsChange7: -0.6, activeFansChange14: 0 } }));
+test('gifting sliding is reported in our own numbers, never as a gift rate', () => {
+  // Coaches cannot see the Creator Insights sheet, so nothing may point them
+  // at it. And TikTok's gift rate is gifters over viewers — the export carries
+  // neither, so a card claiming one would be inventing it.
+  const d = diagnose(metrics({
+    fanClub: {
+      activeFans: 30, diamondsChange7: -0.6, activeFansChange14: 0,
+      spendPerFan: 420, spendPerFanBefore: 1100,
+    },
+  }));
   assert.equal(d.lever, 'gifting');
-  assert.equal(d.needsInsights, true);
   assert.match(d.detail, /engagement and gifter management/);
-  // The steps are the point: a coach told "gifting is down" and nothing else
-  // has been given a fact, not a call to make.
-  assert.ok(d.actions.some((a) => /Creator Insights sheet/.test(a)));
+  // Our own measure, from numbers TikTok gave us, named as ours.
+  assert.match(d.detail, /Each active fan club member is worth 420 diamonds/);
+  assert.match(d.detail, /against 1,100 before/);
+  assert.equal(/gift rate/i.test(d.detail), false, 'never calls it a gift rate');
+  assert.equal(/Insights/i.test(JSON.stringify(d)), false, 'and never sends them to the sheet');
+
   assert.ok(d.actions.some((a) => /welcoming and thanking/.test(a)));
-  assert.ok(d.actions.some((a) => /campaign/i.test(a)), 'campaigns spike gift rate');
+  assert.ok(d.actions.some((a) => /campaign/i.test(a)), 'campaigns move engagement most');
+});
+
+test('nothing anywhere on a coach page mentions the Insights sheet', () => {
+  const view = portalOf([{
+    creator: creator('a'),
+    metrics: metrics({ fanClub: { activeFans: 30, diamondsChange7: -0.6, activeFansChange14: 0 } }),
+  }]).byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+  assert.equal(/Insights/i.test(page), false);
+  assert.equal(/gift rate/i.test(page.replace(/not TikTok's gift rate[^<]*/i, '')), false,
+    'the only mention is the footnote saying we do not have it');
 });
 
 test('dark beats every other reading', () => {
@@ -474,19 +495,38 @@ test('every diagnosis comes with a message a coach can paste', () => {
   assert.match(d.message, /@a/);
 });
 
-test('a message to a creator never carries a figure', () => {
-  // The standing rule for anything creator-facing, and the one that would be
-  // most expensive to break: a creator sent their own diamond count has been
-  // shown the agency's books.
-  const levers = ['dark', 'hours', 'conversion', 'days', 'gifting', 'rate', 'anomaly', 'hold'];
-  for (const lever of levers) {
-    const msg = creatorMessage(lever, 'someone');
+const LEVERS = ['dark', 'hours', 'conversion', 'days', 'gifting', 'rate', 'protect', 'anomaly', 'hold'];
+
+test('every message reads like a person wrote it, not a bot', () => {
+  const facts = {
+    perHour: 3586, perHourNormal: 6157, hoursNow: 39.9, hoursBefore: 62.5,
+    daysNow: 4, daysBefore: 7, monthNow: 574323, monthThen: 253653,
+    perFan: 420, perFanBefore: 1100, darkDays: 6,
+  };
+  for (const lever of LEVERS) {
+    const msg = creatorMessage(lever, 'someone', facts);
     assert.ok(msg.length > 40, `${lever} has a real message`);
-    // No digit groups that could be a diamond count, an hour count or money.
-    assert.equal(/\d{2,}/.test(msg), false, `${lever} message contains a number: ${msg}`);
-    assert.equal(/[£$€]/.test(msg), false, `${lever} message contains money`);
-    assert.equal(/diamond/i.test(msg), false, `${lever} message names diamonds`);
+    assert.equal(/\p{Extended_Pictographic}/u.test(msg), false, `${lever} has an emoji`);
+    assert.equal(msg.includes('**'), false, `${lever} has markdown`);
+    // Never anybody else's business: what the agency earns, what a coach is
+    // paid, or another creator's numbers.
+    assert.equal(/[£$€]/.test(msg), false, `${lever} mentions money`);
+    assert.equal(/\bcoach\b|commission|agency/i.test(msg), false, `${lever} mentions the agency`);
   }
+});
+
+test('a message carries the creator\'s own numbers, and drops the line when it has none', () => {
+  // Facts and data, in their own terms. A creator sees these in their own LIVE
+  // Backstage anyway; what they cannot see is anybody else's.
+  const withFacts = creatorMessage('hours', 'someone', { perHour: 3586, hoursNow: 39.9, hoursBefore: 62.5 });
+  assert.match(withFacts, /3,586 diamonds an hour/);
+  assert.match(withFacts, /39\.9 hours last week against 62\.5/);
+
+  // And with nothing to quote, the sentence goes rather than printing a hole.
+  const bare = creatorMessage('hours', 'someone');
+  assert.equal(/undefined|null|NaN/.test(bare), false);
+  assert.equal(bare.includes('diamonds an hour'), false);
+  assert.match(bare, /your hours have come down on last week/i);
 });
 
 test('money below a pound is left off a card rather than dressed as an incentive', () => {
@@ -766,6 +806,7 @@ test('a rank-up message tells the creator their number, unlike a decline note', 
   const held = rankMessage('kirstx3', { gap: 0, perDay: null, tier: 8, daysLeft: 12 });
   assert.equal(/\d{3,}/.test(held), false);
   assert.match(held, /holding your tier/);
+  assert.equal(/\p{Extended_Pictographic}/u.test(msg), false, 'and no emoji');
 });
 
 test('creator lists tile on a desktop instead of running down the middle', () => {
@@ -778,18 +819,20 @@ test('creator lists tile on a desktop instead of running down the middle', () =>
   assert.ok(page.includes('max-width:1400px'), 'and the page uses the screen');
 });
 
-test('no message carries markdown a TikTok DM would show as asterisks', () => {
+test('no message carries markdown or an emoji, wherever it is pasted', () => {
   // A coach pastes these wherever they talk to the creator. Discord renders
   // **bold**; a TikTok DM prints the asterisks.
   const all = [
     rankMessage('a', { gap: 7337, perDay: 611, tier: 5, daysLeft: 10 }),
     rankMessage('a', { gap: 0, perDay: null, tier: 5, daysLeft: 10 }),
-    ...['dark', 'hours', 'conversion', 'days', 'gifting', 'rate', 'anomaly', 'hold']
-      .map((l) => creatorMessage(l, 'a')),
+    shortFormMessage('a', { verdict: 'cold', daysSince: 9, last7: 0 }),
+    shortFormMessage('a', { verdict: 'good', last7: 5 }),
+    ...LEVERS.map((l) => creatorMessage(l, 'a')),
   ];
   for (const m of all) {
     assert.equal(m.includes('**'), false, `markdown in: ${m.slice(0, 60)}`);
     assert.equal(/\[.+\]\(.+\)/.test(m), false, 'and no markdown links');
+    assert.equal(/\p{Extended_Pictographic}/u.test(m), false, `emoji in: ${m.slice(0, 60)}`);
   }
 });
 
@@ -849,7 +892,7 @@ test('a creator on a record month is sent encouragement, not a lecture', () => {
     .byCoach.get('josh@leap.com');
   const msg = view.protect[0].diagnosis.message;
   assert.match(msg, /brilliant month/);
-  assert.equal(/slipping|down|problem/i.test(msg), false, 'nothing that reads as a telling-off');
+  assert.equal(/slipping|problem/i.test(msg), false, 'nothing that reads as a telling-off');
   // And the advice to the coach matches.
   assert.ok(view.protect[0].diagnosis.actions.some((a) => /Lead with the month/.test(a)));
 });
@@ -997,4 +1040,95 @@ test('the lever is read from what the rules actually found', () => {
   assert.equal(leverFromSignals(sig('Diamonds per LIVE hour -74%').signals), 'conversion');
   assert.equal(leverFromSignals(sig('LIVE hours -53% on last month').signals), 'hours');
   assert.equal(leverFromSignals(sig('Valid LIVE days down').signals), 'days');
+});
+
+// --- is the tool being used -----------------------------------------------------
+
+import { recordVisit, readActivity, activityFor, coachPerformance } from '../lib/coachactivity.mjs';
+import os from 'node:os';
+
+test('a visit is counted once a day, not once a refresh', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-act-'));
+  recordVisit(dir, 'josh@leap.com', { today: '2026-10-20' });
+  recordVisit(dir, 'josh@leap.com', { today: '2026-10-20' });
+  recordVisit(dir, 'josh@leap.com', { today: '2026-10-20' });
+  recordVisit(dir, 'josh@leap.com', { today: '2026-10-22' });
+
+  const a = activityFor(readActivity(dir), 'josh@leap.com', '2026-10-22');
+  // Somebody refreshing eleven times has not used it eleven times, and a
+  // counter that said so would make the most anxious coach look the keenest.
+  assert.equal(a.daysThisMonth, 2);
+  assert.equal(a.lastSeen, '2026-10-22');
+  assert.equal(a.daysSince, 0);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a coach who has never opened it is named as never, not as zero', () => {
+  const a = activityFor({}, 'nobody@leap.com', '2026-10-22');
+  assert.equal(a.everOpened, false);
+  assert.equal(a.lastSeen, null);
+  assert.equal(a.daysSince, null, 'null, so the page can say "never" rather than "0d ago"');
+});
+
+test('the performance board shows usage and results side by side', () => {
+  const c = creator('a');
+  const portal = portalOf([{ creator: c, metrics: metrics({
+    monthToDate: { diamonds: 50000 },
+    monthOnMonth: { diamonds: { monthToDate: 50000, change: 1, lastMonthToSamePoint: 25000 } },
+  }) }]);
+  const perf = coachPerformance({
+    portal,
+    activity: { 'josh@leap.com': { days: ['2026-10-22'], lastSeen: '2026-10-22' } },
+    asOf: '2026-10-22',
+  });
+  const row = perf.rows[0];
+  assert.equal(row.daysSince, 0);
+  assert.equal(row.diamonds, 50000);
+  assert.equal(row.lastMonthToDate, 25000);
+  assert.equal(Math.round(row.growth * 100), 100, 'team against itself at the same point');
+  assert.equal(perf.neverOpened, 0);
+  assert.equal(perf.usingIt, 1);
+
+  const page = directorPage(portal, [], { performance: perf });
+  assert.ok(page.includes('Coach performance'));
+  assert.ok(page.includes('today'), 'last in');
+  assert.ok(page.includes('+100%'), 'and whether the team is moving');
+});
+
+test('the board records that a coach came, never what they looked at', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-act2-'));
+  recordVisit(dir, 'josh@leap.com', { today: '2026-10-22' });
+  const raw = JSON.stringify(readActivity(dir));
+  // The question is "is this coach using the tool", not "watch this coach
+  // work". A tool that reports the second to their boss is one they stop
+  // opening honestly.
+  assert.equal(/creator|username|page|viewed|opened:/i.test(raw), false);
+  assert.deepEqual(Object.keys(JSON.parse(raw)['josh@leap.com']).sort(), ['days', 'lastSeen']);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a side quest reaches the coach who has to chase it', () => {
+  // questBoard returns { quest, progress, coachLabel }, keyed on the quest's
+  // own creatorKey. The portal keyed on q.key, which does not exist, so no
+  // side quest had ever appeared on a coach's page.
+  const c = creator('quester');
+  const quests = {
+    quests: [{
+      quest: { creatorKey: c.key, username: 'quester', kind: 'CROSS', target: 100000,
+        need: 20000, startedAt: 80000, worthGbp: 7.54, setOn: '2026-10-24', endsOn: '2026-10-31' },
+      progress: { now: 86000, gained: 6000, left: 14000, nightsLeft: 5, done: false, pct: 0.3 },
+      coachLabel: 'Josh',
+    }],
+  };
+  const creators = [c];
+  const view = buildPortal({
+    result: { creators, metricsByKey: new Map([[c.key, metrics()]]),
+      alerts: [], ramp: [], activation: [], asOf: '2026-10-26' },
+    quests,
+    config: { ramp: { targetDiamonds: 200000 } },
+  }).byCoach.get('josh@leap.com');
+
+  assert.equal(view.quests.length, 1, 'the quest found its creator');
+  assert.equal(view.quests[0].username, 'quester');
+  assert.ok(coachPage(view, { config: {} }).includes('Side quests'));
 });
