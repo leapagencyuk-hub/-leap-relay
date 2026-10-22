@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mintToken, readToken, portalSecret, allLinks, ROLE } from '../lib/portaltoken.mjs';
-import { buildPortal, diagnose, creatorMessage, rankMessage, STATE } from '../lib/portal.mjs';
+import { buildPortal, diagnose, creatorMessage, rankMessage, slippingLabel, leverFromSignals, STATE } from '../lib/portal.mjs';
 import { coachPage, directorPage, esc, EARNINGS_DISCLAIMER } from '../lib/portalhtml.mjs';
 
 const SECRET = 'a-test-secret-of-sufficient-length';
@@ -852,4 +852,149 @@ test('a creator on a record month is sent encouragement, not a lecture', () => {
   assert.equal(/slipping|down|problem/i.test(msg), false, 'nothing that reads as a telling-off');
   // And the advice to the coach matches.
   assert.ok(view.protect[0].diagnosis.actions.some((a) => /Lead with the month/.test(a)));
+});
+
+// --- short form -----------------------------------------------------------------
+
+import { readPosts, shortFormAdvice, shortFormMessage, handleKey } from '../lib/shortform.mjs';
+
+test('post dates turn into the thing a coach needs to know', () => {
+  const now = Date.parse('2026-10-22T12:00:00Z');
+  const at = (d) => Math.floor(Date.parse(`${d}T12:00:00Z`) / 1000);
+
+  const today = readPosts([at('2026-10-22'), at('2026-10-21'), at('2026-10-20')], { now });
+  assert.equal(today.verdict, 'good');
+  assert.equal(today.daysSince, 0);
+  assert.equal(today.last7, 3);
+
+  // Perry's threshold: past three days is too long.
+  assert.equal(readPosts([at('2026-10-19')], { now }).verdict, 'slowing');
+  assert.equal(readPosts([at('2026-10-18')], { now }).verdict, 'cold');
+  assert.equal(readPosts([at('2026-10-13')], { now }).daysSince, 9);
+  assert.equal(readPosts([], { now }).verdict, 'none');
+
+  // Duplicates from overlapping pages of the feed must not inflate the count.
+  const dupes = readPosts([at('2026-10-22'), at('2026-10-22'), at('2026-10-21')], { now });
+  assert.equal(dupes.posts, 2);
+});
+
+test('the short-form advice says why it matters, not just what happened', () => {
+  const now = Date.parse('2026-10-22T12:00:00Z');
+  const at = (d) => Math.floor(Date.parse(`${d}T12:00:00Z`) / 1000);
+  const cold = shortFormAdvice(readPosts([at('2026-10-10')], { now }));
+  assert.match(cold.headline, /Last posted 12 days ago/);
+  assert.match(cold.detail, /past three days is too long/);
+  assert.match(shortFormAdvice(readPosts([], { now })).detail, /70%/);
+  // Somebody doing it right is told so, rather than only being left alone.
+  assert.match(shortFormAdvice(readPosts([at('2026-10-22')], { now })).detail, /tell them it is working/);
+});
+
+test('the short-form message carries the how, and no other creator', () => {
+  const m = shortFormMessage('jedstreams', { verdict: 'cold' });
+  assert.match(m, /@jedstreams/);
+  assert.match(m, /15 to 30 seconds/, 'the format from the announcement');
+  assert.equal(/[£$€]/.test(m), false);
+  assert.match(shortFormMessage('a', { verdict: 'good' }), /keep it up/);
+});
+
+test('a handle cannot escape the short-form cache key', () => {
+  assert.equal(handleKey('../../etc/passwd'), 'etcpasswd');
+  assert.equal(/[/\\]/.test(handleKey('a/b\\c')), false);
+});
+
+test('the check-short-form button is on every creator card', () => {
+  const view = portalOf([{
+    creator: creator('jedstreams'),
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }),
+  }]).byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+  assert.ok(page.includes('data-shortform="jedstreams"'));
+  assert.ok(page.includes('Check short form'));
+});
+
+// --- what the card leads with ---------------------------------------------------
+
+test('an urgent card leads with what is wrong, not what it costs', () => {
+  const c = creator('slipping');
+  const m = metrics({
+    curr7: { diamonds: 1000, liveHours: 10, validLiveDays: 5, fanClubDiamonds: 800 },
+    prev7: { diamonds: 7000, liveHours: 20, validLiveDays: 5, fanClubDiamonds: 5000 },
+    change7: { diamonds: -0.86, liveHours: -0.5 },
+    diamondsPerHour7: 100, diamondsPerHour28: 350,
+    monthToDate: { diamonds: 90000 },
+  });
+  const view = portalOf([{ creator: c, metrics: m, alert: { creator: c, metrics: m, severity: 'urgent', signals: [] } }])
+    .byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+
+  assert.ok(page.includes('class="slip">DIAMONDS SLIPPING'), 'the red says what is happening');
+  // The money is still there, just not the headline.
+  assert.equal(/class="risk">[^<]*<\/span><\/div>\s*<div class="meta">/.test(page), false,
+    'the money is no longer in the name row');
+  assert.ok(slippingLabel('hours') === 'HOURS SLIPPING');
+  assert.ok(slippingLabel('gifting') === 'ENGAGEMENT SLIPPING');
+  assert.ok(slippingLabel('dark') === 'GONE DARK');
+  assert.equal(slippingLabel('anomaly'), null, 'a record month is not slipping');
+});
+
+test('a creator being protected or chased keeps the money on the headline', () => {
+  const c = creator('chasing');
+  const view = portalOf([{
+    creator: c,
+    metrics: metrics({ monthToDate: { diamonds: 150000 } }),
+    ramp: { creator: c, monthToDate: 150000, requiredPerDay: 1500 },
+  }]).byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+  assert.equal(page.includes('class="slip"'), false, 'nothing is slipping here');
+});
+
+test('the pay breakdown is a row of tiles, not a grey sentence', () => {
+  const c = creator('a');
+  const portal = buildPortal({
+    result: { creators: [c], metricsByKey: new Map([[c.key, metrics()]]),
+      alerts: [], ramp: [], activation: [], asOf: '2026-10-19' },
+    revenue: { byCoach: new Map([['josh@leap.com', {
+      total: 557.29, diamonds: 4171633, base: 350, recruitBonus: 50, rankUpBonus: 0,
+      incrementalShare: 157.29, leapedCount: 5, rankUps: 0, unlock: 0.2,
+      totalWithGoals: 714.57, goals: { diamondsToGo: 4215435, recruitsToGo: 23, diamondsHit: false, recruitsHit: false },
+    }]]) },
+    config: { ramp: { targetDiamonds: 200000 } },
+  }).byCoach.get('josh@leap.com');
+  const page = coachPage(portal, { config: {} });
+
+  assert.ok(page.includes('What you are paid on'));
+  for (const label of ['Fixed', 'Recruits', 'Rank ups', 'Diamond share']) {
+    assert.ok(page.includes(`<div class="k">${label}</div>`), `${label} has its own tile`);
+  }
+  assert.ok(page.includes('£350.00') && page.includes('£157.29'));
+  assert.ok(page.includes('5 leaped'), 'and each tile says what earned it');
+});
+
+test('an urgent creator is never told there is nothing to fix', () => {
+  // 64 urgent creators were getting "Nothing to fix. Holding." The decline
+  // rules fire on month-on-month and against-their-own-normal; diagnose only
+  // looked week-on-week, found nothing, and contradicted the heading above it.
+  const m = metrics();   // flat week on week: nothing for diagnose to find
+  const alert = {
+    severity: 'urgent',
+    signals: [
+      { label: 'Diamonds -87% on last month', detail: '60,170 so far this month against 456,053 by the same day.' },
+      { label: 'Diamonds per LIVE hour -85%', detail: 'Earning 720 per hour this week against 4,676 before this started.' },
+    ],
+  };
+  const d = diagnose(m, { alert });
+  assert.notEqual(d.lever, 'hold');
+  assert.equal(d.fromRules, true);
+  assert.match(d.headline, /Diamonds -87% on last month/);
+  assert.match(d.detail, /456,053/, 'and quotes the rule\'s own evidence');
+  assert.ok(d.actions.length, 'with steps to match the lever');
+  assert.ok(slippingLabel(d.lever), 'and a red label for the card');
+});
+
+test('the lever is read from what the rules actually found', () => {
+  const sig = (label) => ({ signals: [{ label, detail: '' }] });
+  assert.equal(leverFromSignals(sig('Active Fan Club members -23%').signals), 'gifting');
+  assert.equal(leverFromSignals(sig('Diamonds per LIVE hour -74%').signals), 'conversion');
+  assert.equal(leverFromSignals(sig('LIVE hours -53% on last month').signals), 'hours');
+  assert.equal(leverFromSignals(sig('Valid LIVE days down').signals), 'days');
 });

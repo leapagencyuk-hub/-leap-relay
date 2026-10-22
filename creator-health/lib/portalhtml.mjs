@@ -17,7 +17,7 @@
 // Every value interpolated here comes from an export TikTok produced, which
 // means usernames and team names are untrusted strings. They all go through
 // `esc`. There is no innerHTML anywhere.
-import { STATE } from './portal.mjs';
+import { STATE, slippingLabel } from './portal.mjs';
 import { LEAP_LOGO } from './brand.mjs';
 
 /** The line that must appear beside any money a coach is shown. */
@@ -67,10 +67,14 @@ box-shadow:0 0 16px rgba(0,74,173,.6)}
 .brandbar .who{min-width:0}
 .brandbar h1{font-size:19px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .brandbar .meta{color:var(--dim);font-size:12.5px}
-h2{font-size:12px;letter-spacing:.09em;text-transform:uppercase;color:var(--dim);
-margin:30px 0 4px;font-weight:700}
-h2 .count{color:var(--ink)}
-.lede{color:var(--dim);font-size:12.5px;margin:0 0 11px}
+/* Section headings carry the structure of the page, so they look like it:
+   white, bigger, with a brand rule under them. They were 12px grey and read
+   as captions. */
+h2{font-size:17px;letter-spacing:.01em;color:var(--ink);font-weight:750;
+margin:34px 0 5px;padding-bottom:7px;border-bottom:2px solid var(--brand);
+display:flex;align-items:baseline;gap:9px}
+h2 .count{color:var(--brand-lift);font-size:15px;font-weight:700}
+.lede{color:var(--dim);font-size:13px;margin:0 0 12px;max-width:80ch}
 .sub{color:var(--dim);font-size:13px;margin:0 0 6px}
 .card{background:linear-gradient(180deg,rgba(13,30,66,.92),rgba(7,18,40,.92));
 border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:9px}
@@ -82,6 +86,8 @@ box-shadow:0 0 26px rgba(10,89,196,.35)}
 .stat .k{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:600}
 .stat.hero .k{color:#cfe0f8}
 .stat .v{font-size:21px;font-weight:680;margin-top:3px;font-variant-numeric:tabular-nums}
+.stat .sub2{color:var(--dim);font-size:11px;margin-top:3px;font-variant-numeric:tabular-nums}
+.pay4{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
 .stat.hero .v{color:#fff}
 .pills{display:flex;flex-wrap:wrap;gap:7px;margin:0 0 4px}
 .pill{display:inline-flex;align-items:center;gap:6px;background:var(--card);
@@ -136,6 +142,12 @@ font-weight:700;margin-bottom:6px}
 font-size:12.5px;line-height:1.5;resize:vertical;min-height:112px;padding:0}
 .msg textarea:focus{outline:2px solid var(--brand-lift);outline-offset:4px;border-radius:4px}
 .copied{color:var(--good);font-size:11.5px;margin-left:8px}
+.sf{margin-top:11px;padding-top:11px;border-top:1px solid var(--line)}
+.sfout{font-size:12.5px;color:var(--dim);align-self:center}
+.sfout b{display:block;color:var(--ink);font-size:13px}
+.sfout.cold b{color:var(--act)}
+.sfout.slowing b{color:var(--watch)}
+.sfout.good b{color:var(--good)}
 @media(max-width:430px){.quad{grid-template-columns:repeat(2,1fr)}}
 /* The banked list: dense, because there can be seventy of them and a coach
    wants to see the whole wall at once. */
@@ -184,6 +196,14 @@ color:var(--dim);font-weight:700;font-size:14px}
 .m a.go:hover{color:#fff}
 .worth{color:var(--good);font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
 .risk{color:var(--act);font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
+/* What is actually wrong, not what it costs. The money moved to the line
+   below, because a weekly at-risk figure is the reason to act and not the
+   thing that is happening. (No currency symbol in this comment on purpose:
+   a test asserts that a page with earnings hidden contains none at all, and
+   it should stay that strict.) */
+.slip{color:var(--act);font-weight:800;font-size:11.5px;letter-spacing:.07em;
+white-space:nowrap;border:1px solid rgba(255,95,109,.45);background:rgba(255,95,109,.12);
+border-radius:7px;padding:3px 9px;flex:0 0 auto}
 .up{color:var(--good)}.down{color:var(--act)}.flat{color:var(--dim)}
 .acts{display:flex;flex-wrap:wrap;gap:7px;margin-top:10px}
 .btn{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);
@@ -257,6 +277,9 @@ const stale = (asOf, lastAsOf) => (asOf && lastAsOf && asOf < lastAsOf
  */
 function creatorCard(r, { money: moneyLine = null, need = null } = {}) {
   const d = r.diagnosis;
+  // Red says what is happening. On an urgent card that is the headline; a
+  // creator being protected or chased is not slipping, so they keep the money.
+  const slip = r.state === STATE.ACT ? slippingLabel(d?.lever) : null;
   const tt = r.tiktok
     ? `<a class="btn tt" href="${esc(r.tiktok)}" target="_blank" rel="noopener noreferrer">Open TikTok</a>`
     : '';
@@ -292,6 +315,12 @@ ${q('Fan club', mo.fanClub, n)}
 <div class="acts"><button class="btn" type="button" data-copy="${msgId}">Copy message</button></div>
 </div>` : '';
 
+  // Short form is the biggest lever the LIVE export cannot see, so it is asked
+  // for rather than shown: one creator, one browser, when a coach wants to know.
+  const sf = r.username ? `<div class="sf" data-sf="${esc(r.username)}">
+<div class="acts"><button class="btn" type="button" data-shortform="${esc(r.username)}">Check short form</button>
+<span class="sfout"></span></div></div>` : '';
+
   // Anchored by handle so a monitoring ping can link to this exact creator.
   // A card that says "open their card" and drops you at the top of a page of
   // thirty is a card that lied.
@@ -299,10 +328,12 @@ ${q('Fan club', mo.fanClub, n)}
   return `<div class="card ${esc(r.state)}"${anchor ? ` id="c-${anchor}"` : ''}>
 <div class="chead">${ava}
 <div class="body">
-<div class="row"><span class="name"><span class="dot"></span>@${esc(r.username)}</span>${moneyLine ?? ''}</div>
+<div class="row"><span class="name"><span class="dot"></span>@${esc(r.username)}</span>${
+  slip ? `<span class="slip">${esc(slip)}</span>` : (moneyLine ?? '')}</div>
 <div class="meta">${r.group ? `${esc(r.group)} · ` : ''}${r.liveDays7} LIVE days / 7 · ${r.hours7.toFixed(1)}h this week${
   r.perHour ? ` · ${n(r.perHour)}/hour` : ''}${
-  need ? ` · ${esc(need)}` : ''}${r.darkStreak >= 2 ? ` · dark ${r.darkStreak}d` : ''}</div>
+  need ? ` · ${esc(need)}` : ''}${r.darkStreak >= 2 ? ` · dark ${r.darkStreak}d` : ''}${
+  slip && moneyLine ? ` · ${moneyLine}` : ''}</div>
 </div></div>
 ${quad}
 ${d ? `<details class="why"><summary><span class="acts">
@@ -310,6 +341,7 @@ ${d ? `<details class="why"><summary><span class="acts">
 <div class="body"><b>${esc(d.headline)}</b><p>${esc(d.detail)}</p>
 ${d.actions?.length ? `<ul>${d.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
 ${d.needsInsights ? '<div class="flag">Gift rate, ACU and watch duration are on the Creator Insights sheet, not here. Check it before the call.</div>' : ''}
+${sf}
 ${message}
 </div></details>` : `<div class="acts">${tt}</div>`}
 </div>`;
@@ -319,6 +351,30 @@ ${message}
 // no other way; everything else is plain HTML and CSS on purpose.
 const COPY_JS = `<script>
 document.addEventListener('click', function (ev) {
+  var sfBtn = ev.target.closest('[data-shortform]');
+  if (sfBtn) {
+    var handle = sfBtn.getAttribute('data-shortform');
+    var out = sfBtn.parentNode.querySelector('.sfout');
+    sfBtn.disabled = true;
+    out.className = 'sfout';
+    out.textContent = 'Looking…';
+    fetch('/portal/shortform/' + encodeURIComponent(handle), { method: 'POST' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        sfBtn.disabled = false;
+        if (!d || d.ok === false || !d.advice) {
+          out.textContent = d && d.error ? d.error : 'Could not check right now.';
+          return;
+        }
+        out.className = 'sfout ' + (d.verdict || '');
+        out.innerHTML = '';
+        var h = document.createElement('b'); h.textContent = d.advice.headline;
+        var p2 = document.createElement('span'); p2.textContent = d.advice.detail;
+        out.appendChild(h); out.appendChild(p2);
+      })
+      .catch(function () { sfBtn.disabled = false; out.textContent = 'Could not check right now.'; });
+    return;
+  }
   var btn = ev.target.closest('[data-copy]');
   if (!btn) return;
   var ta = document.getElementById(btn.getAttribute('data-copy'));
@@ -400,11 +456,20 @@ export function coachPage(view, { lastAsOf = null, config = {}, signedIn = false
 <div class="stat"><div class="k">Diamonds</div><div class="v">${n(e.diamonds)}</div></div>
 <div class="stat"><div class="k">Recruits leaped</div><div class="v">${e.leapedCount}</div></div>
 </div>
-<div class="card"><div class="meta">
-Fixed ${money(e.base, cur)} · recruits ${money(e.recruitBonus, cur)} · rank ups ${money(e.rankUpBonus, cur)} · diamond share ${money(e.incrementalShare, cur)}
-${e.goals ? `<br>Goals: ${e.goals.diamondsHit ? 'diamonds met' : `${n(e.goals.diamondsToGo)} diamonds to go`} · ${
-  e.goals.recruitsHit ? 'recruits met' : `${e.goals.recruitsToGo} recruits to go`}. Both met takes you to ${money(e.totalWithGoals, cur)}.` : ''}
-</div></div>`;
+<h2>What you are paid on</h2>
+<div class="grid pay4">
+<div class="stat"><div class="k">Fixed</div><div class="v">${money(e.base, cur)}</div></div>
+<div class="stat"><div class="k">Recruits</div><div class="v">${money(e.recruitBonus, cur)}</div>
+<div class="sub2">${e.leapedCount} leaped</div></div>
+<div class="stat"><div class="k">Rank ups</div><div class="v">${money(e.rankUpBonus, cur)}</div>
+<div class="sub2">${e.rankUps} ranked up</div></div>
+<div class="stat"><div class="k">Diamond share</div><div class="v">${money(e.incrementalShare, cur)}</div>
+<div class="sub2">${n(e.diamonds)} diamonds</div></div>
+</div>
+${e.goals ? `<div class="card"><div class="meta">
+<b>Goals.</b> ${e.goals.diamondsHit ? 'Diamonds met.' : `${n(e.goals.diamondsToGo)} diamonds to go.`}
+${e.goals.recruitsHit ? 'Recruits met.' : `${e.goals.recruitsToGo} recruits to go.`}
+Both met takes you to <b>${money(e.totalWithGoals, cur)}</b>.</div></div>` : ''}`;
 
   // 1. Urgent.
   const urgent = view.attention.length ? `

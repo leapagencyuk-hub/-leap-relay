@@ -34,6 +34,86 @@ const pct = (x) => (Number.isFinite(x) ? x : null);
 export const STATE = { ACT: 'act', PROTECT: 'protect', WATCH: 'watch', GOOD: 'good', IDLE: 'idle' };
 
 /**
+ * What is wrong, in two words, for the top of an urgent card.
+ *
+ * The card used to lead with "£6.19/wk at risk" in red. Money is the reason a
+ * coach acts, but it is not what is happening — so the red says what is
+ * happening and the money moves below it.
+ */
+export const SLIPPING = {
+  dark: 'GONE DARK',
+  days: 'LIVE DAYS SLIPPING',
+  hours: 'HOURS SLIPPING',
+  conversion: 'DIAMONDS SLIPPING',
+  gifting: 'ENGAGEMENT SLIPPING',
+  rate: 'ENGAGEMENT SLIPPING',
+};
+export const slippingLabel = (lever) => SLIPPING[lever] ?? null;
+
+/** The steps, per lever. One home, so every route to a lever gives the same ones. */
+export const ACTIONS = {
+  dark: [
+    'Call them. Not a message — a call.',
+    'Find out whether it is life, burnout, or they have gone somewhere else.',
+    'Agree one date they will go back on, and put it in writing.',
+  ],
+  hours: [
+    'Add LIVE days before you add session length. Frequency is cheaper for them and it is what the algorithm reads.',
+    'Agree a schedule they will actually keep, not the one they wish they kept.',
+    'Nothing about content needs changing. Say that — it is the reassuring half of this call.',
+  ],
+  days: [
+    'Find out what changed. A dropped night is usually a life reason, not a TikTok one.',
+    'Get one night back first. One is a habit; four is a negotiation.',
+    'Check their LIVE duration too — fewer, longer sessions is a different problem from fewer, shorter ones.',
+  ],
+  conversion: [
+    'Watch one of their LIVEs before the call. You cannot coach conversion off a spreadsheet.',
+    'Back to basics: are they welcoming, thanking, introducing themselves?',
+    'Is there a gift goal running, and are they revenue boosting it?',
+    'If the room is flat, the game may be the problem. Ask what else they could play.',
+  ],
+  gifting: [
+    'Check the real gift rate on the Creator Insights sheet before you call. This is our nearest reading, not the number itself.',
+    'The base layer first: welcoming and thanking. People forget they stopped.',
+    'Then the drivers: viewer wishes, gift goals, fan club campaigns, interactive gaming.',
+    'Are they in a campaign? Campaigns spike gift rate more than anything else on this list.',
+    'We cannot ask for gifts. We can make it obvious how someone supports them.',
+  ],
+  protect: [
+    'Lead with the month, not the week. They are having a big one and they should hear that first.',
+    'Find out what made the big week work. That is the repeatable part, and nobody writes it down.',
+    'Only then, gently: the last few nights converted below their own normal. Ask what changed.',
+    'Do not send a "you are slipping" message to somebody having a record month.',
+  ],
+  anomaly: [
+    'Find out what changed. A record month always has a reason, and the reason is repeatable.',
+    'Content review: watch a LIVE and write down what they are doing differently.',
+    'Gifter management — who is carrying this month, and what happens when they stop?',
+    'Do not change anything mid-run. Protect it, then build on it next month.',
+  ],
+  hold: ['Nothing needed. Keep them excited and leave them alone.'],
+};
+
+/**
+ * Which lever an alert's own signals point at.
+ *
+ * The decline rules fire on things this module does not check for itself —
+ * month-on-month, against their own normal, fan-club erosion — so without this
+ * 64 urgent creators got a card headed URGENT and a reading of "Nothing to fix.
+ * Holding." The rules already worked out what was wrong; this reads their
+ * answer rather than inventing a second one.
+ */
+export function leverFromSignals(signals = []) {
+  const text = signals.map((x) => `${x?.label ?? ''} ${x?.detail ?? ''}`).join(' ').toLowerCase();
+  if (/fan club/.test(text)) return 'gifting';
+  if (/per live hour|per hour/.test(text)) return 'conversion';
+  if (/live hours/.test(text)) return 'hours';
+  if (/live days/.test(text)) return 'days';
+  return 'conversion';
+}
+
+/**
  * What this creator needs, in a coach's words.
  *
  * Carla's if-this-then-that, as far as our own export can carry it. The three
@@ -42,7 +122,7 @@ export const STATE = { ACT: 'act', PROTECT: 'protect', WATCH: 'watch', GOOD: 'go
  * export, so where one of them would change the answer this says so rather than
  * guessing. An honest "check the Insights sheet" beats a confident wrong lever.
  */
-export function diagnose(m, { rank = null, config = {} } = {}) {
+export function diagnose(m, { rank = null, config = {}, alert = null } = {}) {
   if (!m) return null;
   const hoursChange = pct(m.change7?.liveHours);
   const daysNow = num(m.curr7?.validLiveDays);
@@ -178,6 +258,23 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
         'Gifter management — who is carrying this month, and what happens when they stop?',
         'Do not change anything mid-run. Protect it, then build on it next month.',
       ],
+    };
+  }
+
+  // An alert fired and none of the week-on-week checks above explain it. The
+  // rules look at things this function does not — month-on-month, against
+  // their own normal, fan-club erosion — so take their reading rather than
+  // telling a coach that an urgent creator has nothing wrong with them.
+  if (alert?.signals?.length) {
+    const lever = leverFromSignals(alert.signals);
+    const top = alert.signals.slice(0, 2);
+    return {
+      lever,
+      headline: top[0]?.label ?? 'Declining',
+      detail: top.map((x) => [x.label, x.detail].filter(Boolean).join('. ')).join(' ')
+        || 'The decline rules flagged this creator.',
+      actions: ACTIONS[lever] ?? ACTIONS.conversion,
+      fromRules: true,
     };
   }
 
@@ -372,7 +469,7 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
       gap: rank.gap, perDay: rank.needPerDay, tier: (rank.toTier ?? 0) + 1, daysLeft: rank.daysLeft,
     }) : null,
     diagnosis: (() => {
-      const d = diagnose(m, { rank, config });
+      const d = diagnose(m, { rank, config, alert });
       if (!d) return d;
       // A creator having a big month gets the protective note, whatever lever
       // the data tripped. Sending somebody on a record month a back-to-basics

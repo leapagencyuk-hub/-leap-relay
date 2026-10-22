@@ -25,6 +25,7 @@
 //   GET  /portal/callback   Discord's OAuth return
 //   GET  /portal/logout     clear the session
 //   GET  /portal/t/:coach   a director opening one coach's page
+//   POST /portal/shortform/:handle  when did they last post? (needs a browser)
 //   GET  /portal/:token     the signed-link fallback, for a coach whose Discord
 //                           id is not mapped yet
 //   POST /portal/links      every coach's signed link, for pasting into Discord
@@ -70,6 +71,7 @@ import { coachRevenue } from './lib/revenue.mjs';
 import { rankUpBoard } from './lib/tiers.mjs';
 import { questBoard } from './lib/sidequest.mjs';
 import { refreshAvatars, avatarBytes, hasAvatar, avatarKey } from './lib/avatars.mjs';
+import { checkShortForm, cachedShortForm, shortFormAdvice, shortFormMessage, handleKey } from './lib/shortform.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -619,6 +621,18 @@ async function handleSideQuests(req, res, url) {
  * page must never advance a cooldown, burn a milestone card or write a leap.
  * `persist: false` on every stage is load-bearing, not caution.
  */
+// One short-form check at a time. Two Chromiums on a 512MB box is how the OOM
+// reaper takes the whole monitoring service down to answer a question about
+// one creator's feed.
+let shortFormBusy = null;
+async function oneShortFormCheck(username) {
+  while (shortFormBusy) await shortFormBusy.catch(() => null);
+  shortFormBusy = checkShortForm(config.dataDir, username, {
+    badAfterDays: config.portal?.shortFormBadAfterDays ?? 3,
+  });
+  try { return await shortFormBusy; } finally { shortFormBusy = null; }
+}
+
 // One refresh at a time, so opening five pages does not start five crawls.
 let avatarRun = null;
 function queueAvatars(usernames) {
@@ -685,6 +699,34 @@ async function handlePortal(req, res, url, route) {
       'set-cookie': sessionCookie(mintSession(who.id, secret), { secure: secureCookie }),
     });
     return res.end();
+  }
+
+  // Short form, on demand. POST because it goes and does something that costs
+  // real work, and a link preview must not be able to fire it.
+  if (parts[1] === 'shortform' && parts[2]) {
+    if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
+    const sessionId = readSession(cookieValue(req.headers.cookie, SESSION_COOKIE), secret);
+    const { discord } = loadRoutes(path.dirname(configPath));
+    const who = sessionId ? resolveAccess(sessionId, { config, discordConfig: discord }) : null;
+    if (!who) return json(res, 403, { error: 'not signed in' });
+
+    const username = decodeURIComponent(parts[2]);
+    const { portal } = portalData(null);
+    // A coach may ask about their own creators and nobody else's. Without this
+    // the button is a handle-lookup service for anyone with a login.
+    const mine = who.role === 'director'
+      ? portal.coaches.some((c) => c.rows.some((r) => handleKey(r.username) === handleKey(username)))
+      : (portal.byCoach.get(who.subject)?.rows ?? []).some((r) => handleKey(r.username) === handleKey(username));
+    if (!mine) return json(res, 404, { error: 'not on your roster' });
+
+    const fresh = cachedShortForm(config.dataDir, username);
+    const result = fresh && !fresh.stale ? fresh : await oneShortFormCheck(username);
+    return json(res, 200, {
+      ...result,
+      advice: shortFormAdvice(result),
+      message: result.ok ? shortFormMessage(username, result) : null,
+      cached: Boolean(fresh && !fresh.stale),
+    });
   }
 
   if (parts[1] === 'avatar' && parts[2]) {
@@ -858,7 +900,10 @@ const server = http.createServer(async (req, res) => {
     // `/portal` exactly, as well as everything under it: the router strips the
     // trailing slash, so matching only '/portal/' 404s the bare link that every
     // Discord card carries.
-    if (req.method === 'GET' && (route === '/portal' || route.startsWith('/portal/'))) {
+    // GET for every page; POST only for the short-form check, which is a POST
+    // precisely so a link preview cannot start a browser.
+    if ((req.method === 'GET' || (req.method === 'POST' && route.startsWith('/portal/shortform/')))
+      && (route === '/portal' || route.startsWith('/portal/'))) {
       return await handlePortal(req, res, url, route);
     }
     if (req.method === 'POST' && route === '/hardest') return await handleHardestWorker(req, res, url);
