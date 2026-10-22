@@ -18,7 +18,17 @@ const DIR = 'avatars';
 const INDEX = 'avatars.json';
 const UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36';
 
-const safe = (username) => String(username ?? '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
+// A TikTok handle becomes a filename, so it has to survive being one.
+// Stripping the slashes is already enough to stop a traversal — nothing can
+// escape a directory without one — but letting runs of dots through means a
+// handle can still read as `..` in a path, and a filename nobody can reason
+// about at a glance is not worth the dot.
+const safe = (username) => String(username ?? '')
+  .toLowerCase()
+  .replace(/[^a-z0-9._-]/g, '')
+  .replace(/\.{2,}/g, '.')
+  .replace(/^[.\-]+/, '')
+  .slice(0, 64);
 
 function indexPath(dataDir) { return path.join(dataDir, INDEX); }
 function fileFor(dataDir, username) { return path.join(dataDir, DIR, `${safe(username)}.jpg`); }
@@ -51,8 +61,20 @@ export function hasAvatar(dataDir, username) {
 export function parseAvatar(html) {
   // The page embeds its state as JSON, so the field is a plain string with
   // escaped slashes rather than anything that needs a parser.
-  const hit = /"avatarLarger":"([^"]+)"/.exec(String(html ?? ''))
-    ?? /"avatarMedium":"([^"]+)"/.exec(String(html ?? ''));
+  //
+  // Smallest first, and that order is the point. The portal draws these at
+  // 54px; avatarLarger is 1080x1080 and about 170KB, so a page with twenty
+  // creators on it pulled three and a half megabytes of faces onto a coach's
+  // phone to render circles the size of a thumbnail. avatarThumb is 100x100
+  // and a few KB.
+  //
+  // The size cannot simply be rewritten in the URL: the path is covered by the
+  // CDN signature, so asking for :200:200 on a URL signed for :1080:1080 is
+  // refused. TikTok publishes each size as its own signed URL, so take theirs.
+  const src = String(html ?? '');
+  const hit = /"avatarThumb":"([^"]+)"/.exec(src)
+    ?? /"avatarMedium":"([^"]+)"/.exec(src)
+    ?? /"avatarLarger":"([^"]+)"/.exec(src);
   if (!hit) return null;
   return hit[1].replace(/\\u002F/g, '/').replace(/\\\//g, '/');
 }

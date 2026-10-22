@@ -495,3 +495,48 @@ test('money below a pound is left off a card rather than dressed as an incentive
   const page = coachPage(view, { config: {} });
   assert.equal(/£0\.\d\d\/wk/.test(page), false, 'no nine-pence urgency');
 });
+
+// --- creator faces --------------------------------------------------------------
+
+import { parseAvatar, avatarRoute, avatarKey } from '../lib/avatars.mjs';
+
+test('the smallest avatar TikTok offers is the one taken', () => {
+  // The portal draws these at 54px. avatarLarger is 1080x1080 and about 170KB,
+  // so a page with twenty creators pulled three and a half megabytes of faces
+  // onto a phone to render thumbnails. avatarThumb is 100x100 and about 5KB.
+  const page = JSON.stringify({
+    avatarLarger: 'https://cdn/x~tplv-tiktokx-cropcenter:1080:1080.jpeg?sig=a',
+    avatarMedium: 'https://cdn/x~tplv-tiktokx-cropcenter:720:720.jpeg?sig=b',
+    avatarThumb: 'https://cdn/x~tplv-tiktokx-cropcenter:100:100.jpeg?sig=c',
+  });
+  assert.match(parseAvatar(page), /cropcenter:100:100/);
+
+  // And it must be TikTok's own signed URL for that size, never a rewrite of a
+  // bigger one: the path is covered by the signature, so asking for :200:200
+  // on a URL signed for :1080:1080 is refused. Fifty of fifty failed that way.
+  assert.match(parseAvatar(page), /sig=c/);
+});
+
+test('an avatar falls back through the sizes and gives up cleanly', () => {
+  assert.match(parseAvatar(JSON.stringify({ avatarLarger: 'https://cdn/big.jpeg' })), /big\.jpeg/);
+  assert.equal(parseAvatar('<html>nothing here</html>'), null);
+  assert.equal(parseAvatar(null), null);
+  // Escaped slashes are how the embedded JSON writes them.
+  assert.equal(parseAvatar('"avatarThumb":"https:\\u002F\\u002Fcdn\\u002Fa.jpeg"'),
+    'https://cdn/a.jpeg');
+});
+
+test('a handle cannot be walked out of the avatar directory', () => {
+  // Stripping slashes is what stops a traversal; collapsing dots is so the
+  // filename is something a person can still reason about.
+  assert.equal(avatarKey('../../etc/passwd'), 'etcpasswd');
+  assert.equal(avatarKey('Bang/Ed..Toes'), 'banged.toes');
+  assert.equal(avatarKey('..'), '');
+  assert.equal(avatarKey('./.hidden'), 'hidden');
+  assert.equal(avatarKey('%2e%2e%2f'), '2e2e2f');
+  assert.equal(avatarKey('a'.repeat(300)).length, 64, 'and cannot be arbitrarily long');
+  for (const nasty of ['../../etc/passwd', '..', './.hidden', 'a/../../b']) {
+    assert.equal(/[/\\]/.test(avatarKey(nasty)), false, `${nasty} keeps a separator`);
+  }
+  assert.equal(avatarRoute('bangeduptoes'), '/portal/avatar/bangeduptoes');
+});
