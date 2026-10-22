@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mintToken, readToken, portalSecret, allLinks, ROLE } from '../lib/portaltoken.mjs';
-import { buildPortal, diagnose, STATE } from '../lib/portal.mjs';
+import { buildPortal, diagnose, creatorMessage, STATE } from '../lib/portal.mjs';
 import { coachPage, directorPage, esc, EARNINGS_DISCLAIMER } from '../lib/portalhtml.mjs';
 
 const SECRET = 'a-test-secret-of-sufficient-length';
@@ -457,4 +457,41 @@ test('a creator who is urgent is not also listed under the other two sections', 
   // One call to make, not three.
   const page = coachPage(view, { config: {} });
   assert.equal(page.split('@both').length - 1 > 0, true);
+});
+
+// --- what a coach actually sends -----------------------------------------------
+
+test('every diagnosis comes with a message a coach can paste', () => {
+  const view = portalOf([{
+    creator: creator('a'),
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }),
+  }]).byCoach.get('josh@leap.com');
+  const d = view.attention[0].diagnosis;
+  assert.ok(d.message && d.message.length > 40);
+  assert.match(d.message, /@a/);
+});
+
+test('a message to a creator never carries a figure', () => {
+  // The standing rule for anything creator-facing, and the one that would be
+  // most expensive to break: a creator sent their own diamond count has been
+  // shown the agency's books.
+  const levers = ['dark', 'hours', 'conversion', 'days', 'gifting', 'rate', 'anomaly', 'hold'];
+  for (const lever of levers) {
+    const msg = creatorMessage(lever, 'someone');
+    assert.ok(msg.length > 40, `${lever} has a real message`);
+    // No digit groups that could be a diamond count, an hour count or money.
+    assert.equal(/\d{2,}/.test(msg), false, `${lever} message contains a number: ${msg}`);
+    assert.equal(/[£$€]/.test(msg), false, `${lever} message contains money`);
+    assert.equal(/diamond/i.test(msg), false, `${lever} message names diamonds`);
+  }
+});
+
+test('money below a pound is left off a card rather than dressed as an incentive', () => {
+  const c = creator('tiny');
+  const view = portalOf([{
+    creator: c,
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 }, dailyDiamonds7: 1 }),
+  }]).byCoach.get('josh@leap.com');
+  const page = coachPage(view, { config: {} });
+  assert.equal(/£0\.\d\d\/wk/.test(page), false, 'no nine-pence urgency');
 });

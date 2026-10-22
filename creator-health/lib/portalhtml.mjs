@@ -39,20 +39,31 @@ const toneOf = (x) => (x == null ? '' : x > 0.02 ? 'up' : x < -0.02 ? 'down' : '
 // colour also means "fine" cannot say "fine" and "LEAP" at the same time.
 const CSS = `
 :root{
---brand:#004AAD; --brand-lift:#5b9bf0; --brand-deep:#00357c;
---bg:#080c13; --card:#111822; --card-2:#0d141d; --line:#1e2836;
---ink:#f2f5f9; --dim:#8b97a8;
---act:#ff5a5a; --watch:#ffb03a; --good:#3ddc84; --idle:#5b6676;
+/* Sampled from LEAP's own Canva: the gaming ranking cards run a deep navy to
+   blue gradient with white glow on everything that matters. #004AAD is the
+   logo blue, straight off the mark. */
+--brand:#004AAD; --brand-lift:#6aa6ff; --brand-deep:#00254f;
+--navy:#041134; --navy-2:#071d44; --navy-3:#072d6c;
+--bg:#030b1e; --card:#0a1733; --card-2:#071228; --line:#15295a;
+--ink:#ffffff; --dim:#93a6c9;
+--act:#ff5f6d; --watch:#ffb648; --good:#4fe08a; --idle:#5d6f91;
+--glow:0 0 18px rgba(255,255,255,.28);
 color-scheme:dark}
 *{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--ink);
+body{margin:0;color:var(--ink);
+background:var(--bg);
+background-image:radial-gradient(900px 600px at 18% -5%,var(--navy-3) 0%,transparent 60%),
+radial-gradient(800px 700px at 100% 8%,#0a2a63 0%,transparent 55%),
+linear-gradient(180deg,var(--navy) 0%,var(--bg) 55%);
+background-attachment:fixed;
 font:15px/1.55 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
 -webkit-text-size-adjust:100%}
 .wrap{max-width:980px;margin:0 auto;
 padding-left:max(16px,env(safe-area-inset-left,0px));
 padding-right:max(16px,env(safe-area-inset-right,0px));padding-block:18px}
 .brandbar{display:flex;align-items:center;gap:11px;margin-bottom:14px}
-.brandbar img{width:34px;height:34px;border-radius:9px;flex:0 0 auto}
+.brandbar img{width:36px;height:36px;border-radius:10px;flex:0 0 auto;
+box-shadow:0 0 16px rgba(0,74,173,.6)}
 .brandbar .who{min-width:0}
 .brandbar h1{font-size:19px;margin:0;letter-spacing:-.01em;text-wrap:balance}
 .brandbar .meta{color:var(--dim);font-size:12.5px}
@@ -61,11 +72,13 @@ margin:30px 0 4px;font-weight:700}
 h2 .count{color:var(--ink)}
 .lede{color:var(--dim);font-size:12.5px;margin:0 0 11px}
 .sub{color:var(--dim);font-size:13px;margin:0 0 6px}
-.card{background:var(--card);border:1px solid var(--line);border-radius:13px;
-padding:13px;margin-bottom:9px}
+.card{background:linear-gradient(180deg,rgba(13,30,66,.92),rgba(7,18,40,.92));
+border:1px solid var(--line);border-radius:14px;padding:13px;margin-bottom:9px}
+.stat .v,.brandbar h1{text-shadow:var(--glow)}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(132px,1fr));gap:9px}
 .stat{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:12px}
-.stat.hero{background:linear-gradient(145deg,var(--brand),var(--brand-deep));border-color:#0a59c4}
+.stat.hero{background:linear-gradient(145deg,#0a59c4,var(--brand-deep));border-color:#1d6fe0;
+box-shadow:0 0 26px rgba(10,89,196,.35)}
 .stat .k{color:var(--dim);font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;font-weight:600}
 .stat.hero .k{color:#cfe0f8}
 .stat .v{font-size:21px;font-weight:680;margin-top:3px;font-variant-numeric:tabular-nums}
@@ -75,7 +88,8 @@ padding:13px;margin-bottom:9px}
 border:1px solid var(--line);border-radius:999px;padding:4px 11px;font-size:12.5px;color:var(--dim)}
 .pill b{color:var(--ink);font-variant-numeric:tabular-nums}
 .row{display:flex;justify-content:space-between;align-items:baseline;gap:10px}
-.name{font-weight:670;min-width:0;overflow-wrap:anywhere}
+.name{font-weight:670;min-width:0;flex:1 1 auto;overflow-wrap:anywhere}
+.row .worth,.row .risk{flex:0 0 auto}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;
 vertical-align:middle;flex:0 0 auto}
 .dot.act,.act>.row .dot{background:var(--act)}
@@ -86,6 +100,30 @@ vertical-align:middle;flex:0 0 auto}
 .card.watch{border-left:3px solid var(--watch)}
 .card.good{border-left:3px solid var(--good)}
 .meta{color:var(--dim);font-size:12.5px;margin-top:5px;font-variant-numeric:tabular-nums}
+.chead{display:flex;gap:11px;align-items:flex-start}
+.chead .body{flex:1;min-width:0}
+/* LEAP rings every creator photo in glowing white. It is the one treatment
+   that appears on every card they have ever published, so it appears here. */
+.ava{width:54px;height:54px;border-radius:50%;flex:0 0 auto;object-fit:cover;
+border:2px solid rgba(255,255,255,.92);box-shadow:0 0 14px rgba(255,255,255,.35);
+background:var(--card-2);order:2}
+.ava.none{display:flex;align-items:center;justify-content:center;color:var(--dim);
+font-size:19px;font-weight:700;border-color:rgba(255,255,255,.3);box-shadow:none}
+.quad{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-top:11px}
+.q{background:rgba(3,11,30,.55);border:1px solid var(--line);border-radius:10px;padding:7px 8px;min-width:0}
+.q .k{color:var(--dim);font-size:9.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:700}
+.q .v{font-size:14px;font-weight:680;font-variant-numeric:tabular-nums;margin-top:2px;
+white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.q .c{font-size:10.5px;font-variant-numeric:tabular-nums;margin-top:1px}
+.msg{margin-top:11px;background:rgba(3,11,30,.6);border:1px solid var(--line);
+border-radius:10px;padding:10px}
+.msg .k{color:var(--dim);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;
+font-weight:700;margin-bottom:6px}
+.msg textarea{width:100%;background:transparent;border:0;color:var(--ink);font:inherit;
+font-size:12.5px;line-height:1.5;resize:vertical;min-height:112px;padding:0}
+.msg textarea:focus{outline:2px solid var(--brand-lift);outline-offset:4px;border-radius:4px}
+.copied{color:var(--good);font-size:11.5px;margin-left:8px}
+@media(max-width:430px){.quad{grid-template-columns:repeat(2,1fr)}}
 .worth{color:var(--good);font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
 .risk{color:var(--act);font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
 .up{color:var(--good)}.down{color:var(--act)}.flat{color:var(--dim)}
@@ -164,21 +202,72 @@ function creatorCard(r, { money: moneyLine = null, need = null } = {}) {
   const tt = r.tiktok
     ? `<a class="btn tt" href="${esc(r.tiktok)}" target="_blank" rel="noopener noreferrer">Open TikTok</a>`
     : '';
+  const initial = esc(String(r.username ?? '?').replace(/^@/, '').charAt(0).toUpperCase());
+  const ava = r.avatar
+    ? `<img class="ava" src="${esc(r.avatar)}" alt="" width="54" height="54" loading="lazy">`
+    : `<div class="ava none" aria-hidden="true">${initial}</div>`;
+
+  // Four numbers, each against the same point last month. A change we cannot
+  // compute reads as a dash, never as zero — a creator in their first month has
+  // no last month, and "0%" would say they stood still.
+  const q = (label, value, change) => `<div class="q"><div class="k">${esc(label)}</div>
+<div class="v">${value}</div>
+<div class="c ${toneOf(change)}">${change == null ? '<span class="flat">no last month</span>' : signed(change)}</div></div>`;
+  const mo = r.month ?? {};
+  const quad = `<div class="quad">
+${q('Diamonds', n(mo.diamonds?.now), mo.diamonds?.change)}
+${q('Hours', mo.hours?.now != null ? `${mo.hours.now.toFixed(1)}h` : '—', mo.hours?.change)}
+${q('LIVE days', n(mo.liveDays?.now), mo.liveDays?.change)}
+${q('Fan club', mo.fanClub?.now == null ? '—' : n(mo.fanClub.now), mo.fanClub?.change)}
+</div>`;
+
+  const msgId = `m-${esc(String(r.key ?? r.username).replace(/[^a-zA-Z0-9]/g, ''))}`;
+  const message = d?.message ? `<div class="msg">
+<div class="k">Message to send ${r.username ? `@${esc(r.username)}` : 'them'}</div>
+<textarea id="${msgId}" readonly rows="6">${esc(d.message)}</textarea>
+<div class="acts"><button class="btn" type="button" data-copy="${msgId}">Copy message</button></div>
+</div>` : '';
+
   return `<div class="card ${esc(r.state)}">
-<div class="row"><span class="name"><span class="dot"></span>@${esc(r.username)}${
-  r.group ? `<span class="tag">${esc(r.group)}</span>` : ''}</span>${moneyLine ?? ''}</div>
-<div class="meta">${n(r.diamonds)} this month <span class="${toneOf(r.change)}">${signed(r.change)}</span>
- · ${r.liveDays7} LIVE days / 7 · ${r.hours7.toFixed(1)}h${
+<div class="chead">${ava}
+<div class="body">
+<div class="row"><span class="name"><span class="dot"></span>@${esc(r.username)}</span>${moneyLine ?? ''}</div>
+<div class="meta">${r.group ? `${esc(r.group)} · ` : ''}${r.liveDays7} LIVE days / 7 · ${r.hours7.toFixed(1)}h this week${
   r.perHour ? ` · ${n(r.perHour)}/hour` : ''}${
   need ? ` · ${esc(need)}` : ''}${r.darkStreak >= 2 ? ` · dark ${r.darkStreak}d` : ''}</div>
+</div></div>
+${quad}
 ${d ? `<details class="why"><summary><span class="acts">
 <span class="btn">What the data says</span>${tt}</span></summary>
 <div class="body"><b>${esc(d.headline)}</b><p>${esc(d.detail)}</p>
 ${d.actions?.length ? `<ul>${d.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
 ${d.needsInsights ? '<div class="flag">Gift rate, ACU and watch duration are on the Creator Insights sheet, not here. Check it before the call.</div>' : ''}
+${message}
 </div></details>` : `<div class="acts">${tt}</div>`}
 </div>`;
 }
+
+// The one piece of script on the page. Copy needs a click handler and there is
+// no other way; everything else is plain HTML and CSS on purpose.
+const COPY_JS = `<script>
+document.addEventListener('click', function (ev) {
+  var btn = ev.target.closest('[data-copy]');
+  if (!btn) return;
+  var ta = document.getElementById(btn.getAttribute('data-copy'));
+  if (!ta) return;
+  var done = function () {
+    var tag = btn.parentNode.querySelector('.copied');
+    if (!tag) { tag = document.createElement('span'); tag.className = 'copied'; btn.parentNode.appendChild(tag); }
+    tag.textContent = 'Copied';
+    setTimeout(function () { tag.textContent = ''; }, 2000);
+  };
+  // Older app views refuse the clipboard outright, so fall back to selecting
+  // the text, which leaves the coach one keystroke away rather than stuck.
+  try {
+    navigator.clipboard.writeText(ta.value).then(done, function () { ta.focus(); ta.select(); });
+  } catch (e) { ta.focus(); ta.select(); }
+});
+</script>`;
 
 /** The coach's own page. Their creators, nobody else's. */
 export function coachPage(view, { lastAsOf = null, config = {}, signedIn = false, back = null } = {}) {
@@ -206,7 +295,9 @@ ${e.goals ? `<br>Goals: ${e.goals.diamondsHit ? 'diamonds met' : `${n(e.goals.di
 <p class="lede">Slipping now, and still earning enough to be worth the call.${
   hasMoney && view.atRiskTotal > 0 ? ` About ${money(view.atRiskTotal, cur)} a week of your pay is in this list.` : ''}</p>
 ${view.attention.map((r) => creatorCard(r, {
-    money: hasMoney && r.atRisk > 0.01 ? `<span class="risk">${money(r.atRisk, cur)}/wk at risk</span>` : null,
+    // Below a pound it is not an incentive, it is clutter pretending to be one.
+    money: hasMoney && r.atRisk >= (config.portal?.minMoneyShown ?? 1)
+      ? `<span class="risk">${money(r.atRisk, cur)}/wk at risk</span>` : null,
   })).join('')}${
   view.attentionMore ? `<div class="card"><div class="meta">${view.attentionMore} more are flagged and are in the full roster below. These are the ones worth your morning.</div></div>` : ''}` : `
 <h2>Urgent <span class="count">(0)</span></h2>
@@ -220,7 +311,8 @@ Closest first, and only those who can still get there at something like their cu
   hasMoney && view.chaseTotal > 0 ? ` Closing every gap here is ${money(view.chaseTotal, cur)} to you.` : ''}${
   view.chaseOutOfReach ? ` ${view.chaseOutOfReach} more are inside their 90 days but too far off this month to chase.` : ''}</p>
 ${view.chase.map((r) => creatorCard(r, {
-    money: hasMoney && r.worthIfGraduates > 0.01 ? `<span class="worth">${money(r.worthIfGraduates, cur)}</span>` : null,
+    money: hasMoney && r.worthIfGraduates >= (config.portal?.minMoneyShown ?? 1)
+      ? `<span class="worth">${money(r.worthIfGraduates, cur)}</span>` : null,
     need: `${n(r.graduation.remaining)} to go, ${n(r.graduation.requiredPerDay)}/day`,
   })).join('')}
 ${view.graduated.length ? `<div class="card good"><div class="meta">${view.graduated.length} already past 200,000 this month: ${
@@ -233,7 +325,8 @@ ${view.graduated.length ? `<div class="card good"><div class="meta">${view.gradu
 ${view.upside.length ? `<div class="card"><div class="meta">${view.upside.length} still in reach${
   hasMoney ? `, worth <span class="worth">${money(view.upsideTotal, cur)}</span> if you land them all` : ''}. Only creators who can still get there are listed.</div></div>
 ${view.upside.map((r) => creatorCard(r, {
-    money: hasMoney && r.rank.worthIfCrossed ? `<span class="worth">${money(r.rank.worthIfCrossed, cur)}</span>` : null,
+    money: hasMoney && r.rank.worthIfCrossed >= (config.portal?.minMoneyShown ?? 1)
+      ? `<span class="worth">${money(r.rank.worthIfCrossed, cur)}</span>` : null,
     need: `${n(r.rank.gap)} to tier ${r.rank.toTier + 1}, ${n(r.rank.needPerDay)}/day`,
   })).join('')}` : ''}
 ${view.banked.length ? `<details class="fold"><summary>Banked — do not lose these (${view.banked.length})</summary>
@@ -280,6 +373,7 @@ ${header(view.name, `${view.teams.join(' · ') || 'no team'} · data to ${view.a
 </div>
 ${stale(view.asOf, lastAsOf)}
 ${earnings}${urgent}${chase}${rank}${quests}${activation}${roster}
+${COPY_JS}
 ${hasMoney ? `<p class="note">${esc(EARNINGS_DISCLAIMER)}</p>` : ''}
 ${signedIn ? '<p class="note"><a href="/portal/logout">Sign out</a></p>' : ''}
 <p class="note">Diamonds are month to date and reset on the 1st. The export runs a day

@@ -24,6 +24,7 @@ import { rankCauses, KIND } from './causes.mjs';
 import { graduationLadder } from './graduation.mjs';
 import { planFor } from './ramp.mjs';
 import { isOpen } from './cases.mjs';
+import { avatarRoute } from './avatars.mjs';
 
 const num = (x) => (Number.isFinite(x) ? x : 0);
 const pct = (x) => (Number.isFinite(x) ? x : null);
@@ -176,8 +177,36 @@ export function diagnose(m, { rank = null, config = {} } = {}) {
   };
 }
 
+/**
+ * Something the coach can actually send.
+ *
+ * The gap this closes: a card tells a coach what is wrong and they still have
+ * to work out how to say it to a 19-year-old at 11pm. These are written to be
+ * pasted as they are.
+ *
+ * Creator-facing, so the same rules the creator cards follow apply here and
+ * are not negotiable: NO FIGURES. No diamonds, no hours, no LIVE days, no fan
+ * club numbers, no team names, no coach names, no money. A creator who gets
+ * sent their own diamond count has been shown the agency's books. Warmth and
+ * emojis are fine — these are not coach cards.
+ */
+export function creatorMessage(lever, username) {
+  const at = `@${String(username ?? '').replace(/^@/, '')}`;
+  const MESSAGES = {
+    dark: `Hey ${at} 👀 not seen you go live in a bit and just wanted to check in — all good your end?\n\nNo pressure at all, just here if something's up. And if you're ready to get back on, tell me which night and I'll make sure we're behind you for it 💙`,
+    hours: `${at} 🔥 your room is converting brilliantly right now — the people who turn up are properly backing you.\n\nThe only thing holding you back is how often we're seeing you. Nothing about the content needs changing, we just need you on more. What nights can you lock in this week? 💙`,
+    conversion: `Hey ${at} 💙 want to help you get the room buzzing again.\n\nQuick reset — welcome people in by name, thank every single gift out loud, and keep a goal running so the room knows what they're building towards. It sounds basic and it's the thing that moves it most.\n\nI'll jump in your next live and we'll go from there 🙌`,
+    days: `${at} 👋 noticed we've not had as many nights from you lately.\n\nGetting live more often is the single biggest thing for you right now — the algorithm rewards showing up more than it rewards long sessions. Can we pick some nights and stick to them this week? I'll back you the whole way 💙`,
+    gifting: `Hey ${at} 💙 your hours are great — let's get the room giving back properly.\n\nThree things: welcome people in by name, thank every gift out loud, and keep a goal running so there's something to chase together. Getting you into the next campaign too, they make a massive difference.\n\nWhat do you fancy going for? 🔥`,
+    rate: `${at} 🔥 you're putting the hours in and I want them to pay off properly.\n\nMore time on its own won't do it — let's work on the room instead. Fan club, goals and getting you matched up with other creators so new people find you. Free for a quick chat this week? 💙`,
+    anomaly: `${at} 🚀 you are having an absolutely unreal month and I'm not letting it go unnoticed.\n\nWhatever you've changed, keep doing it. Don't switch anything up right now — just keep showing up the way you are. Properly proud of you 💙`,
+    hold: `${at} 💙 just a quick one — you're doing everything right at the minute. Keep going, keep showing up, and shout if you need anything 🙌`,
+  };
+  return MESSAGES[lever] ?? MESSAGES.hold;
+}
+
 /** One roster line. Everything a coach sorts on, and the colour. */
-function rosterRow({ creator, metrics, rank, alert, quest, grad, config }) {
+function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvatar = null }) {
   const m = metrics;
   const mtd = num(m?.monthToDate?.diamonds);
   const change = pct(m?.monthOnMonth?.diamonds?.change);
@@ -205,6 +234,10 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config }) {
     // cannot see — are they posting short form, what does the room look like —
     // and a coach should not have to retype a handle to go and look.
     tiktok: creator.username ? `https://www.tiktok.com/@${encodeURIComponent(creator.username)}` : null,
+    // Served by us, not by TikTok: their avatar URLs are signed and expire
+    // within the day, so a page that linked them straight would show a wall of
+    // broken squares by tomorrow morning.
+    avatar: creator.username && hasAvatar?.(creator.username) ? avatarRoute(creator.username) : null,
     group: creator.group ?? null,
     joinDate: creator.joinDate ?? null,
     state,
@@ -217,6 +250,16 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config }) {
     liveDays28: num(m?.activeDays28),
     hours7: num(m?.curr7?.liveHours),
     perHour: m?.diamondsPerHour28 ?? null,
+    // The four numbers Perry asked for, each against the same point last
+    // month. `monthOnMonth` carries the comparison and is null for anyone with
+    // no previous month, so the value falls back to this month's own total and
+    // the change reads as unavailable rather than as zero.
+    month: {
+      diamonds: { now: Math.round(num(m?.monthToDate?.diamonds)), change: pct(m?.monthOnMonth?.diamonds?.change) },
+      hours: { now: num(m?.monthToDate?.liveHours), change: pct(m?.monthOnMonth?.liveHours?.change) },
+      liveDays: { now: Math.round(num(m?.monthToDate?.validLiveDays)), change: pct(m?.monthOnMonth?.validLiveDays?.change) },
+      fanClub: { now: m?.fanClub?.activeFans ?? null, change: pct(m?.fanClub?.activeFansChange14) },
+    },
     perDay7: Math.round(num(m?.dailyDiamonds7)),
     darkStreak: m?.darkStreak ?? 0,
     fanClub: m?.fanClub?.activeFans ?? null,
@@ -229,7 +272,10 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config }) {
     quest: quest ?? null,
     graduation: grad ? { remaining: grad.remaining, done: grad.done, requiredPerDay: grad.requiredPerDay } : null,
     alert: alert ? { severity: alert.severity, signals: alert.signals.map((s) => s.label ?? s.id) } : null,
-    diagnosis: diagnose(m, { rank, config }),
+    diagnosis: (() => {
+      const d = diagnose(m, { rank, config });
+      return d ? { ...d, message: creatorMessage(d.lever, creator.username) } : d;
+    })(),
   };
 }
 
@@ -242,6 +288,7 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config }) {
  */
 export function buildPortal({
   result, config, revenue = null, rankUp = null, quests = null, caseStore = null,
+  hasAvatar = null,
 }) {
   const { creators, metricsByKey, alerts = [], ramp = [], activation = [], asOf } = result;
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
@@ -276,6 +323,7 @@ export function buildPortal({
       rank: rankByKey.get(c.key) ?? null,
       alert: alertByKey.get(c.key) ?? null,
       quest: questByKey.get(c.key) ?? null,
+      hasAvatar,
       grad: g ? { remaining: Math.max(0, (config.ramp?.targetDiamonds ?? 200000) - g.monthToDate), done: g.monthToDate >= (config.ramp?.targetDiamonds ?? 200000), requiredPerDay: g.requiredPerDay } : null,
       config,
     }));

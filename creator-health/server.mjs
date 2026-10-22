@@ -69,6 +69,7 @@ import { leapedState } from './lib/leaped.mjs';
 import { coachRevenue } from './lib/revenue.mjs';
 import { rankUpBoard } from './lib/tiers.mjs';
 import { questBoard } from './lib/sidequest.mjs';
+import { refreshAvatars, avatarBytes, hasAvatar, avatarKey } from './lib/avatars.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -618,6 +619,16 @@ async function handleSideQuests(req, res, url) {
  * page must never advance a cooldown, burn a milestone card or write a leap.
  * `persist: false` on every stage is load-bearing, not caution.
  */
+// One refresh at a time, so opening five pages does not start five crawls.
+let avatarRun = null;
+function queueAvatars(usernames) {
+  if (avatarRun) return;
+  const cap = config.portal?.avatarsPerRun ?? 20;
+  avatarRun = refreshAvatars(config.dataDir, usernames, { max: cap })
+    .catch(() => null)
+    .finally(() => { avatarRun = null; });
+}
+
 function portalData(asOf = null) {
   const result = analyse(config, { asOf, persist: false });
   const store = new Store(config.dataDir);
@@ -633,7 +644,10 @@ function portalData(asOf = null) {
     // No quests set this month is the normal state for three weeks out of four.
     quests = null;
   }
-  const portal = buildPortal({ result, config, revenue, rankUp, quests, caseStore });
+  const portal = buildPortal({
+    result, config, revenue, rankUp, quests, caseStore,
+    hasAvatar: (u) => hasAvatar(config.dataDir, u),
+  });
   return { portal, revenue, lastAsOf: store.readSeries()?.lastAsOf ?? null };
 }
 
@@ -673,6 +687,20 @@ async function handlePortal(req, res, url, route) {
     return res.end();
   }
 
+  if (parts[1] === 'avatar' && parts[2]) {
+    // Public by design: it is a profile picture that TikTok already serves to
+    // the world, and gating it behind the session would mean every image on
+    // the page carrying a cookie. Nothing about who coaches whom leaks from it.
+    const bytes = avatarBytes(config.dataDir, decodeURIComponent(parts[2]));
+    if (!bytes) { res.writeHead(404); return res.end(); }
+    res.writeHead(200, {
+      'content-type': 'image/jpeg',
+      'cache-control': 'public, max-age=86400',
+      'content-length': bytes.length,
+    });
+    return res.end(bytes);
+  }
+
   if (parts[1] === 'logout') {
     res.writeHead(302, { location: '/portal', 'set-cookie': sessionCookie(null, { secure: secureCookie }) });
     return res.end();
@@ -709,6 +737,28 @@ async function handlePortal(req, res, url, route) {
 
   const { portal, revenue, lastAsOf } = portalData(url.searchParams.get('as-of'));
   const signedIn = Boolean(sessionId);
+  // Top the picture cache up a few at a time, after the response has gone out.
+  // Done here rather than inside a branch so every way of reaching a page —
+  // a coach's own, a team link, a director opening somebody's roster — keeps
+  // the cache warm. A page is never held up waiting for a face.
+  // Whose page is about to be rendered — including a director opening one
+  // coach's roster, which is the commonest way this is read and was the one
+  // case that fell through to filling the cache alphabetically.
+  const drillIdx = parts[1] === 't' ? 1 : (parts[2] === 't' ? 2 : -1);
+  const drillInto = claim.role === 'director' && drillIdx > 0 && parts[drillIdx + 1]
+    ? decodeURIComponent(parts[drillIdx + 1]).toLowerCase() : null;
+  const focus = drillInto ? portal.byCoach.get(drillInto)
+    : claim.role === 'coach' ? portal.byCoach.get(claim.subject)
+      : claim.role === 'team' ? (portal.byTeam.get(claim.subject)
+        ?? [...portal.byTeam.entries()].find(([t]) => t.toLowerCase() === claim.subject)?.[1])
+        : null;
+  queueAvatars([
+    // The faces on the page being rendered first. Without this the cache fills
+    // alphabetically across the whole network and the coach looking at it now
+    // is the last to get their own creators.
+    ...(focus?.rows ?? []).map((r) => r.username),
+    ...portal.coaches.flatMap((c) => c.rows.map((r) => r.username)),
+  ]);
 
   if (claim.role === 'team') {
     // Token subjects are lower-cased on the way in, team names are not, so the
