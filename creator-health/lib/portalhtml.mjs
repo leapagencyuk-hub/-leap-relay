@@ -99,6 +99,8 @@ vertical-align:middle;flex:0 0 auto}
 .card.act{border-left:3px solid var(--act)}
 .card.watch{border-left:3px solid var(--watch)}
 .card.good{border-left:3px solid var(--good)}
+.card:target{outline:2px solid var(--brand-lift);outline-offset:3px;
+box-shadow:0 0 24px rgba(106,166,255,.35);scroll-margin-top:16px}
 .meta{color:var(--dim);font-size:12.5px;margin-top:5px;font-variant-numeric:tabular-nums}
 .chead{display:flex;gap:11px;align-items:flex-start}
 .chead .body{flex:1;min-width:0}
@@ -228,7 +230,11 @@ ${q('Fan club', mo.fanClub?.now == null ? '—' : n(mo.fanClub.now), mo.fanClub?
 <div class="acts"><button class="btn" type="button" data-copy="${msgId}">Copy message</button></div>
 </div>` : '';
 
-  return `<div class="card ${esc(r.state)}">
+  // Anchored by handle so a monitoring ping can link to this exact creator.
+  // A card that says "open their card" and drops you at the top of a page of
+  // thirty is a card that lied.
+  const anchor = esc(String(r.username ?? '').toLowerCase().replace(/[^a-z0-9._-]/g, ''));
+  return `<div class="card ${esc(r.state)}"${anchor ? ` id="c-${anchor}"` : ''}>
 <div class="chead">${ava}
 <div class="body">
 <div class="row"><span class="name"><span class="dot"></span>@${esc(r.username)}</span>${moneyLine ?? ''}</div>

@@ -608,3 +608,65 @@ test('Cam sees his stats and never a figure of money', () => {
   assert.equal(page.includes('at risk'), false, 'and no value-at-risk line');
   assert.ok(page.includes('@a'), 'but he still sees his roster');
 });
+
+// --- Discord points at the portal, and lands where it says ----------------------
+
+import { dailyOverviewEmbed, teamPortalEmbed, declineBriefEmbed } from '../lib/discord.mjs';
+
+test('a creator card is anchored so a ping can link straight to it', () => {
+  const view = portalOf([{
+    creator: creator('BangedUpToes'),
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }),
+  }]).byCoach.get('josh@leap.com');
+  assert.ok(coachPage(view, { config: {} }).includes('id="c-bangeduptoes"'));
+});
+
+test('the monitoring ping links to that creator, not to the top of the page', () => {
+  const c = { id: 'x', username: 'BangedUpToes', creatorKey: 'id:1', coach: 'josh@leap.com',
+    group: 'Team Alpha', severity: 'urgent', kind: 'decline', openedOn: '2026-10-19',
+    firstSeenOn: '2026-10-19', playbookId: 'DIAMONDS_DOWN' };
+  const alert = { creator: { username: 'BangedUpToes' }, metrics: metrics({ darkStreak: 4 }) };
+  const out = declineBriefEmbed(c, alert, {
+    buttons: false, config: {}, portalUrl: 'https://x/portal',
+    diagnosis: { headline: 'Gone dark', detail: 'Find out why.' },
+  });
+  const body = JSON.stringify(out);
+  assert.ok(body.includes('https://x/portal#c-bangeduptoes'));
+  assert.ok(body.includes('Gone dark'), 'and carries the same reading the portal shows');
+});
+
+test('with no portal the monitoring card keeps the full evidence', () => {
+  // Cutting the detail with nowhere to point is just losing the detail.
+  const c = { id: 'x', username: 'a', creatorKey: 'id:1', coach: 'josh@leap.com', group: 'T',
+    severity: 'urgent', kind: 'decline', openedOn: '2026-10-19', firstSeenOn: '2026-10-19',
+    playbookId: 'DIAMONDS_DOWN', weekly: false, baseline: {} };
+  const alert = { creator: { username: 'a' }, metrics: metrics(), signals: [], causes: [] };
+  const brief = declineBriefEmbed(c, alert, { buttons: false, config: {}, portalUrl: null });
+  assert.ok(JSON.stringify(brief).length > 200, 'falls back to the long card');
+});
+
+test('the owners card is six things and a door', () => {
+  const portal = portalOf([{
+    creator: creator('a'),
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }),
+  }]);
+  const out = dailyOverviewEmbed({ portal, asOf: '2026-10-19', config: {}, portalUrl: 'https://x/portal' });
+  assert.equal(out.embeds[0].fields.length, 6, 'six, because that is what fits on a phone');
+  assert.match(out.embeds[0].fields[0].name, /^1\. /);
+  assert.equal(out.components[0].components[0].url, 'https://x/portal');
+  // Counts are never bare: every line that has somebody on it names somebody.
+  assert.match(out.embeds[0].fields[0].value, /@a/);
+});
+
+test('a team card in a shared channel still shows no money', () => {
+  const portal = portalOf([{
+    creator: creator('a'),
+    metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }),
+  }]);
+  const out = teamPortalEmbed({
+    view: portal.byTeam.get('Team Alpha'), team: 'Team Alpha', asOf: '2026-10-19',
+    config: {}, portalUrl: 'https://x/portal',
+  });
+  assert.equal(JSON.stringify(out).includes('£'), false);
+  assert.equal(out.components[0].components[0].url, 'https://x/portal');
+});

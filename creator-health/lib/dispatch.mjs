@@ -6,6 +6,7 @@
 import {
   Discord, declineEmbed, opportunityEmbed, activationEmbed, followUpEmbed,
   escalationEmbed, overviewEmbed, programmesEmbed, activationRosterEmbed,
+  dailyOverviewEmbed, teamPortalEmbed, declineBriefEmbed,
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
   hardestWorkerEmbed, creatorWeekEmbed, starlightEmbed, starlightOverviewEmbed,
@@ -31,6 +32,7 @@ import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
 import { rankUpBoard } from './tiers.mjs';
 import { portalSecret } from './portaltoken.mjs';
+import { buildPortal, diagnose } from './portal.mjs';
 import { sweeper, sweepDuplicates, titleOf } from './sweep.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
@@ -198,6 +200,15 @@ export async function dispatch({
   // working around it: the link is identical for everyone, and the server
   // decides what the person who clicked it is allowed to see.
   const portalFor = () => (portalBase && portalKey ? `${portalBase}/portal` : null);
+
+  // The same reading the portal prints on that creator's card, so the ping and
+  // the page never give a coach two different answers. Taken straight from the
+  // metrics rather than from the built portal, because the cases are dispatched
+  // long before the revenue and rank-up boards those need exist.
+  const diagnosisFor = (key) => {
+    const m = metricsByKey.get(key);
+    return m ? diagnose(m, { config }) : null;
+  };
 
   const activationSummary = activation.length ? {
     total: activation.length,
@@ -396,7 +407,7 @@ export async function dispatch({
     if (c.kind === 'decline') {
       const alert = alertByKey.get(c.creatorKey);
       if (!alert) continue;
-      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config, portalUrl: portalFor() }), c);
+      await send('case-opened', c.coach, route, declineBriefEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config, portalUrl: portalFor(), diagnosis: diagnosisFor(c.creatorKey) }), c);
     } else if (c.kind === 'activation') {
       const r = activationRoute(c);
       await send('activation-opened', c.coach, r, activationEmbed(c, { mention: r.mention, buttons, avatar: avatarConfig, metrics: metricsByKey.get(c.creatorKey), config }), c);
@@ -416,7 +427,7 @@ export async function dispatch({
     const alert = alertByKey.get(c.creatorKey);
     if (!alert) continue;
     const route = routeFor(c, discordConfig);
-    const payload = declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config, portalUrl: portalFor() });
+    const payload = declineBriefEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config, portalUrl: portalFor(), diagnosis: diagnosisFor(c.creatorKey) });
     payload.embeds[0].title = `${payload.embeds[0].title} (getting worse)`;
     await send('case-worsened', c.coach, route, payload, c);
   }
@@ -529,6 +540,17 @@ export async function dispatch({
     ? rankUpBoard({ creators, asOf, config })
     : null;
 
+  // The same view model the portal renders from, built once here so a card and
+  // the page it links to can never tell a coach two different things. Wrapped
+  // because a card failing to build must not take the whole daily run down.
+  let portalView = null;
+  try {
+    portalView = buildPortal({
+      result: { creators, metricsByKey, alerts, ramp, activation, asOf },
+      config, revenue, rankUp, quests: null, caseStore: store,
+    });
+  } catch { portalView = null; }
+
   // --- the daily picture of each team ---------------------------------------
   // Posted before the escalation and the overview, so a coach opening Discord
   // in the morning reads where their team stands before they read what is
@@ -548,7 +570,15 @@ export async function dispatch({
       // channel stops being read.
       if (!summary.roster.earning) continue;
       const route = { webhook: entry.webhook, channelId: entry.channelId };
-      const card = teamSummaryEmbed(summary, { config, portalUrl: portalFor() });
+      // The portal card where we have a portal to send them to, the old long
+      // summary where we do not. Losing the detail with nowhere to point is
+      // just losing the detail.
+      const teamView = portalView?.byTeam?.get(team)
+        ?? [...(portalView?.byTeam ?? new Map()).entries()]
+          .find(([t]) => groupKey(t) === groupKey(team))?.[1];
+      const card = (portalFor() && teamView)
+        ? teamPortalEmbed({ view: teamView, team, asOf, config, portalUrl: portalFor() })
+        : teamSummaryEmbed(summary, { config, portalUrl: portalFor() });
       await (replaces('teamSummary')
         ? replaceLast('team-summary', team, route, card, `summary:${groupKey(team)}`)
         : send('team-summary', team, route, card));
@@ -871,7 +901,9 @@ export async function dispatch({
 
   const alreadyPosted = store.data.lastOverviewOn === asOf;
   if (summaryRoute && (!alreadyPosted || forceSummary || again('overview'))) {
-    const card = overviewEmbed({
+    const card = (portalFor() && portalView)
+      ? dailyOverviewEmbed({ portal: portalView, asOf, config, portalUrl: portalFor() })
+      : overviewEmbed({
       asOf, stats, caseStats: caseStats(store, asOf), alerts, ramp, spotlight,
       changes, sent, teams: teamOutcomes(store, { now: asOf }), health,
       openCases: store.all().filter(isOpen),
@@ -888,7 +920,9 @@ export async function dispatch({
     // The redo control rides the management overview, where the directors are,
     // and only when the interactions endpoint is actually listening — an
     // unanswered button reads as a broken tool.
-    if (buttons) card.components = redoButton({ enabled: true });
+    // Merge rather than assign: the portal card already carries its own link
+    // button, and overwriting components would drop the door it opens.
+    if (buttons) card.components = [...(card.components ?? []), ...redoButton({ enabled: true })];
     await (replaces('overview')
       ? replaceLast('overview', '(overview)', summaryRoute, card, 'overview')
       : send('overview', '(overview)', summaryRoute, card));

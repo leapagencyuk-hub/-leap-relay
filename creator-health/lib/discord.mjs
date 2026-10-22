@@ -2753,3 +2753,184 @@ export function overviewEmbed({
     }],
   };
 }
+
+// --- the portal era -----------------------------------------------------------
+//
+// These three replace the long cards on the channels a person actually reads
+// every morning. The reasoning is the same for all of them: the portal now
+// holds everything, so a Discord card's job is no longer to BE the report. It
+// is to say what changed and send somebody to the place that explains it.
+//
+// A card that reprints the whole picture every day trains people to scroll past
+// it. A card with six lines and a link gets opened.
+
+/** LEAP blue, from the mark. */
+const LEAP_BLUE = 0x004aad;
+
+/**
+ * The owners' morning card: six things, and the door.
+ *
+ * Six because that is what fits on a phone without scrolling, and because a
+ * director's question is "is there anything I have to deal with today", not
+ * "show me the network". Every line is a count with one name on it, so the
+ * answer is either "no" in three seconds or a reason to open the portal.
+ */
+export function dailyOverviewEmbed({ portal, asOf, config = {}, portalUrl = null }) {
+  const cur = config.leaped?.currency ?? 'GBP';
+  const net = portal.network;
+  const gbp = (x) => (Number.isFinite(x)
+    ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(x)
+    : '—');
+
+  // One name per line, biggest first, so a count is never just a count.
+  const all = portal.coaches.flatMap((c) => c.rows.map((r) => ({ ...r, coachName: c.name })));
+  const urgent = all.filter((r) => r.state === 'act').sort((a, b) => b.diamonds - a.diamonds);
+  const chase = portal.coaches.flatMap((c) => c.chase.map((r) => ({ ...r, coachName: c.name })))
+    .sort((a, b) => a.graduation.remaining - b.graduation.remaining);
+  const upside = portal.coaches.flatMap((c) => c.upside.map((r) => ({ ...r, coachName: c.name })))
+    .sort((a, b) => b.rank.worthIfCrossed - a.rank.worthIfCrossed);
+  const graduated = portal.coaches.flatMap((c) => c.graduated);
+  const neverStarted = portal.coaches.reduce((t, c) => t + c.activation.length, 0);
+
+  const lead = (rows, render) => (rows.length ? ` — ${render(rows[0])}` : '');
+  const items = [
+    ['Slipping now', urgent.length
+      ? `**${urgent.length}** earning creators${lead(urgent, (r) => `worst is **@${r.username}** (${r.coachName})`)}`
+      : 'Nobody earning is sliding today.'],
+    ['Chasing 200k', chase.length
+      ? `**${chase.length}** can still land it this month${lead(chase, (r) => `closest is **@${r.username}**, ${n(r.graduation.remaining)} to go`)}`
+      : 'Nobody is inside reach of 200k this month.'],
+    ['Rank ups in reach', upside.length
+      ? `**${upside.length}** still winnable, worth **${gbp(net.upsideTotal)}** to the coaches${lead(upside, (r) => `biggest is **@${r.username}**`)}`
+      : 'No rank ups left in reach this month.'],
+    ['Already banked', `**${net.rankUps}** ranked up, **${net.maintains}** maintaining${
+      graduated.length ? `, **${graduated.length}** past 200k` : ''}`],
+    ['Never started', neverStarted
+      ? `**${neverStarted}** on the roster have not earned yet`
+      : 'Everyone on the roster is earning.'],
+    ['Committed so far', `**${gbp(net.payroll)}** in coach pay this month across **${portal.coaches.length}** coaches`],
+  ];
+
+  return {
+    embeds: [{
+      title: `Daily overview — ${asOf}`,
+      description: 'Six things worth knowing this morning. Everything behind them is in the portal.',
+      color: urgent.length ? COLOR.warn : LEAP_BLUE,
+      fields: items.map(([name, value], i) => ({ name: `${i + 1}. ${name}`, value })),
+      ...(portalUrl ? { url: portalUrl } : {}),
+      footer: { text: portalUrl ? 'Open the portal to work any of these' : `as of ${asOf}` },
+      timestamp: new Date().toISOString(),
+    }],
+    ...(portalUrl ? {
+      components: [{
+        type: 1,
+        components: [{ type: 2, style: 5, label: 'Open the portal', url: portalUrl }],
+      }],
+    } : {}),
+  };
+}
+
+/**
+ * A team's morning card.
+ *
+ * Replaces the long daily summary on the team's summary channel. The summary
+ * was a good report and nobody was going to read a good report every day
+ * forever; this says the shape of the day and sends them to the page that
+ * carries the names, the numbers and what to say.
+ */
+export function teamPortalEmbed({ view, team, asOf, config = {}, portalUrl = null }) {
+  const cur = config.leaped?.currency ?? 'GBP';
+  const gbp = (x) => (Number.isFinite(x)
+    ? new Intl.NumberFormat('en-GB', { style: 'currency', currency: cur, maximumFractionDigits: 0 }).format(x)
+    : '—');
+  const names = (rows, limit = 3) => rows.slice(0, limit).map((r) => `@${r.username}`).join(', ')
+    + (rows.length > limit ? ` +${rows.length - limit} more` : '');
+
+  const fields = [];
+  if (view.attention.length) {
+    fields.push({
+      name: `Urgent (${view.counts.act})`,
+      value: `${names(view.attention)}\nSlipping now and still earning. These are the calls to make first.`,
+    });
+  }
+  if (view.chase.length) {
+    fields.push({
+      name: `Chasing 200k (${view.chase.length})`,
+      value: `${names(view.chase)}\nClosest is **@${view.chase[0].username}**, ${n(view.chase[0].graduation.remaining)} to go at ${n(view.chase[0].graduation.requiredPerDay)}/day.`,
+    });
+  }
+  if (view.upside.length) {
+    fields.push({
+      name: `Rank ups in reach (${view.upside.length})`,
+      value: `${names(view.upside)}${view.earningsHidden ? '' : `\nWorth **${gbp(view.upsideTotal)}** if they all land.`}`,
+    });
+  }
+  if (!fields.length) {
+    fields.push({
+      name: 'Nothing needs you today',
+      value: 'Nobody earning is sliding, and nothing is in reach that is not already on track. Keep them excited.',
+    });
+  }
+
+  return {
+    embeds: [{
+      title: `${team} — ${asOf}`,
+      description: `${view.counts.roster} creators · ${n(view.diamonds)} diamonds this month`,
+      color: view.counts.act ? COLOR.warn : LEAP_BLUE,
+      fields,
+      ...(portalUrl ? { url: portalUrl } : {}),
+      footer: { text: portalUrl ? 'The portal has the numbers, the reason and what to send' : `as of ${asOf}` },
+      timestamp: new Date().toISOString(),
+    }],
+    ...(portalUrl ? {
+      components: [{
+        type: 1,
+        components: [{ type: 2, style: 5, label: 'Open your portal', url: portalUrl }],
+      }],
+    } : {}),
+  };
+}
+
+/**
+ * One creator is slipping.
+ *
+ * The short form of the decline card, for the monitoring channel. It says who,
+ * what moved and the one-line reading, and nothing else — the full evidence,
+ * the playbook and the message to send are all on the creator's card in the
+ * portal, and repeating them here is how the long version stopped being read.
+ *
+ * Falls back to the full card when there is no portal to send anyone to:
+ * cutting the detail with nowhere to point is just losing the detail.
+ */
+export function declineBriefEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null, config = {}, portalUrl = null, diagnosis = null } = {}) {
+  if (!portalUrl) return declineEmbed(caseRecord, alert, { mention, buttons, avatar, config });
+  const m = alert.metrics;
+  // Straight to this creator's card, not the top of the page.
+  const anchor = String(caseRecord.username ?? '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
+  const cardUrl = anchor ? `${portalUrl}#c-${anchor}` : portalUrl;
+  const moved = [
+    m.change7?.diamonds != null ? `diamonds ${pct(m.change7.diamonds)}` : null,
+    m.change7?.liveHours != null ? `hours ${pct(m.change7.liveHours)}` : null,
+    m.darkStreak >= 2 ? `dark ${m.darkStreak} days` : null,
+  ].filter(Boolean).join(' · ');
+
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      author: authorBlock(caseRecord, avatar),
+      title: `@${caseRecord.username} is slipping`,
+      description: diagnosis?.headline
+        ? `**${diagnosis.headline}** — ${diagnosis.detail}`
+        : 'See the portal for what the data says and what to do about it.',
+      color: COLOR[caseRecord.severity] ?? COLOR.warn,
+      fields: [
+        { name: 'This week', value: moved || 'No week-on-week movement recorded.', inline: false },
+        { name: 'In the portal', value: `[Open their card](${cardUrl}) — the numbers against last month, what the data says, and a message you can send them.` },
+      ],
+      url: cardUrl,
+      footer: { text: footerText(caseRecord, config) },
+      timestamp: new Date().toISOString(),
+    }],
+    components: caseButtons(caseRecord, { enabled: buttons }),
+  };
+}
