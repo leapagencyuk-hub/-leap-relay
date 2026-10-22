@@ -205,6 +205,31 @@ export function creatorMessage(lever, username) {
   return MESSAGES[lever] ?? MESSAGES.hold;
 }
 
+/**
+ * The nudge a coach sends about a target.
+ *
+ * This one DOES carry a figure, and the distinction is deliberate.
+ *
+ * The decline messages above carry none, because "your gifting is down 80%"
+ * tells a creator how we grade them and lands as a complaint. A target is the
+ * opposite: Carla's own rule from the 22 October call is "tell them the number
+ * — a creator who does not know the target cannot chase it." And it is not a
+ * disclosure, because a creator can already see their own diamond count in
+ * their own LIVE Backstage. What they cannot see, and what never goes in here,
+ * is anybody else's numbers, what the agency earns, or what their coach is paid.
+ */
+export function rankMessage(username, { gap, perDay, tier, daysLeft }) {
+  const at = `@${String(username ?? '').replace(/^@/, '')}`;
+  const nf = (x) => Math.round(x).toLocaleString('en-GB');
+  if (!gap || gap <= 0) {
+    return `${at} 🔥 you've already done it this month — you're holding your tier and that is money in your pocket.\n\nDon't ease off now. Keep the nights you've been doing and let's finish strong 💙`;
+  }
+  const days = daysLeft > 0 ? daysLeft : 1;
+  // Plain text, no markdown. A coach might paste this into Discord, where
+  // **bold** renders, or into a TikTok DM, where it shows as asterisks.
+  return `${at} 👀 you are closer than you think.\n\n${nf(gap)} diamonds off Tier ${tier} — that's about ${nf(perDay ?? gap / days)} a day for the rest of the month. Completely doable if we lock the nights in.\n\nTell your community what you're going for, they'll get behind it. Let's go 🔥💙`;
+}
+
 /** One roster line. Everything a coach sorts on, and the colour. */
 function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvatar = null }) {
   const m = metrics;
@@ -296,10 +321,20 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
       fromTier: rank.fromTier, toTier: rank.toTier,
       gap: rank.gap, needPerDay: rank.needPerDay == null ? null : Math.round(rank.needPerDay),
       reachable: rank.reachable, worth: rank.worth, worthIfCrossed: rank.worthIfCrossed,
+      // What the bar is drawn against: the next tier's floor, and how far along
+      // the creator is toward it. Backstage shows the same two numbers, and a
+      // bar reads in a glance where "tier 1 to 1, maintaining" reads as nothing.
+      diamonds: Math.round(rank.diamonds ?? 0),
+      target: rank.target,
+      progress: rank.target ? Math.min(1, (rank.diamonds ?? 0) / rank.target) : 1,
+      daysLeft: rank.daysLeft ?? 0,
     } : null,
     quest: quest ?? null,
     graduation: grad ? { remaining: grad.remaining, done: grad.done, requiredPerDay: grad.requiredPerDay } : null,
     alert: alert ? { severity: alert.severity, signals: alert.signals.map((s) => s.label ?? s.id) } : null,
+    rankMessage: rank ? rankMessage(creator.username, {
+      gap: rank.gap, perDay: rank.needPerDay, tier: (rank.toTier ?? 0) + 1, daysLeft: rank.daysLeft,
+    }) : null,
     diagnosis: (() => {
       const d = diagnose(m, { rank, config });
       return d ? { ...d, message: creatorMessage(d.lever, creator.username) } : d;

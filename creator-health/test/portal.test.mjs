@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { mintToken, readToken, portalSecret, allLinks, ROLE } from '../lib/portaltoken.mjs';
-import { buildPortal, diagnose, creatorMessage, STATE } from '../lib/portal.mjs';
+import { buildPortal, diagnose, creatorMessage, rankMessage, STATE } from '../lib/portal.mjs';
 import { coachPage, directorPage, esc, EARNINGS_DISCLAIMER } from '../lib/portalhtml.mjs';
 
 const SECRET = 'a-test-secret-of-sufficient-length';
@@ -720,27 +720,49 @@ test('banked rank ups render as cards, not a heading with nothing under it', () 
   assert.ok(page.includes('Rank up &amp; maintain'));
   // Every banked creator is named on the page, not folded away.
   for (let i = 0; i < 5; i++) assert.ok(page.includes(`@banked${i}`), `banked${i} is missing`);
-  assert.ok(page.includes('1 ranked up, 4 maintaining'));
+  assert.ok(page.includes('1 ranked up, 4 holding their tier'));
   assert.equal(page.includes('<details class="fold"><summary>Banked'), false, 'not behind a fold');
 });
 
-test('a maintain that is sliding is marked out from the rest', () => {
-  const steady = creator('steady');
-  const sliding = creator('sliding');
-  const rank = (c) => ({ creator: c, rankedUp: false, maintained: true, reachable: true,
-    fromTier: 2, toTier: 2, gap: 0, needPerDay: null, worthIfCrossed: 0, worth: 10 });
+test('a creator closing on the next tier is marked out from the rest', () => {
+  // Amber is "worth a message today" rather than "worth a message on the
+  // 30th": most of the way to the next tier, with the month still to run.
+  const far = creator('far');
+  const close = creator('close');
+  const rank = (c, diamonds, target) => ({
+    creator: c, rankedUp: false, maintained: true, reachable: true,
+    fromTier: 1, toTier: 1, gap: target - diamonds, needPerDay: 500,
+    worthIfCrossed: 7.54, worth: 0, diamonds, target, daysLeft: 10,
+  });
   const view = portalOf([
-    { creator: steady, metrics: metrics(), rank: rank(steady) },
-    {
-      creator: sliding,
-      metrics: metrics({ monthOnMonth: { diamonds: { monthToDate: 1000, change: -0.45 } } }),
-      rank: rank(sliding),
-    },
+    { creator: far, metrics: metrics(), rank: rank(far, 10000, 100000) },
+    { creator: close, metrics: metrics(), rank: rank(close, 86678, 100000) },
   ]).byCoach.get('josh@leap.com');
   const page = coachPage(view, { config: {} });
-  // The one losing ground gets the amber rail; the steady one does not.
-  assert.ok(/class="m watch"[\s\S]{0,400}@sliding/.test(page), 'the sliding maintain is amber');
-  assert.equal(/class="m watch"[\s\S]{0,400}@steady/.test(page), false);
+
+  assert.ok(/class="rk near"[\s\S]{0,500}@close/.test(page), '87% of the way there is amber');
+  assert.equal(/class="rk near"[\s\S]{0,500}@far/.test(page), false, '10% of the way is not');
+  // And the bar is drawn against the real target, not a guess.
+  assert.ok(page.includes('86,678</b> / 100,000') || page.includes('86,678</b>'));
+  assert.ok(page.includes('13,322</b> to go'));
+});
+
+test('a rank-up message tells the creator their number, unlike a decline note', () => {
+  // The deliberate exception, and the one place a figure reaches a creator.
+  // Carla's rule from the 22 October call: "tell them the number — a creator
+  // who does not know the target cannot chase it." It is also not a
+  // disclosure: a creator sees their own diamond count in their own Backstage.
+  const msg = rankMessage('syn1880', { gap: 13322, perDay: 1110, tier: 2, daysLeft: 12 });
+  assert.match(msg, /13,322/, 'the gap is the point of the message');
+  assert.match(msg, /Tier 2/);
+  // What still never goes in: money, or anybody else's numbers.
+  assert.equal(/[£$€]/.test(msg), false, 'no money');
+  assert.equal(/coach|commission|paid/i.test(msg), false, 'nothing about what we earn');
+
+  // And somebody already there is told to hold, not handed a number.
+  const held = rankMessage('kirstx3', { gap: 0, perDay: null, tier: 8, daysLeft: 12 });
+  assert.equal(/\d{3,}/.test(held), false);
+  assert.match(held, /holding your tier/);
 });
 
 test('creator lists tile on a desktop instead of running down the middle', () => {
@@ -751,4 +773,19 @@ test('creator lists tile on a desktop instead of running down the middle', () =>
   const page = coachPage(view, { config: {} });
   assert.ok(page.includes('<div class="cards">'), 'cards sit in a grid');
   assert.ok(page.includes('max-width:1400px'), 'and the page uses the screen');
+});
+
+test('no message carries markdown a TikTok DM would show as asterisks', () => {
+  // A coach pastes these wherever they talk to the creator. Discord renders
+  // **bold**; a TikTok DM prints the asterisks.
+  const all = [
+    rankMessage('a', { gap: 7337, perDay: 611, tier: 5, daysLeft: 10 }),
+    rankMessage('a', { gap: 0, perDay: null, tier: 5, daysLeft: 10 }),
+    ...['dark', 'hours', 'conversion', 'days', 'gifting', 'rate', 'anomaly', 'hold']
+      .map((l) => creatorMessage(l, 'a')),
+  ];
+  for (const m of all) {
+    assert.equal(m.includes('**'), false, `markdown in: ${m.slice(0, 60)}`);
+    assert.equal(/\[.+\]\(.+\)/.test(m), false, 'and no markdown links');
+  }
 });

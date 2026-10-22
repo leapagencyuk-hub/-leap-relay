@@ -138,6 +138,35 @@ font-size:12.5px;line-height:1.5;resize:vertical;min-height:112px;padding:0}
 /* The banked list: dense, because there can be seventy of them and a coach
    wants to see the whole wall at once. */
 .mini{display:grid;grid-template-columns:repeat(auto-fill,minmax(250px,1fr));gap:8px}
+/* The rank-up list, laid out the way Backstage lays it out: who, a bar, how
+   far off, what it pays. A bar reads in a glance; "tier 1 to 1, maintaining"
+   reads as nothing. */
+.rank{display:grid;grid-template-columns:repeat(auto-fill,minmax(430px,1fr));gap:8px}
+.rk{background:linear-gradient(180deg,rgba(13,30,66,.92),rgba(7,18,40,.92));
+border:1px solid var(--line);border-radius:13px;padding:12px 13px}
+.rk.done{border-left:3px solid var(--good)}
+.rk.near{border-left:3px solid var(--watch)}
+.rk .top{display:flex;gap:11px;align-items:center}
+.rk img.f,.rk .ph{width:40px;height:40px;border-radius:50%;flex:0 0 auto;object-fit:cover;
+border:2px solid rgba(255,255,255,.9);box-shadow:0 0 10px rgba(255,255,255,.3);
+background:var(--card-2);display:flex;align-items:center;justify-content:center;
+color:var(--dim);font-weight:700;font-size:15px}
+.rk .who{flex:1;min-width:0}
+.rk .nm{font-weight:670;font-size:14.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tier{display:inline-block;font-size:10.5px;font-weight:700;letter-spacing:.03em;
+color:#cfe0f8;border:1px solid #1d6fe0;background:rgba(0,74,173,.4);
+border-radius:999px;padding:1px 8px;margin-top:3px}
+.rk .pay{text-align:right;flex:0 0 auto}
+.rk .pay .v{color:var(--good);font-weight:700;font-variant-numeric:tabular-nums;font-size:15px}
+.rk .pay .l{color:var(--dim);font-size:10px;text-transform:uppercase;letter-spacing:.05em}
+.bar{height:7px;border-radius:999px;background:rgba(255,255,255,.1);margin-top:11px;overflow:hidden}
+.bar span{display:block;height:100%;border-radius:999px;
+background:linear-gradient(90deg,#1d6fe0,#6aa6ff)}
+.rk.done .bar span{background:linear-gradient(90deg,#2aa567,var(--good))}
+.rk .nums{display:flex;justify-content:space-between;gap:10px;margin-top:6px;
+color:var(--dim);font-size:12px;font-variant-numeric:tabular-nums}
+.rk .nums b{color:var(--ink)}
+.rk .acts{margin-top:10px}
 .m{background:linear-gradient(180deg,rgba(13,30,66,.92),rgba(7,18,40,.92));
 border:1px solid var(--line);border-left:3px solid var(--good);border-radius:12px;
 padding:10px 11px;display:flex;gap:10px;align-items:center;min-width:0}
@@ -307,25 +336,51 @@ document.addEventListener('click', function (ev) {
 </script>`;
 
 /**
- * A banked rank up or maintain, in one line.
+ * One creator's rank-up standing, laid out the way Backstage lays it out.
  *
- * These are not problems, so they do not get a full card — but there can be
- * seventy of them, they are money already on the table, and hiding them behind
- * a fold made the whole section render as a heading with nothing under it. The
- * job is "see the wall, spot the one wobbling", which is a dense grid.
+ * Who they are, a bar toward the next tier, how far off, and what it pays the
+ * coach. The previous version said "tier 1 → 1 · maintaining", which is true
+ * and tells a coach nothing they can act on; a bar and a number to go is a
+ * target they can put in front of the creator.
+ *
+ * The message button carries that number to the creator, which is the one
+ * place a figure is allowed through — see rankMessage in lib/portal.mjs.
  */
-function bankedCard(r) {
+function rankRow(r, { money: showMoney = true, cur = 'GBP' } = {}) {
   const initial = esc(String(r.username ?? '?').replace(/^@/, '').charAt(0).toUpperCase());
   const ava = r.avatar
-    ? `<img src="${esc(r.avatar)}" alt="" width="38" height="38" loading="lazy">`
+    ? `<img class="f" src="${esc(r.avatar)}" alt="" width="40" height="40" loading="lazy">`
     : `<div class="ph" aria-hidden="true">${initial}</div>`;
-  // A maintain that is sliding is the one worth looking at, so it goes amber.
-  const wobbling = r.rank?.maintained && r.change != null && r.change < -0.2;
-  return `<div class="m${wobbling ? ' watch' : ''}">${ava}
-<div class="b"><div class="h">@${esc(r.username)}</div>
-<div class="s">${n(r.diamonds)} <span class="${toneOf(r.change)}">${signed(r.change) || ''}</span>
- · tier ${r.rank.fromTier}&rarr;${r.rank.toTier} · ${r.rank.rankedUp ? 'ranked up' : 'maintaining'}</div></div>
-${r.tiktok ? `<a class="go" href="${esc(r.tiktok)}" target="_blank" rel="noopener noreferrer">TikTok</a>` : ''}
+  const k = r.rank ?? {};
+  const pctDone = Math.round((k.progress ?? 0) * 100);
+  const done = !k.gap || k.gap <= 0;
+  // Amber once they are most of the way there: that is the one worth a message
+  // today rather than at the end of the month.
+  const near = !done && (k.progress ?? 0) >= 0.6;
+  const worth = k.rankedUp ? k.worth : k.worthIfCrossed;
+
+  const msgId = `r-${esc(String(r.key ?? r.username).replace(/[^a-zA-Z0-9]/g, ''))}`;
+  const msg = r.rankMessage ? `<div class="msg">
+<div class="k">Message to send @${esc(r.username)}</div>
+<textarea id="${msgId}" readonly rows="5">${esc(r.rankMessage)}</textarea>
+<div class="acts"><button class="btn" type="button" data-copy="${msgId}">Copy message</button>
+${r.tiktok ? `<a class="btn tt" href="${esc(r.tiktok)}" target="_blank" rel="noopener noreferrer">Open TikTok</a>` : ''}</div>
+</div>` : '';
+
+  return `<div class="rk ${done ? 'done' : near ? 'near' : ''}">
+<div class="top">${ava}
+<div class="who"><div class="nm">@${esc(r.username)}</div>
+<span class="tier">Tier ${k.fromTier ?? 1}${k.rankedUp ? ` &rarr; ${k.toTier}` : ''}</span></div>
+${showMoney && worth >= 0.01 ? `<div class="pay"><div class="v">${money(worth, cur)}</div>
+<div class="l">${k.rankedUp ? 'banked' : 'if they land it'}</div></div>` : ''}
+</div>
+<div class="bar"><span style="width:${Math.max(2, pctDone)}%"></span></div>
+<div class="nums"><span><b>${n(k.diamonds)}</b>${k.target ? ` / ${n(k.target)}` : ''}</span>
+<span>${done
+    ? (k.rankedUp ? 'Ranked up' : 'Holding this tier')
+    : `<b>${n(k.gap)}</b> to go · ${n(k.needPerDay)}/day`}</span></div>
+${msg ? `<details class="why"><summary><span class="acts"><span class="btn">Message them</span></span></summary>
+<div class="body">${msg}</div></details>` : ''}
 </div>`;
 }
 
@@ -382,17 +437,14 @@ ${view.graduated.length ? `<div class="card good"><div class="meta">${view.gradu
   const rank = (view.upside.length || view.banked.length) ? `
 <h2>Rank up &amp; maintain <span class="count">(${view.upside.length + view.banked.length})</span></h2>
 <p class="lede">The highest-value thing on this page per creator. A rank up pays you on their whole month; a maintain lost in the last week costs the same as a rank up never made.</p>
-${view.upside.length ? `<div class="card"><div class="meta">${view.upside.length} still in reach${
-  hasMoney ? `, worth <span class="worth">${money(view.upsideTotal, cur)}</span> if you land them all` : ''}. Only creators who can still get there are listed.</div></div>
-<div class="cards">${view.upside.map((r) => creatorCard(r, {
-    money: hasMoney && r.rank.worthIfCrossed >= (config.portal?.minMoneyShown ?? 1)
-      ? `<span class="worth">${money(r.rank.worthIfCrossed, cur)}</span>` : null,
-    need: `${n(r.rank.gap)} to tier ${r.rank.toTier + 1}, ${n(r.rank.needPerDay)}/day`,
-  })).join('')}</div>` : ''}
+${view.upside.length ? `<div class="card"><div class="meta">
+<b>${view.upside.length} still in reach${hasMoney ? `, worth ${money(view.upsideTotal, cur)} if you land them all` : ''}.</b>
+Closest to their next tier first. Open "Message them" for something you can send as it is.</div></div>
+<div class="rank">${view.upside.map((r) => rankRow(r, { money: hasMoney, cur })).join('')}</div>` : ''}
 ${view.banked.length ? `<div class="card"><div class="meta">
-<b>Banked: ${view.banked.filter((r) => r.rank.rankedUp).length} ranked up, ${view.banked.filter((r) => r.rank.maintained).length} maintaining.</b>
-Already yours. Amber is a maintain that has started sliding — those are the ones that get lost in the last week of the month.</div></div>
-<div class="mini">${view.banked.map(bankedCard).join('')}</div>` : ''}` : '';
+<b>Banked: ${view.banked.filter((r) => r.rank.rankedUp).length} ranked up, ${view.banked.filter((r) => r.rank.maintained).length} holding their tier.</b>
+Already yours. Amber is closing on the next tier — those are worth a message today rather than on the 30th.</div></div>
+<div class="rank">${view.banked.map((r) => rankRow(r, { money: hasMoney, cur })).join('')}</div>` : ''}` : '';
 
   const quests = view.quests.length ? `
 <h2>Side quests <span class="count">(${view.quests.length})</span></h2>
