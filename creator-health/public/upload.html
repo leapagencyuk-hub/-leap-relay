@@ -269,9 +269,16 @@ async function post(path, label, render) {
     const res = await fetch(path + (token ? `${sep}token=${encodeURIComponent(token)}` : ''), { method: 'POST' });
     const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     result.classList.add('show');
+    // A bare "unauthorised" tells somebody nothing about what to do next, and
+    // this is the error everybody hits the first time a token is set on the
+    // host: the button simply stops working and the page does not say why.
+    const help = res.status === 401
+      ? 'Paste your upload token into the box at the top of this page. It is the UPLOAD_TOKEN set on the host, and it is remembered on this device.'
+      : (data.message || '');
     result.innerHTML = res.ok && !data.error ? render(data)
       : `<h2>${esc(label)} failed</h2>${row('Problem', `<span class="bad">${esc(data.error || `HTTP ${res.status}`)}</span>`)}`
-        + (data.message ? row('', esc(data.message)) : '');
+        + (help ? row('', esc(help)) : '');
+    if (res.status === 401) { try { $('token').focus(); } catch { /* not fatal */ } }
   } catch (err) {
     result.classList.add('show');
     result.innerHTML = `<h2>${esc(label)} failed</h2>${row('Problem', `<span class="bad">${esc(err.message)}</span>`)}`;
