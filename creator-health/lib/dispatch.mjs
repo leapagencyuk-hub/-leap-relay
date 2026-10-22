@@ -30,6 +30,7 @@ import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mj
 import { leapedState, leapedDue } from './leaped.mjs';
 import { coachRevenue } from './revenue.mjs';
 import { rankUpBoard } from './tiers.mjs';
+import { portalSecret } from './portaltoken.mjs';
 import { sweeper, sweepDuplicates, titleOf } from './sweep.mjs';
 import { STATUS, teamOutcomes, isOpen } from './cases.mjs';
 import { groupKey, isChannelId, isWebhookUrl } from './notify.mjs';
@@ -186,6 +187,18 @@ export async function dispatch({
   dryRun = false, forceSummary = false, force = null, health = null,
   creators = [], metricsByKey = new Map(), activation = [], config = {},
 }) {
+  // A coach's own portal link, so every card can point at the whole picture
+  // rather than only the one creator it is about. Null when no portal is
+  // configured, and the cards then render without the line at all.
+  const portalBase = (config.portal?.baseUrl ?? process.env.PORTAL_BASE_URL ?? '').replace(/\/+$/, '');
+  const portalKey = portalSecret();
+  // The same plain link on every card, for everybody. It used to be a signed
+  // per-team link, because a card lands in a shared room and a coach's own link
+  // carries their wage. Signing in with Discord removes the problem rather than
+  // working around it: the link is identical for everyone, and the server
+  // decides what the person who clicked it is allowed to see.
+  const portalFor = () => (portalBase && portalKey ? `${portalBase}/portal` : null);
+
   const activationSummary = activation.length ? {
     total: activation.length,
     newNotStarted: activation.filter((r) => r.stage === 'NO_START').length,
@@ -383,7 +396,7 @@ export async function dispatch({
     if (c.kind === 'decline') {
       const alert = alertByKey.get(c.creatorKey);
       if (!alert) continue;
-      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config }), c);
+      await send('case-opened', c.coach, route, declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config, portalUrl: portalFor() }), c);
     } else if (c.kind === 'activation') {
       const r = activationRoute(c);
       await send('activation-opened', c.coach, r, activationEmbed(c, { mention: r.mention, buttons, avatar: avatarConfig, metrics: metricsByKey.get(c.creatorKey), config }), c);
@@ -403,7 +416,7 @@ export async function dispatch({
     const alert = alertByKey.get(c.creatorKey);
     if (!alert) continue;
     const route = routeFor(c, discordConfig);
-    const payload = declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config });
+    const payload = declineEmbed(c, alert, { mention: route.mention, buttons, avatar: avatarConfig, config, portalUrl: portalFor() });
     payload.embeds[0].title = `${payload.embeds[0].title} (getting worse)`;
     await send('case-worsened', c.coach, route, payload, c);
   }
@@ -535,7 +548,7 @@ export async function dispatch({
       // channel stops being read.
       if (!summary.roster.earning) continue;
       const route = { webhook: entry.webhook, channelId: entry.channelId };
-      const card = teamSummaryEmbed(summary, { config });
+      const card = teamSummaryEmbed(summary, { config, portalUrl: portalFor() });
       await (replaces('teamSummary')
         ? replaceLast('team-summary', team, route, card, `summary:${groupKey(team)}`)
         : send('team-summary', team, route, card));

@@ -649,5 +649,27 @@
     ],
     "_useActualRate": "A partner is settled on the agency revenue their creators actually generated, so their card uses TikTok's real monthly incremental rate where we know it rather than the 5% the coach boards quote. Quoting 5% to a partner settled at 8% understates them by over a third. Falls back to the board rate, and the card always names the rate it used.",
     "useActualRate": true
+  },
+  "portal": {
+    "_note": "The coach portal. One signed link per coach opens their own roster and nobody else's; a team link opens the same roster with every earnings line stripped, which is what the Discord cards point at. Needs PORTAL_SECRET set on the host — with no secret there is no portal at all.",
+    "_baseUrl": "Where the portal is served from, for the links in Discord cards. PORTAL_BASE_URL overrides it.",
+    "baseUrl": "https://leap-creator-health.onrender.com",
+    "_actFloorDiamonds": "A creator below this who has gone dark is an activation case, not a coaching one. Without it every dormant creator on the roster reads red — 663 of them on the first run.",
+    "actFloorDiamonds": 5000,
+    "darkDays": 4,
+    "_attentionCount": "How many creators 'needs you now' names. The rest keep their colour in the roster table below.",
+    "attentionCount": 10,
+    "upsideCount": 8,
+    "_diagnosis": "Thresholds for the if-this-then-that read. hdrDrop is the one that splits an hours problem from a conversion problem.",
+    "hoursDrop": 0.15,
+    "hdrDrop": 0.15,
+    "daysDrop": 2,
+    "giftDrop": 0.25,
+    "recordMonth": 0.5,
+    "_login": "Coaches sign in with Discord. Needs DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET on the host, and the redirect https://<host>/portal/callback registered on the Discord app. Scope is identify only.",
+    "_directors": "Discord user ids that see the whole network and can open any coach's page.",
+    "directors": [],
+    "_discordIds": "Discord user id to coach address, for anything routes.json cannot express — a second account, somebody covering a team. Coaches pinged by a <@id> mention in routes.json are already resolved and need no entry here.",
+    "discordIds": {}
   }
 }

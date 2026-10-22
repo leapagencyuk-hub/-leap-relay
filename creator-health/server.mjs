@@ -20,6 +20,14 @@
 //   POST /creator-week       refresh the Creator of the Week board, on its own
 //   POST /upload             also takes a Star Light "Activity Host Rank" sheet, which
 //                           sets who is in which campaign and their interaction days
+//   GET  /portal            the coach portal. Sign in with Discord; the server
+//                           decides what you see from your Discord id
+//   GET  /portal/callback   Discord's OAuth return
+//   GET  /portal/logout     clear the session
+//   GET  /portal/t/:coach   a director opening one coach's page
+//   GET  /portal/:token     the signed-link fallback, for a coach whose Discord
+//                           id is not mapped yet
+//   POST /portal/links      every coach's signed link, for pasting into Discord
 //   GET  /export             a full backup: series, snapshots and payroll state
 //   GET  /selftest           what this service can reach
 //                            ?post=1 sends a test line, ?sample=1 sends real cards
@@ -50,6 +58,17 @@ import { refreshChallenge, challengeSummary } from './lib/challenge.mjs';
 import { isManageExport, readManualLeaps, importManualLeaps, importSummary } from './lib/leapedimport.mjs';
 import { isActivityHostRankFile, saveRosterFile, readRoster, rosterHealth } from './lib/starlightroster.mjs';
 import { Discord, declineEmbed, activationEmbed } from './lib/discord.mjs';
+import { buildPortal } from './lib/portal.mjs';
+import { coachPage, directorPage, deniedPage, offPage, signInPage, notListedPage } from './lib/portalhtml.mjs';
+import { portalSecret, readToken, allLinks, ROLE } from './lib/portaltoken.mjs';
+import {
+  discordApp, redirectUri, authorizeUrl, readState, exchangeCode,
+  mintSession, readSession, cookieValue, sessionCookie, resolveAccess, SESSION_COOKIE,
+} from './lib/portalauth.mjs';
+import { leapedState } from './lib/leaped.mjs';
+import { coachRevenue } from './lib/revenue.mjs';
+import { rankUpBoard } from './lib/tiers.mjs';
+import { questBoard } from './lib/sidequest.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -65,6 +84,18 @@ const json = (res, code, body) => {
 };
 const text = (res, code, body) => {
   res.writeHead(code, { 'content-type': 'text/plain; charset=utf-8' });
+  res.end(body);
+};
+const html = (res, code, body) => {
+  res.writeHead(code, {
+    'content-type': 'text/html; charset=utf-8',
+    // A portal link is a credential. Keeping it out of referrers stops it
+    // leaking to whatever a coach clicks next, and out of caches stops it
+    // sitting in a shared browser.
+    'referrer-policy': 'no-referrer',
+    'cache-control': 'no-store, private',
+    'x-robots-tag': 'noindex, nofollow',
+  });
   res.end(body);
 };
 
@@ -580,6 +611,162 @@ async function handleSideQuests(req, res, url) {
   });
 }
 
+/**
+ * Everything the portal shows, assembled once.
+ *
+ * The same inputs the daily Discord run uses, with nothing persisted: opening a
+ * page must never advance a cooldown, burn a milestone card or write a leap.
+ * `persist: false` on every stage is load-bearing, not caution.
+ */
+function portalData(asOf = null) {
+  const result = analyse(config, { asOf, persist: false });
+  const store = new Store(config.dataDir);
+  const caseStore = new CaseStore(config.dataDir);
+  const creators = result.creators;
+  const leaped = leapedState({ creators, asOf: result.asOf, store: caseStore, config, persist: false });
+  const revenue = coachRevenue({ creators, asOf: result.asOf, config, leaped });
+  const rankUp = rankUpBoard({ creators, asOf: result.asOf, config });
+  let quests = null;
+  try {
+    quests = questBoard({ creators, asOf: result.asOf, store: caseStore, config });
+  } catch {
+    // No quests set this month is the normal state for three weeks out of four.
+    quests = null;
+  }
+  const portal = buildPortal({ result, config, revenue, rankUp, quests, caseStore });
+  return { portal, revenue, lastAsOf: store.readSeries()?.lastAsOf ?? null };
+}
+
+/**
+ * The portal.
+ *
+ * GET only and unauthenticated by design: the signed token in the path IS the
+ * credential, because a coach opening a Discord link on a phone is not going to
+ * type a password. Everything about that decision lives in lib/portaltoken.mjs.
+ *
+ * With no PORTAL_SECRET set there is no portal at all. That is deliberate — the
+ * one thing worse than not having this is serving a roster, its earnings and
+ * its payroll to anyone who guesses a URL.
+ */
+async function handlePortal(req, res, url, route) {
+  const secret = portalSecret();
+  if (!secret) return html(res, 503, offPage());
+  const parts = route.split('/').filter(Boolean);   // ['portal', ...]
+  const app = discordApp();
+  const redirect = redirectUri(config, process.env, req.headers.host);
+  const secureCookie = (req.headers['x-forwarded-proto'] ?? 'https') === 'https';
+
+  if (parts[1] === 'callback') {
+    if (!app) return html(res, 503, offPage());
+    const state = readState(url.searchParams.get('state'), secret);
+    // No valid state, no exchange. Without this anybody could walk a signed-in
+    // coach through a login that lands on a page of the attacker's choosing.
+    if (!state) return html(res, 400, deniedPage());
+    const code = url.searchParams.get('code');
+    if (!code) return html(res, 400, deniedPage());
+    const who = await exchangeCode(code, { ...app, redirect });
+    if (!who.ok) return html(res, 502, signInPage({ error: 'Discord would not confirm that sign in.' }));
+    res.writeHead(302, {
+      location: state.returnTo,
+      'set-cookie': sessionCookie(mintSession(who.id, secret), { secure: secureCookie }),
+    });
+    return res.end();
+  }
+
+  if (parts[1] === 'logout') {
+    res.writeHead(302, { location: '/portal', 'set-cookie': sessionCookie(null, { secure: secureCookie }) });
+    return res.end();
+  }
+
+  // Who is asking. A Discord session first, then a signed link, then nobody.
+  const { discord } = loadRoutes(path.dirname(configPath));
+  const sessionId = readSession(cookieValue(req.headers.cookie, SESSION_COOKIE), secret);
+  let claim = null;
+  if (sessionId) {
+    claim = resolveAccess(sessionId, { config, discordConfig: discord });
+    // Signed in to Discord, but this account is on no list. Say so plainly —
+    // this is the case a coach hits when their id has not been added yet, and
+    // a blank 404 would have them think the portal is broken.
+    if (!claim) return html(res, 403, notListedPage());
+  }
+  if (!claim && parts[1] && parts[1] !== 't') {
+    const token = readToken(parts[1], secret);
+    if (token) {
+      claim = {
+        role: token.role === ROLE.DIRECTOR ? 'director' : token.role === ROLE.TEAM ? 'team' : 'coach',
+        subject: token.subject,
+      };
+    }
+  }
+  if (!claim) {
+    if (!app) return html(res, 404, deniedPage());
+    const returnTo = route.startsWith('/portal') ? route : '/portal';
+    res.writeHead(302, {
+      location: authorizeUrl({ clientId: app.clientId, redirect, secret, returnTo }),
+    });
+    return res.end();
+  }
+
+  const { portal, revenue, lastAsOf } = portalData(url.searchParams.get('as-of'));
+  const signedIn = Boolean(sessionId);
+
+  if (claim.role === 'team') {
+    // Token subjects are lower-cased on the way in, team names are not, so the
+    // lookup has to fold. Matching exactly 404s every team link ever sent.
+    const view = portal.byTeam.get(claim.subject)
+      ?? [...portal.byTeam.entries()].find(([t]) => t.toLowerCase() === claim.subject)?.[1];
+    if (!view) return html(res, 404, deniedPage());
+    return html(res, 200, coachPage(view, { lastAsOf, config, signedIn }));
+  }
+
+  if (claim.role === 'director') {
+    // /portal/t/<coach> — a director opening one coach's own page, exactly as
+    // that coach sees it.
+    const idx = parts[1] === 't' ? 1 : (parts[2] === 't' ? 2 : -1);
+    if (idx > 0 && parts[idx + 1]) {
+      const coach = decodeURIComponent(parts[idx + 1]).toLowerCase();
+      const view = portal.byCoach.get(coach);
+      if (!view) return html(res, 404, deniedPage());
+      return html(res, 200, coachPage(view, { lastAsOf, config, signedIn, back: '/portal' }));
+    }
+    const links = portal.coaches.map((c) => ({
+      coach: c.coach, name: c.name, url: `/portal/t/${encodeURIComponent(c.coach)}`,
+    }));
+    return html(res, 200, directorPage(portal, links, { lastAsOf, config, signedIn }));
+  }
+
+  const view = portal.byCoach.get(claim.subject);
+  // A coach with nobody on their roster today still gets their own page rather
+  // than a 404, which would read as "your link is broken".
+  if (!view) {
+    return html(res, 200, coachPage({
+      coach: claim.subject, name: claim.subject.split('@')[0], asOf: portal.asOf,
+      month: portal.month, teams: [], earningsHidden: true, earnings: null,
+      counts: { roster: 0, act: 0, watch: 0, good: 0, idle: 0 }, diamonds: 0,
+      upside: [], upsideTotal: 0, banked: [], attention: [], attentionMore: 0, quests: [],
+      activation: [], cases: [], graduation: [], rows: [],
+    }, { lastAsOf, config, signedIn }));
+  }
+  return html(res, 200, coachPage(view, { lastAsOf, config, signedIn }));
+}
+
+/**
+ * Every coach's link, once, so they can be pasted into Discord.
+ *
+ * Behind the upload token and POST only: this is the list that opens every
+ * roster in the agency, so it is the most sensitive response this service has.
+ */
+async function handlePortalLinks(req, res, url) {
+  if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+  const secret = portalSecret();
+  if (!secret) {
+    return json(res, 503, { error: 'portal off', message: 'Set PORTAL_SECRET (16+ characters) to turn the portal on.' });
+  }
+  const { revenue } = portalData(url.searchParams.get('as-of'));
+  const base = url.searchParams.get('base') || `https://${req.headers.host}`;
+  return json(res, 200, allLinks(revenue.rows, base, secret));
+}
+
 async function handleRun(req, res, url) {
   if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
   const dryRun = url.searchParams.get('dry') === '1';
@@ -617,6 +804,13 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && route === '/redo') return await handleRedo(req, res, url);
     if (req.method === 'POST' && route === '/sidequests') return await handleSideQuests(req, res, url);
     if (req.method === 'POST' && route === '/rankings') return await handleRankings(req, res, url);
+    if (req.method === 'POST' && route === '/portal/links') return await handlePortalLinks(req, res, url);
+    // `/portal` exactly, as well as everything under it: the router strips the
+    // trailing slash, so matching only '/portal/' 404s the bare link that every
+    // Discord card carries.
+    if (req.method === 'GET' && (route === '/portal' || route.startsWith('/portal/'))) {
+      return await handlePortal(req, res, url, route);
+    }
     if (req.method === 'POST' && route === '/hardest') return await handleHardestWorker(req, res, url);
     if (req.method === 'POST' && route === '/creator-week') return await handleHardestWorker(req, res, url, 'creatorWeek');
     if (route === '/selftest') return await handleSelfTest(req, res, url);  // GET or POST

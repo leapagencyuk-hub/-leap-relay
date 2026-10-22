@@ -668,7 +668,20 @@ export function sideQuestCoachEmbed(entry, phase, { config = {}, mention = null,
 }
 
 /** The card a coach sees when a creator starts slipping. */
-export function declineEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null, config = {} } = {}) {
+/**
+ * The line that sends a coach from a card to the whole picture.
+ *
+ * A decline card says one creator is slipping. The portal says what else on
+ * their roster is slipping, what it is worth, and who is close to a rank up —
+ * which is the context that turns a ping into a morning's work. Omitted
+ * entirely when no portal is configured, rather than rendered as a dead link.
+ */
+function portalField(portalUrl) {
+  if (!portalUrl) return null;
+  return { name: 'Your roster', value: `[Open the portal](${portalUrl}) — sign in with Discord and it opens your creators.` };
+}
+
+export function declineEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null, config = {}, portalUrl = null } = {}) {
   const m = alert.metrics;
   const book = PLAYBOOK[caseRecord.playbookId] ?? PLAYBOOK.DIAMONDS_DOWN;
 
@@ -727,6 +740,7 @@ export function declineEmbed(caseRecord, alert, { mention = null, buttons = true
           ]),
         ...causeFields(caseRecord),
         trafficField(m),
+        portalField(portalUrl),
       ].filter(Boolean),
       footer: { text: footerText(caseRecord, config) },
       timestamp: new Date().toISOString(),
@@ -2315,7 +2329,7 @@ export function rankUpFields(board, coaches, { config = {}, limit = 6 } = {}) {
  * then what is slipping. The habit that drives all of it goes last, because it
  * is the one thing that is true every day and does not need reading twice.
  */
-export function teamSummaryEmbed(summary, { mention = null, config = {} } = {}) {
+export function teamSummaryEmbed(summary, { mention = null, config = {}, portalUrl = null } = {}) {
   const s = summary;
   const fields = [];
   const line = (r, tail) => `**@${r.username}** ${tail}`;
@@ -2415,6 +2429,9 @@ export function teamSummaryEmbed(summary, { mention = null, config = {} } = {}) 
   const headline = m.change != null
     ? `**${n(m.toDate)}** this month.\n${m.comparable} of these creators were here in ${monthName(m.previousMonth)} too: they are on **${n(m.comparableToDate)}**, against **${n(m.lastToSamePoint)}** by this point then — **${pct(m.change)}**.`
     : `**${n(m.toDate)}** this month so far.`;
+
+  const portal = portalField(portalUrl);
+  if (portal) fields.push(portal);
 
   return {
     content: mention ?? undefined,

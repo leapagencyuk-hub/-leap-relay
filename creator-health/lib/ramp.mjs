@@ -63,7 +63,7 @@ const STATUS = {
  * from a longer window, since it is a property of their room rather than of
  * last week.
  */
-function planFor(m, requiredPerDay, cfg) {
+export function planFor(m, requiredPerDay, cfg) {
   const currentPerDay = m.dailyDiamonds7;
   const currentHoursPerDay = m.curr7.liveHours / 7;
   const daysPerWeek = Math.min(7, m.curr7.validLiveDays);
