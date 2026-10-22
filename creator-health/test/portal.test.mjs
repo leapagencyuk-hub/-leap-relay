@@ -540,3 +540,71 @@ test('a handle cannot be walked out of the avatar directory', () => {
   }
   assert.equal(avatarRoute('bangeduptoes'), '/portal/avatar/bangeduptoes');
 });
+
+// --- the real logins -------------------------------------------------------------
+
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const realConfig = JSON.parse(fs.readFileSync(
+  path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'config.json'), 'utf8'));
+
+test('every Discord id in the config resolves to exactly one person', () => {
+  const { directors = [], discordIds = {} } = realConfig.portal ?? {};
+  const names = realConfig.coaches?.names ?? {};
+
+  for (const id of directors) {
+    assert.match(id, /^\d{17,20}$/, `${id} is not a Discord snowflake`);
+    assert.deepEqual(resolveAccess(id, { config: realConfig }), { role: 'director', subject: '*' });
+  }
+  for (const [id, email] of Object.entries(discordIds)) {
+    assert.match(id, /^\d{17,20}$/, `${id} is not a Discord snowflake`);
+    assert.ok(names[email], `${email} has no coach name in config`);
+    const got = resolveAccess(id, { config: realConfig });
+    // An id that is both an owner and a coach gets the director view. That is
+    // Sur3shot and Slow, and it is deliberate: they reach their own team from
+    // the network page like any other.
+    const expected = directors.includes(id)
+      ? { role: 'director', subject: '*' }
+      : { role: 'coach', subject: email.toLowerCase() };
+    assert.deepEqual(got, expected, `${email} resolved wrong`);
+  }
+
+  // No id does double duty as two different coaches.
+  const emails = Object.values(discordIds).filter((e) => !directors.includes(
+    Object.entries(discordIds).find(([, v]) => v === e)[0]));
+  assert.equal(new Set(emails).size, emails.length, 'two ids share one coach');
+});
+
+test('an account nobody listed still gets nothing, with the real config', () => {
+  assert.equal(resolveAccess('111111111111111111', { config: realConfig }), null);
+});
+
+test('Cam sees his stats and never a figure of money', () => {
+  // Asked for explicitly: Cam is not on a financial arrangement yet, so the
+  // portal shows him his roster and no earnings anywhere on it.
+  const cam = 'bigbamc.tt@gmail.com';
+  assert.ok((realConfig.revenue?.hideEarningsFor ?? []).includes(cam),
+    'Cam must be on the earnings-hidden list');
+
+  const c = creator('a', { manager: cam });
+  const portal = buildPortal({
+    result: {
+      creators: [c], metricsByKey: new Map([[c.key, metrics({ darkStreak: 9 })]]),
+      alerts: [], ramp: [], activation: [], asOf: '2026-10-19',
+    },
+    revenue: { byCoach: new Map([[cam, { total: 500, diamonds: 1000, base: 100, unlock: 0.2,
+      recruitBonus: 0, rankUpBonus: 0, incrementalShare: 0, leapedCount: 0, rankUps: 0,
+      totalWithGoals: 500, goals: null }]]) },
+    config: { ...realConfig, ramp: { targetDiamonds: 200000 } },
+  });
+  const view = portal.byCoach.get(cam);
+  assert.equal(view.earningsHidden, true);
+
+  const page = coachPage(view, { config: realConfig });
+  assert.equal(page.includes('£'), false, 'no pound sign anywhere on Cam\'s page');
+  assert.equal(page.includes('Your month'), false, 'and no wage block');
+  assert.equal(page.includes('at risk'), false, 'and no value-at-risk line');
+  assert.ok(page.includes('@a'), 'but he still sees his roster');
+});

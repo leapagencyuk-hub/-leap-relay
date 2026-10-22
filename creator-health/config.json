@@ -667,9 +667,29 @@
     "giftDrop": 0.25,
     "recordMonth": 0.5,
     "_login": "Coaches sign in with Discord. Needs DISCORD_CLIENT_ID and DISCORD_CLIENT_SECRET on the host, and the redirect https://<host>/portal/callback registered on the Discord app. Scope is identify only.",
-    "_directors": "Discord user ids that see the whole network and can open any coach's page.",
-    "directors": [],
-    "_discordIds": "Discord user id to coach address, for anything routes.json cannot express — a second account, somebody covering a team. Coaches pinged by a <@id> mention in routes.json are already resolved and need no entry here.",
-    "discordIds": {}
+    "_directors": "Discord user ids that see the whole network and can open any coach's page. Owners. Sur3shot is an owner and a coach: the director role wins, and he reaches his own team by opening it from the network page like any other.",
+    "directors": [
+      "357135591890223106",
+      "1289191030318436391",
+      "493176237406027776"
+    ],
+    "_discordIds": "Discord user id to coach address. These are the logins: an id that is in neither this map nor the director list sees a page telling them they are not on the list, and never a roster. Coaches whose routes.json mention is a real <@id> resolve without an entry here, but every one is listed explicitly so the mapping is readable in one place.",
+    "discordIds": {
+      "493176237406027776": "joshbates93@hotmail.com",
+      "238482764058460162": "mujustreamer@gmail.com",
+      "140998424626593793": "alex_593@hotmail.co.uk",
+      "549643114189422612": "colesygaming007@gmail.com",
+      "1216437359265189988": "iamscone.business@gmail.com",
+      "108628646746390528": "sherif.begain@gmail.com",
+      "1067551650077737052": "tiktokphil@icloud.com",
+      "455431967589007361": "itsmalkintiktok@gmail.com",
+      "808424571480703086": "bigbamc.tt@gmail.com",
+      "1289191030318436391": "leapagencyuk@gmail.com"
+    },
+    "_directorNames": {
+      "357135591890223106": "aone",
+      "1289191030318436391": "slowsticks",
+      "493176237406027776": "Sur3shot"
+    }
   }
 }
