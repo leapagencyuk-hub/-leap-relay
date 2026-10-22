@@ -38,6 +38,11 @@
     "_starlight": "TikTok's Star Light Agency Tournament, 1-31 Oct 2026. One scoreboard plus one card per team, all in this one channel, every card replacing its own last copy.",
     "starlightWebhook": "env:DISCORD_WEBHOOK_STARLIGHT",
     "starlightChannelId": "1556406354313482280",
+    "_sideQuests": "Side Quests. The terminal carries one card for the whole month; updates carries one per creator with the message the coach sends. Generated on the quest day, refreshed every day until month end.",
+    "sideQuestTerminalWebhook": "env:DISCORD_WEBHOOK_SIDEQUEST_TERMINAL",
+    "sideQuestTerminalChannelId": "1562740812234887200",
+    "sideQuestUpdatesWebhook": "env:DISCORD_WEBHOOK_SIDEQUEST_UPDATES",
+    "sideQuestUpdatesChannelId": "1562740842987261954",
     "_partners": "Partner agency revenue cards, one channel per partner agency. Keyed by the Group value in the creator export. A partner must never see another partner's settlement, so these are per-partner and not a shared channel.",
     "partners": {
       "Stay Social": {

@@ -149,6 +149,14 @@ export function loadDiscordConfig(raw) {
     // not only their own.
     starlightWebhook: webhookOrNull(fromEnv(raw.starlightWebhook)),
     starlightChannelId: channelOrNull(fromEnv(raw.starlightChannelId)),
+    // Side Quests, two channels. The terminal is the whole month on one card;
+    // updates is one card per creator with the message a coach sends. A key
+    // missing from this list reads as unset no matter what routes.json says,
+    // which is how the Star Light webhook was silently dropped once already.
+    sideQuestTerminalWebhook: webhookOrNull(fromEnv(raw.sideQuestTerminalWebhook)),
+    sideQuestTerminalChannelId: channelOrNull(fromEnv(raw.sideQuestTerminalChannelId)),
+    sideQuestUpdatesWebhook: webhookOrNull(fromEnv(raw.sideQuestUpdatesWebhook)),
+    sideQuestUpdatesChannelId: channelOrNull(fromEnv(raw.sideQuestUpdatesChannelId)),
     // Partner agency revenue. One channel per partner, because a partner must
     // never see another partner's settlement — `partnerWebhook` is a fallback
     // and dispatch only uses it when a single partner is enabled.

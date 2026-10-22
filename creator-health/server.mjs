@@ -44,6 +44,7 @@ import { isOpen } from './lib/cases.mjs';
 import { verifySignature, handleInteraction } from './lib/interactions.mjs';
 import { preflight } from './lib/dispatch.mjs';
 import { redoToday, redoSummary } from './lib/redo.mjs';
+import { selectQuests, saveQuests, readQuests, questDayFor, questsRunning, QUEST_DAYS } from './lib/sidequest.mjs';
 import { pullRankings, rankingsSummary } from './lib/rankings.mjs';
 import { refreshChallenge, challengeSummary } from './lib/challenge.mjs';
 import { isManageExport, readManualLeaps, importManualLeaps, importSummary } from './lib/leapedimport.mjs';
@@ -385,6 +386,10 @@ async function handleSelfTest(req, res, url) {
       hardestWorker: discord.hardestWorkerWebhook ? 'set' : 'MISSING',
       creatorWeek: discord.creatorWeekWebhook ? 'set' : 'MISSING',
       starlight: discord.starlightWebhook ? 'set' : 'MISSING',
+      // Never the URL itself: a webhook is enough for anyone to post into the
+      // channel, and /selftest is readable by whoever can reach the service.
+      sideQuestTerminal: discord.sideQuestTerminalWebhook ? 'set' : 'MISSING',
+      sideQuestUpdates: discord.sideQuestUpdatesWebhook ? 'set' : 'MISSING',
       partners: Object.fromEntries(Object.entries(discord.partners ?? {})
         .map(([k, v]) => [k, v.webhook ? 'set' : v.channelId ? 'channel only' : 'MISSING'])),
       // Not a secret, so unlike the webhooks this reports its contents: the
@@ -520,6 +525,61 @@ async function handleHardestWorker(req, res, url, board = 'hardestWorker') {
   return json(res, 200, { ...rest, message: challengeSummary(out) });
 }
 
+/**
+ * Set this month's Side Quests.
+ *
+ * Pressed once, on the quest day. Everything downstream reads the stored
+ * quests, so running this twice would hand every creator a different target
+ * mid-chase — hence the refusal unless ?replace=1 is passed deliberately.
+ */
+async function handleSideQuests(req, res, url) {
+  if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
+  const store = new Store(config.dataDir);
+  const series = store.readSeries();
+  const creators = Object.values(series.creators ?? {});
+  const asOf = url.searchParams.get('as-of') || series.lastAsOf;
+  if (!asOf) return json(res, 400, { error: 'no data yet — upload an export first' });
+  const month = asOf.slice(0, 7);
+  const caseStore = new CaseStore(config.dataDir);
+  const existing = readQuests(caseStore, month);
+  const replace = url.searchParams.get('replace') === '1';
+  const dryRun = url.searchParams.get('dry') === '1';
+  const questDay = questDayFor(month);
+
+  if (existing?.quests?.length && !replace) {
+    return json(res, 409, {
+      error: 'already set',
+      month, setOn: existing.setOn, quests: existing.quests.length,
+      message: `${existing.quests.length} quests were already set on ${existing.setOn}. `
+        + 'Targets are frozen on purpose — pass replace=1 only if you mean to scrap them and start again.',
+    });
+  }
+  // Not the quest day is a warning, not a refusal: a missed upload should not
+  // cost the month, and setting a day late with six nights left still works.
+  const early = asOf < questDay;
+  let quests;
+  try {
+    quests = selectQuests({ creators, asOf, config });
+  } catch (err) {
+    if (err.code === 'STALE_DATA') return json(res, 409, { error: 'stale data', lastAsOf: err.lastAsOf, message: err.message });
+    throw err;
+  }
+  if (!dryRun && quests.length) { saveQuests(caseStore, month, quests); caseStore.save(); }
+  return json(res, 200, {
+    month, asOf, questDay, dryRun, set: quests.length,
+    ...(early ? { warning: `quest day is ${questDay} — you are setting ${asOf}, which gives more than ${QUEST_DAYS} nights` } : {}),
+    ...(asOf > questDay ? { warning: `quest day was ${questDay} — setting now leaves fewer nights` } : {}),
+    worthGbp: Math.round(quests.reduce((a, q) => a + q.worthGbp, 0)),
+    coinsIfAllHit: quests.reduce((a, q) => a + q.questCoins + q.incentiveCoins, 0),
+    coaches: new Set(quests.map((q) => q.coach)).size,
+    quests: quests.map((q) => ({ username: q.username, coach: q.coach, kind: q.kind, tier: q.tier,
+      need: q.need, perNight: q.perNight, worthGbp: q.worthGbp })),
+    message: quests.length
+      ? `${quests.length} Side Quests set for ${month}, worth £${Math.round(quests.reduce((a, q) => a + q.worthGbp, 0))}. Cards post on the next run.`
+      : 'Nobody qualified. Nothing was set.',
+  });
+}
+
 async function handleRun(req, res, url) {
   if (!authorised(req, url)) return json(res, 401, { error: 'unauthorised' });
   const dryRun = url.searchParams.get('dry') === '1';
@@ -555,6 +615,7 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'POST' && route === '/notify') return await handleNotify(req, res, url);
     if (req.method === 'POST' && route === '/run') return await handleRun(req, res, url);
     if (req.method === 'POST' && route === '/redo') return await handleRedo(req, res, url);
+    if (req.method === 'POST' && route === '/sidequests') return await handleSideQuests(req, res, url);
     if (req.method === 'POST' && route === '/rankings') return await handleRankings(req, res, url);
     if (req.method === 'POST' && route === '/hardest') return await handleHardestWorker(req, res, url);
     if (req.method === 'POST' && route === '/creator-week') return await handleHardestWorker(req, res, url, 'creatorWeek');
@@ -623,12 +684,26 @@ const server = http.createServer(async (req, res) => {
       return res.end(out);
     }
     if (route === '/status.json') {
-      const health = dataHealth(config, new Store(config.dataDir).readSeries().lastAsOf);
+      const series = new Store(config.dataDir).readSeries();
+      const health = dataHealth(config, series.lastAsOf);
       const store = new CaseStore(config.dataDir);
+      // Side Quest state, so the terminal can say whether this month is set
+      // and the button knows whether pressing it would overwrite anything.
+      const asOf = series.lastAsOf ?? null;
+      const month = asOf ? asOf.slice(0, 7) : null;
+      const saved = month ? readQuests(store, month) : null;
       return json(res, 200, {
         ...health,
         openCases: store.all().filter(isOpen).length,
         protected: Boolean(TOKEN),
+        sideQuests: month ? {
+          month,
+          questDay: questDayFor(month),
+          isQuestDay: asOf === questDayFor(month),
+          running: questsRunning(asOf),
+          set: saved?.quests?.length ?? 0,
+          setOn: saved?.setOn ?? null,
+        } : null,
       });
     }
     if (route === '/health') {

@@ -9,6 +9,7 @@ import {
   teamSummaryEmbed, graduationEmbed,
   activenessPingEmbed, activenessOverviewEmbed, policyEmbed, leaderboardEmbed, growthBoardEmbed,
   hardestWorkerEmbed, creatorWeekEmbed, starlightEmbed, starlightOverviewEmbed,
+  sideQuestTerminalEmbed, sideQuestCardEmbed,
   partnerEarningsEmbed,
   leapedEmbed, leapedOverviewEmbed,
   redoButton,
@@ -22,6 +23,7 @@ import { leaderboard, recordBoard, leaderboardDue } from './leaderboard.mjs';
 import { hardestWorkerBoard, hardestWorkerDue } from './hardestworker.mjs';
 import { creatorWeekBoard, creatorWeekDue, recordWeekBoard } from './creatorweek.mjs';
 import { starlightTeams, starlightSummary, starlightDue } from './starlight.mjs';
+import { questBoard, questsRunning } from './sidequest.mjs';
 import { readRoster } from './starlightroster.mjs';
 import { partnerRevenues, partnerDue } from './partner.mjs';
 import { growthBoard, recordGrowthBoard, growthBoardDue } from './growthboard.mjs';
@@ -157,6 +159,7 @@ export function preflight(discordConfig) {
     'activenessOverviewWebhook', 'activenessPingWebhook',
     'leaderboardWebhook', 'growthBoardWebhook', 'hardestWorkerWebhook', 'creatorWeekWebhook',
     'starlightWebhook',
+    'sideQuestTerminalWebhook', 'sideQuestUpdatesWebhook',
   ];
   const hasWebhook = singles.some((k) => Boolean(discordConfig[k]))
     || Object.values(discordConfig.coaches ?? {}).some((c) => c.webhook)
@@ -695,6 +698,53 @@ export async function dispatch({
           : replaceLastPages(`starlight:${t.team}`, t.team, starRoute, card, null));
       }
       if (!dryRun) store.data.lastStarlightOn = asOf;
+    }
+  }
+
+  // --- Side Quests -----------------------------------------------------------
+  // Two channels. The terminal gets one card, replaced daily, carrying every
+  // quest and where it stands. Updates gets one card per creator, also
+  // replaced daily, carrying the message the coach sends and the coach's own
+  // @mention above it.
+  //
+  // Both replace rather than append, so a seven-night chase leaves two cards
+  // and a per-creator card each, not seventy. The quests themselves are NOT
+  // generated here — they are set once, on the quest day, through the terminal
+  // button, and this only ever reports on what is already stored. A daily run
+  // that could create quests would create a different set every morning.
+  const sqTerminal = discordConfig.sideQuestTerminalWebhook
+    ? { webhook: discordConfig.sideQuestTerminalWebhook, channelId: discordConfig.sideQuestTerminalChannelId ?? null }
+    : (discordConfig.sideQuestTerminalChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.sideQuestTerminalChannelId } : null;
+  const sqUpdates = discordConfig.sideQuestUpdatesWebhook
+    ? { webhook: discordConfig.sideQuestUpdatesWebhook, channelId: discordConfig.sideQuestUpdatesChannelId ?? null }
+    : (discordConfig.sideQuestUpdatesChannelId && discordConfig.botToken)
+      ? { channelId: discordConfig.sideQuestUpdatesChannelId } : null;
+  if (creators.length && config.sideQuests?.enabled !== false
+      && (again('sidequests') || questsRunning(asOf))) {
+    const board = questBoard({ creators, asOf, store, config });
+    if (board.quests.length) {
+      if (sqTerminal) {
+        await (replaces('sidequests')
+          ? replaceLastPages('sidequest-terminal', '(side quests)', sqTerminal,
+            sideQuestTerminalEmbed(board, { config }), 'sideQuestTerminal')
+          : replaceLastPages('sidequest-terminal', '(side quests)', sqTerminal,
+            sideQuestTerminalEmbed(board, { config }), null));
+      }
+      if (sqUpdates) {
+        for (const row of board.quests) {
+          // The coach's mention, so the card lands on the person who has to
+          // send the message rather than on everybody.
+          const mention = discordConfig.coaches?.[String(row.quest.coach ?? '').toLowerCase()]?.mention ?? null;
+          const payload = sideQuestCardEmbed(row, { config, mention });
+          await (replaces('sidequests')
+            ? replaceLast(`sidequest:${row.quest.username}`, row.quest.coach ?? '(none)', sqUpdates,
+              payload, `sideQuest:${row.quest.username}`)
+            : replaceLast(`sidequest:${row.quest.username}`, row.quest.coach ?? '(none)', sqUpdates,
+              payload, null));
+        }
+      }
+      if (!dryRun) store.data.lastSideQuestOn = asOf;
     }
   }
 

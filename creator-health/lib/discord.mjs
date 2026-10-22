@@ -14,6 +14,7 @@ import { ACTIVATION_PLAYBOOK } from './activation.mjs';
 import { profileUrl, avatarUrl } from './profile.mjs';
 import { sparkline, progressBar, monthlyTrend } from './spark.mjs';
 import { MILESTONES } from './graduation.mjs';
+import { creatorMessage } from './sidequest.mjs';
 import { coachName, offTheBoards, earningsHidden } from './coaches.mjs';
 import { hrs } from './hardestworker.mjs';
 import { PILLARS } from './creatorweek.mjs';
@@ -479,6 +480,98 @@ const SIGNAL_FAMILY = {
   LIVE_DAYS_DOWN: 'days', DARK: 'days',
   FANCLUB_FANS_DOWN: 'fanclub', FANCLUB_DIAMONDS_DOWN: 'fanclub', CONCENTRATION_RISK: 'fanclub',
 };
+
+// --- Side Quests ------------------------------------------------------------
+// Two channels, two jobs. The terminal is one card: every quest, how far along,
+// what it is worth. The updates channel is one card per creator, carrying the
+// message a coach copies into a DM and the coach's own @mention above it.
+//
+// The split exists because the two are read differently. A director opening the
+// terminal wants the month in one screen. A coach opening updates wants their
+// own name, their own creator, and words they can send without writing any.
+
+const QUEST_BAR = (pct) => {
+  const filled = Math.max(0, Math.min(10, Math.round(pct * 10)));
+  return '█'.repeat(filled) + '░'.repeat(10 - filled);
+};
+
+/** One daily card: every live quest and where it stands. */
+export function sideQuestTerminalEmbed(board, { config = {} } = {}) {
+  const s = board.summary;
+  const nights = s.nightsLeft;
+  const lines = board.quests.map(({ quest: q, progress: p, coachLabel }) => {
+    const mark = p.done ? 'HIT' : p.fresh ? 'just set' : p.onCourse ? 'on pace' : 'behind';
+    return [
+      `${p.done ? '✅' : p.fresh ? '⚪' : p.onCourse ? '🟢' : '🔴'} **@${q.username}** · ${coachLabel ?? 'unassigned'} · £${q.worthGbp.toFixed(0)}`,
+      `\`${QUEST_BAR(p.pct)}\` ${n(p.now)} / ${n(q.target)} — ${p.done ? 'done' : `${n(p.left)} to go, ${n(p.perNightNeeded)}/night`} · ${mark}`,
+    ].join('\n');
+  });
+  const head = [
+    s.fresh === s.total
+      ? `**${s.total}** quests just set — the chase starts tonight`
+      : `**${s.done}** hit · **${s.onCourse}** on pace · **${s.behind}** behind${s.fresh ? ` · **${s.fresh}** just set` : ''} · **${s.total}** quests`,
+    nights > 0 ? `**${nights}** night${nights === 1 ? '' : 's'} left` : '**Final day**',
+    `Worth **£${n(s.worthGbp)}** if every one lands. **£${n(s.wonGbp)}** banked so far.`,
+    `Diamonds added since the quests were set: **${n(s.diamondsGained)}**`,
+  ].join('\n');
+  return paginateList(lines, {
+    name: 'side-quest-terminal',
+    title: `Side Quests — ${monthNameOf(board.month)}`,
+    description: head,
+    color: s.fresh === s.total ? COLOR.neutral : s.behind > s.done ? COLOR.warn : COLOR.good,
+    footer: `${board.asOf} · set on ${board.quests[0]?.quest.setOn ?? '?'} · coins owed so far ${n(s.coinsOwed)}`,
+  });
+}
+
+/** One card per creator, for the coach who has to send the message. */
+export function sideQuestCardEmbed(row, { config = {}, mention = null } = {}) {
+  const { quest: q, progress: p, coachLabel } = row;
+  const title = p.done
+    ? `HIT IT — @${q.username}`
+    : `${q.kind === 'HOLD' ? 'Hold' : 'Reach'} Tier ${q.tier} — @${q.username}`;
+  const fields = [
+    {
+      name: 'Where they are',
+      value: [
+        `\`${QUEST_BAR(p.pct)}\` **${n(p.now)}** of ${n(q.target)}`,
+        p.done ? 'Target cleared.' : `**${n(p.left)}** to go · **${n(p.perNightNeeded)}** a night · ${p.nightsLeft} night${p.nightsLeft === 1 ? '' : 's'} left`,
+        p.done ? ''
+          : p.fresh ? `Was doing **${n(p.perNightDoing)}** a night before this landed`
+            : `Doing **${n(p.perNightDoing)}** a night since the quest was set`,
+      ].filter(Boolean).join('\n'),
+    },
+    {
+      name: p.done ? 'What they have won' : 'What they get',
+      value: [
+        q.incentiveCoins ? `${n(q.incentiveCoins)} coins — their ${q.kind === 'HOLD' ? 'Maintain' : 'Rank Up'} Incentive` : `Tier ${q.tier} pays no Maintain Incentive`,
+        `+ ${n(q.questCoins)} coins — Side Quest bonus`,
+        '+ 1 Uni Wheel entry',
+      ].join('\n'),
+      inline: true,
+    },
+    {
+      name: 'Worth to LEAP',
+      value: `£${q.worthGbp.toFixed(0)}`,
+      inline: true,
+    },
+    {
+      // The point of this card. A coach should not have to compose anything.
+      name: 'Send them this',
+      value: `\`\`\`\n${creatorMessage(q, p).slice(0, 960)}\n\`\`\``,
+    },
+  ];
+  return {
+    content: mention ?? undefined,
+    embeds: [{
+      title,
+      description: `${coachLabel ? `**${coachLabel}**'s creator` : ''}${q.group ? ` · ${q.group}` : ''}`.trim() || undefined,
+      color: p.done ? COLOR.good : (p.fresh || p.onCourse) ? COLOR.neutral : COLOR.warn,
+      fields,
+      footer: { text: `Side Quest · set ${q.setOn} · ends ${q.endsOn}` },
+      timestamp: new Date().toISOString(),
+    }],
+  };
+}
 
 /** The card a coach sees when a creator starts slipping. */
 export function declineEmbed(caseRecord, alert, { mention = null, buttons = true, avatar = null, config = {} } = {}) {

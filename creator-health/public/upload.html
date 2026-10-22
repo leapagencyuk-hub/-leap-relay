@@ -85,6 +85,7 @@
       <button id="rankBtn" type="button">Leap rankings</button>
       <button id="hardestBtn" type="button">Hardest worker</button>
       <button id="weekBtn" type="button">Creator of the week</button>
+      <button id="questBtn" type="button">Set side quests</button>
       <button id="overviewBtn" type="button" class="ghost">Post overview</button>
       <button id="boardsBtn" type="button" class="ghost">Repost boards</button>
       <button id="sampleBtn" type="button" class="ghost">Send sample cards</button>
@@ -100,6 +101,7 @@
       <strong>Leap rankings</strong> works out who has climbed a LEAP league this month and who has
       dropped out of the one they finished last month in, and posts both to their own channels.
       Pull it whenever you want; it replaces its own last post rather than stacking.
+      <strong>Set side quests</strong> picks this month’s quests and freezes each target. Press it on the quest day — seven nights before the month ends. Cards then post daily to the Side Quest terminal and updates channels until month end.<br><br>
       <strong>Hardest worker</strong> refreshes the creator-facing Hardest Worker Challenge board:
       it posts the current standings and takes the old one down, so that channel holds one card.
       It goes up on its own once a day anyway — this is for when you want it now. It touches that
@@ -146,10 +148,15 @@ const esc = (s) => String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt
 const n = (x) => (x == null ? '—' : Number(x).toLocaleString('en-GB'));
 const row = (k, v, cls = '') => `<div class="row"><span>${esc(k)}</span><span class="${cls}">${v}</span></div>`;
 
+// The last status payload, so a button can know what it is about to do —
+// whether this month's quests are already set, and whether today is the day.
+let lastStatus = null;
+
 async function refresh() {
   try {
     const r = await fetch('status.json');
     const s = await r.json();
+    lastStatus = s;
     $('auth').hidden = !s.protected;
     $('status').innerHTML =
       row('Last export', s.lastAsOf ?? 'none yet')
@@ -159,7 +166,14 @@ async function refresh() {
       + row('Month on month', s.monthSource ? `on · vs ${esc(s.monthSource)}` : 'on', 'ok')
       + row('Week on week',
         s.declineReady ? 'on' : `~${n(s.uploadsNeeded)} more daily uploads`,
-        s.declineReady ? 'ok' : 'warn');
+        s.declineReady ? 'ok' : 'warn')
+      + (s.sideQuests ? row('Side Quests',
+        s.sideQuests.set
+          ? `${n(s.sideQuests.set)} set on ${esc(s.sideQuests.setOn)}${s.sideQuests.running ? ' · running' : ''}`
+          : s.sideQuests.isQuestDay
+            ? 'not set — today is quest day'
+            : `not set · quest day ${esc(s.sideQuests.questDay)}`,
+        s.sideQuests.set ? 'ok' : s.sideQuests.isQuestDay ? 'warn' : '') : '');
   } catch {
     $('status').textContent = 'Could not reach the service.';
   }
@@ -246,7 +260,7 @@ async function upload(file) {
 
 // Running and testing from the page, so neither needs a terminal.
 async function post(path, label, render) {
-  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('hardestBtn'), $('weekBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
+  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('hardestBtn'), $('weekBtn'), $('questBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
   btns.forEach((b) => { b.disabled = true; });
   bar.classList.add('on');
   result.classList.remove('show');
@@ -256,7 +270,8 @@ async function post(path, label, render) {
     const data = await res.json().catch(() => ({ error: `HTTP ${res.status}` }));
     result.classList.add('show');
     result.innerHTML = res.ok && !data.error ? render(data)
-      : `<h2>${esc(label)} failed</h2>${row('Problem', `<span class="bad">${esc(data.error || `HTTP ${res.status}`)}</span>`)}`;
+      : `<h2>${esc(label)} failed</h2>${row('Problem', `<span class="bad">${esc(data.error || `HTTP ${res.status}`)}</span>`)}`
+        + (data.message ? row('', esc(data.message)) : '');
   } catch (err) {
     result.classList.add('show');
     result.innerHTML = `<h2>${esc(label)} failed</h2>${row('Problem', `<span class="bad">${esc(err.message)}</span>`)}`;
@@ -306,6 +321,38 @@ $('rankBtn').addEventListener('click', () => post('rankings', 'Leap rankings', (
   + (r.standings ?? []).map((l) => row(esc(l.name), n(l.count))).join('')
   + (r.posted ?? []).map((p) => row('Posted', esc(p), 'ok')).join('')
   + (r.failed ?? []).map((f) => row('Failed', `<span class="bad">${esc(f.label)} — ${esc(f.error)}</span>`)).join('')));
+
+$('questBtn').addEventListener('click', () => {
+  // Targets are frozen once set, so a second press would hand every creator a
+  // different number mid-chase. The status feed says whether this month is
+  // already set, and only then is replacing offered at all.
+  const sq = lastStatus && lastStatus.sideQuests;
+  let qs = '';
+  if (sq && sq.set) {
+    if (!window.confirm(
+      `${sq.set} quests were already set on ${sq.setOn}.\n\n`
+      + 'Replacing them gives every creator a new target. Only do this if the '
+      + 'current set is wrong.\n\nReplace them?')) return;
+    qs = '?replace=1';
+  } else {
+    const warn = sq && !sq.isQuestDay
+      ? `\n\nNote: quest day is ${sq.questDay}, and the data runs to ${lastStatus.lastAsOf}.`
+      : '';
+    if (!window.confirm('Set this month\u2019s Side Quests?\n\nEach target is frozen once set.' + warn)) return;
+  }
+  post('sidequests' + qs, 'Set side quests', (r) => `<h2>${r.set ? 'Side Quests set' : 'No quests set'}</h2>`
+    + row('Month', esc(r.month))
+    + row('Data up to', esc(r.asOf))
+    + row('Quest day', esc(r.questDay), r.asOf === r.questDay ? 'ok' : 'warn')
+    + row('Quests set', n(r.set), r.set ? 'ok' : 'warn')
+    + row('Worth to LEAP', '\u00a3' + n(r.worthGbp))
+    + row('Coins if every one hits', n(r.coinsIfAllHit))
+    + row('Coaches involved', n(r.coaches))
+    + (r.warning ? row('Note', `<span class="warn">${esc(r.warning)}</span>`) : '')
+    + (r.quests ?? []).map((q) => row(`@${esc(q.username)}`,
+        `${esc(q.kind)} Tier ${n(q.tier)} \u00b7 ${n(q.need)} to go \u00b7 ${n(q.perNight)}/night \u00b7 \u00a3${n(q.worthGbp)}`)).join('')
+    + row('Cards', 'post to the two Side Quest channels on the next run'));
+});
 
 $('hardestBtn').addEventListener('click', () => post('hardest', 'Hardest worker', (r) => `<h2>Hardest Worker board refreshed</h2>`
   + row('Data up to', esc(r.asOf))
