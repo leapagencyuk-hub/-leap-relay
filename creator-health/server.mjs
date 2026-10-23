@@ -73,6 +73,8 @@ import { questBoard } from './lib/sidequest.mjs';
 import { refreshAvatars, avatarBytes, hasAvatar, avatarKey } from './lib/avatars.mjs';
 import { checkShortForm, cachedShortForm, shortFormAdvice, shortFormMessage, handleKey } from './lib/shortform.mjs';
 import { recordVisit, readActivity, coachPerformance } from './lib/coachactivity.mjs';
+import { coachName } from './lib/coaches.mjs';
+import { addEntry, readNotes, KIND as NOTE_KIND, MAX_NOTE } from './lib/creatornotes.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const configPath = process.env.CH_CONFIG || path.join(here, 'config.json');
@@ -644,6 +646,27 @@ function queueAvatars(usernames) {
     .finally(() => { avatarRun = null; });
 }
 
+/**
+ * Is this creator on the asking person's roster, and what is their key.
+ *
+ * Straight off the series rather than out of a built portal. Saving a note was
+ * rebuilding the entire analysis — decline rules, ramp, revenue, rank ups, for
+ * a thousand creators — to answer "does this handle belong to this coach",
+ * which took 2.8 seconds every time somebody tapped a button.
+ */
+function rosterLookup(username, who) {
+  const series = new Store(config.dataDir).readSeries();
+  const wanted = String(username ?? '').toLowerCase();
+  for (const c of Object.values(series?.creators ?? {})) {
+    if (String(c.username ?? '').toLowerCase() !== wanted) continue;
+    if (c.quitOn) return null;
+    const manager = String(c.manager ?? '').toLowerCase();
+    if (who.role !== 'director' && manager !== who.subject) return null;
+    return { key: c.key, username: c.username, coach: manager || null };
+  }
+  return null;
+}
+
 function portalData(asOf = null) {
   const result = analyse(config, { asOf, persist: false });
   const store = new Store(config.dataDir);
@@ -662,6 +685,7 @@ function portalData(asOf = null) {
   const portal = buildPortal({
     result, config, revenue, rankUp, quests, caseStore,
     hasAvatar: (u) => hasAvatar(config.dataDir, u),
+    notes: readNotes(config.dataDir),
   });
   return { portal, revenue, lastAsOf: store.readSeries()?.lastAsOf ?? null };
 }
@@ -712,13 +736,9 @@ async function handlePortal(req, res, url, route) {
     if (!who) return json(res, 403, { error: 'not signed in' });
 
     const username = decodeURIComponent(parts[2]);
-    const { portal } = portalData(null);
     // A coach may ask about their own creators and nobody else's. Without this
     // the button is a handle-lookup service for anyone with a login.
-    const mine = who.role === 'director'
-      ? portal.coaches.some((c) => c.rows.some((r) => handleKey(r.username) === handleKey(username)))
-      : (portal.byCoach.get(who.subject)?.rows ?? []).some((r) => handleKey(r.username) === handleKey(username));
-    if (!mine) return json(res, 404, { error: 'not on your roster' });
+    if (!rosterLookup(username, who)) return json(res, 404, { error: 'not on your roster' });
 
     const fresh = cachedShortForm(config.dataDir, username);
     const result = fresh && !fresh.stale ? fresh : await oneShortFormCheck(username);
@@ -728,6 +748,36 @@ async function handlePortal(req, res, url, route) {
       message: result.ok ? shortFormMessage(username, result) : null,
       cached: Boolean(fresh && !fresh.stale),
     });
+  }
+
+  // A coach ticking a creator off, or leaving a note on them. POST, session
+  // gated, and only for creators on the asking coach's own roster.
+  if (parts[1] === 'note' && parts[2]) {
+    if (req.method !== 'POST') { res.writeHead(405); return res.end(); }
+    const sessionId = readSession(cookieValue(req.headers.cookie, SESSION_COOKIE), secret);
+    const { discord } = loadRoutes(path.dirname(configPath));
+    const who = sessionId ? resolveAccess(sessionId, { config, discordConfig: discord }) : null;
+    if (!who) return json(res, 403, { error: 'not signed in' });
+
+    const row = rosterLookup(decodeURIComponent(parts[2]), who);
+    if (!row) return json(res, 404, { error: 'not on your roster' });
+
+    let body = {};
+    try { body = JSON.parse((await readBody(req, 8192)).toString('utf8') || '{}'); } catch { body = {}; }
+    const kind = body.kind === NOTE_KIND.CONTACTED ? NOTE_KIND.CONTACTED : NOTE_KIND.NOTE;
+    // Attributed to the person, not to the role. A director writing on a
+    // creator's card signs it with their own name, so a coach reading the
+    // history knows who they are replying to.
+    const author = who.role === 'director' ? `discord:${who.id}` : who.subject;
+    const authorName = who.role === 'director'
+      ? (who.name ?? 'a director')
+      : coachName(who.subject, config);
+    const history = addEntry(config.dataDir, row.key, {
+      kind, coach: author, coachName: authorName,
+      text: String(body.text ?? '').slice(0, MAX_NOTE),
+    });
+    if (!history) return json(res, 400, { error: 'nothing to save' });
+    return json(res, 200, { ok: true, history: [...history].reverse().slice(0, 8) });
   }
 
   if (parts[1] === 'avatar' && parts[2]) {
@@ -827,6 +877,7 @@ async function handlePortal(req, res, url, route) {
     }));
     const performance = coachPerformance({
       portal, activity: readActivity(config.dataDir), asOf: portal.asOf, config,
+      notes: readNotes(config.dataDir),
     });
     return html(res, 200, directorPage(portal, links, { lastAsOf, config, signedIn, performance }));
   }
@@ -910,7 +961,8 @@ const server = http.createServer(async (req, res) => {
     // Discord card carries.
     // GET for every page; POST only for the short-form check, which is a POST
     // precisely so a link preview cannot start a browser.
-    if ((req.method === 'GET' || (req.method === 'POST' && route.startsWith('/portal/shortform/')))
+    if ((req.method === 'GET' || (req.method === 'POST'
+      && (route.startsWith('/portal/shortform/') || route.startsWith('/portal/note/'))))
       && (route === '/portal' || route.startsWith('/portal/'))) {
       return await handlePortal(req, res, url, route);
     }

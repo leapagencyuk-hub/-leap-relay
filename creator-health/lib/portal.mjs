@@ -25,6 +25,7 @@ import { graduationLadder } from './graduation.mjs';
 import { planFor } from './ramp.mjs';
 import { isOpen } from './cases.mjs';
 import { avatarRoute } from './avatars.mjs';
+import { lastTouch, historyFor } from './creatornotes.mjs';
 
 const num = (x) => (Number.isFinite(x) ? x : 0);
 const n0 = (x) => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-GB') : '—');
@@ -431,7 +432,7 @@ export function rankMessage(username, { gap, perDay, tier, daysLeft }) {
 }
 
 /** One roster line. Everything a coach sorts on, and the colour. */
-function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvatar = null }) {
+function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvatar = null, notes = null, asOf = null }) {
   const m = metrics;
   const mtd = num(m?.monthToDate?.diamonds);
   const change = pct(m?.monthOnMonth?.diamonds?.change);
@@ -542,6 +543,11 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
     quest: quest ?? null,
     graduation: grad ? { remaining: grad.remaining, done: grad.done, requiredPerDay: grad.requiredPerDay } : null,
     alert: alert ? { severity: alert.severity, signals: alert.signals.map((s) => s.label ?? s.id) } : null,
+    // What anybody has already done about this creator. The page could say who
+    // to ring and could not say whether somebody already had, so on a team with
+    // two coaches the same person got chased twice.
+    touch: notes ? lastTouch(notes, creator.key, asOf) : null,
+    history: notes ? historyFor(notes, creator.key).slice(0, 8) : [],
     rankMessage: rank ? rankMessage(creator.username, {
       gap: rank.gap, perDay: rank.needPerDay, tier: (rank.toTier ?? 0) + 1, daysLeft: rank.daysLeft,
     }) : null,
@@ -583,7 +589,7 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
  */
 export function buildPortal({
   result, config, revenue = null, rankUp = null, quests = null, caseStore = null,
-  hasAvatar = null,
+  hasAvatar = null, notes = null,
 }) {
   const { creators, metricsByKey, alerts = [], ramp = [], activation = [], asOf } = result;
   const ignored = new Set((config.monitoring?.ignoreGroups ?? []).map(groupKey));
@@ -623,7 +629,7 @@ export function buildPortal({
       rank: rankByKey.get(c.key) ?? null,
       alert: alertByKey.get(c.key) ?? null,
       quest: questByKey.get(c.key) ?? null,
-      hasAvatar,
+      hasAvatar, notes, asOf,
       grad: g ? { remaining: Math.max(0, (config.ramp?.targetDiamonds ?? 200000) - g.monthToDate), done: g.monthToDate >= (config.ramp?.targetDiamonds ?? 200000), requiredPerDay: g.requiredPerDay } : null,
       config,
     }));

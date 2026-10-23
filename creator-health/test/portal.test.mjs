@@ -378,12 +378,16 @@ test('a Discord id resolves to exactly the person it belongs to', () => {
       discordIds: { '333333333333333333': 'Cover@Leap.com' },
     },
   };
+  // The id comes back too, because anything a person writes in the portal has
+  // to be signed by them rather than by their role.
   assert.deepEqual(resolveAccess('111111111111111111', { config, discordConfig }),
-    { role: 'coach', subject: 'josh@leap.com' });
+    { role: 'coach', subject: 'josh@leap.com', id: '111111111111111111' });
   assert.deepEqual(resolveAccess('999999999999999999', { config, discordConfig }),
-    { role: 'director', subject: '*' }, 'a director id wins over everything');
+    { role: 'director', subject: '*', id: '999999999999999999', name: null },
+    'a director id wins over everything');
   assert.deepEqual(resolveAccess('333333333333333333', { config, discordConfig }),
-    { role: 'coach', subject: 'cover@leap.com' }, 'the explicit map is folded to lower case');
+    { role: 'coach', subject: 'cover@leap.com', id: '333333333333333333' },
+    'the explicit map is folded to lower case');
 
   // The whole point of the module: an account nobody listed gets nothing.
   assert.equal(resolveAccess('444444444444444444', { config, discordConfig }), null);
@@ -599,7 +603,11 @@ test('every Discord id in the config resolves to exactly one person', () => {
 
   for (const id of directors) {
     assert.match(id, /^\d{17,20}$/, `${id} is not a Discord snowflake`);
-    assert.deepEqual(resolveAccess(id, { config: realConfig }), { role: 'director', subject: '*' });
+    const got = resolveAccess(id, { config: realConfig });
+    assert.equal(got.role, 'director');
+    assert.equal(got.id, id);
+    // Named, so a note they leave on a creator is signed by a person.
+    assert.ok(got.name, `${id} has no name in portal._directorNames`);
   }
   for (const [id, email] of Object.entries(discordIds)) {
     assert.match(id, /^\d{17,20}$/, `${id} is not a Discord snowflake`);
@@ -608,10 +616,14 @@ test('every Discord id in the config resolves to exactly one person', () => {
     // An id that is both an owner and a coach gets the director view. That is
     // Sur3shot and Slow, and it is deliberate: they reach their own team from
     // the network page like any other.
-    const expected = directors.includes(id)
-      ? { role: 'director', subject: '*' }
-      : { role: 'coach', subject: email.toLowerCase() };
-    assert.deepEqual(got, expected, `${email} resolved wrong`);
+    if (directors.includes(id)) {
+      assert.equal(got.role, 'director');
+      assert.equal(got.subject, '*');
+      assert.equal(got.id, id);
+    } else {
+      assert.deepEqual(got, { role: 'coach', subject: email.toLowerCase(), id },
+        `${email} resolved wrong`);
+    }
   }
 
   // No id does double duty as two different coaches.
@@ -1210,4 +1222,86 @@ test('withPortal adds the line to a card that was built without one', async () =
   // than dropping one to make room for a link.
   const full = { embeds: [{ fields: Array.from({ length: 25 }, (_, i) => ({ name: `${i}`, value: 'v' })) }] };
   assert.equal(withPortal(full, 'https://x/portal').embeds[0].fields.length, 25);
+});
+
+// --- what a coach did about it --------------------------------------------------
+
+import { addEntry, readNotes, lastTouch, historyFor, workedSummary, KIND } from '../lib/creatornotes.mjs';
+
+test('a tick is one a day per coach, not one a click', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-note-'));
+  for (let i = 0; i < 4; i++) {
+    addEntry(dir, 'id:1', { kind: KIND.CONTACTED, coach: 'josh@leap.com', at: '2026-10-23T09:00:00Z' });
+  }
+  assert.equal(readNotes(dir)['id:1'].length, 1, 'four clicks is not four conversations');
+
+  // A different coach on the same creator is a different conversation.
+  addEntry(dir, 'id:1', { kind: KIND.CONTACTED, coach: 'kelly@leap.com', at: '2026-10-23T10:00:00Z' });
+  assert.equal(readNotes(dir)['id:1'].length, 2);
+  // And the same coach tomorrow is too.
+  addEntry(dir, 'id:1', { kind: KIND.CONTACTED, coach: 'josh@leap.com', at: '2026-10-24T09:00:00Z' });
+  assert.equal(readNotes(dir)['id:1'].length, 3);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('an empty note is not saved, and a long one is cut rather than refused', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ch-note2-'));
+  assert.equal(addEntry(dir, 'id:1', { kind: KIND.NOTE, coach: 'j@l', text: '   ' }), null);
+  assert.equal(readNotes(dir)['id:1'], undefined);
+
+  addEntry(dir, 'id:1', { kind: KIND.NOTE, coach: 'j@l', text: 'x'.repeat(5000) });
+  assert.equal(readNotes(dir)['id:1'][0].text.length, 600);
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('a card says whether anybody has already dealt with this creator', () => {
+  // Sur3shot's ask. The page could say who to ring and could not say whether
+  // somebody already had, so on a team with two coaches the same person got
+  // chased twice and somebody else got missed.
+  const notes = {
+    'id:1': [
+      { at: '2026-10-20T09:00:00Z', kind: KIND.CONTACTED, coach: 'j@l', coachName: 'Josh' },
+      { at: '2026-10-21T09:00:00Z', kind: KIND.NOTE, coach: 'j@l', coachName: 'Josh', text: 'Off on holiday until the 28th.' },
+    ],
+  };
+  const t = lastTouch(notes, 'id:1', '2026-10-23');
+  assert.equal(t.contactedDaysSince, 3);
+  assert.equal(t.by, 'Josh');
+  assert.equal(t.entries, 2);
+  assert.equal(historyFor(notes, 'id:1')[0].text, 'Off on holiday until the 28th.', 'newest first');
+  assert.equal(lastTouch({}, 'id:1', '2026-10-23'), null, 'and nothing logged reads as nothing');
+});
+
+test('a note from a creator card cannot smuggle markup onto the page', () => {
+  const c = creator('a');
+  // Dark and earning, so the creator gets a full card and the history renders.
+  const m = metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } });
+  const view = buildPortal({
+    result: { creators: [c], metricsByKey: new Map([[c.key, m]]),
+      alerts: [], ramp: [], activation: [], asOf: '2026-10-23' },
+    notes: { [c.key]: [{ at: '2026-10-23T09:00:00Z', kind: KIND.NOTE, coach: 'j@l',
+      coachName: '<img src=x onerror=alert(1)>', text: '<script>alert(2)</script>' }] },
+    config: { ramp: { targetDiamonds: 200000 } },
+  }).byCoach.get('josh@leap.com');
+  assert.equal(view.attention.length, 1, 'the fixture produces a card to render into');
+  const page = coachPage(view, { config: {} });
+  assert.equal(page.includes('<img src=x'), false);
+  assert.equal(page.includes('<script>alert(2)'), false);
+  assert.ok(page.includes('&lt;script&gt;'));
+});
+
+test('worked counts the list the portal named, not the whole roster', () => {
+  // A coach with 234 creators has not failed by not ringing 234 people.
+  const rows = Array.from({ length: 3 }, (_, i) => {
+    const c = creator(`c${i}`);
+    return { creator: c, metrics: metrics({ darkStreak: 9, monthToDate: { diamonds: 90000 } }) };
+  });
+  const view = portalOf(rows).byCoach.get('josh@leap.com');
+  const notes = {
+    'id:c0': [{ at: '2026-10-22T09:00:00Z', kind: KIND.CONTACTED, coach: 'j@l', coachName: 'Josh' }],
+    'id:c1': [{ at: '2026-10-01T09:00:00Z', kind: KIND.CONTACTED, coach: 'j@l', coachName: 'Josh' }],
+  };
+  const w = workedSummary({ view, notes, asOf: '2026-10-23' });
+  assert.equal(w.needing, 3);
+  assert.equal(w.worked, 1, 'three weeks ago does not count as worked this week');
 });

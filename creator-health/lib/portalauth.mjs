@@ -162,17 +162,31 @@ export function resolveAccess(discordId, { config = {}, discordConfig = null } =
   if (!/^\d{17,20}$/.test(id)) return null;
 
   const directors = (config.portal?.directors ?? []).map((d) => idFromMention(d) ?? String(d).trim());
-  if (directors.includes(id)) return { role: 'director', subject: '*' };
+  if (directors.includes(id)) {
+    // `subject` stays '*' because a director's view is the whole network, but
+    // the id and a name come too: anything a director writes has to be
+    // attributed to the person who wrote it, not to a wildcard.
+    return {
+      role: 'director',
+      subject: '*',
+      id,
+      name: config.portal?._directorNames?.[id] ?? null,
+    };
+  }
 
   const explicit = config.portal?.discordIds ?? {};
   for (const [key, coach] of Object.entries(explicit)) {
-    if ((idFromMention(key) ?? key) === id) return { role: 'coach', subject: String(coach).toLowerCase() };
+    if ((idFromMention(key) ?? key) === id) {
+      return { role: 'coach', subject: String(coach).toLowerCase(), id };
+    }
   }
 
   for (const [email, entry] of Object.entries(discordConfig?.coaches ?? {})) {
     const fromMention = idFromMention(entry.mention);
     const fromUserId = idFromMention(entry.userId);
-    if (fromMention === id || fromUserId === id) return { role: 'coach', subject: email.toLowerCase() };
+    if (fromMention === id || fromUserId === id) {
+      return { role: 'coach', subject: email.toLowerCase(), id };
+    }
   }
   return null;
 }

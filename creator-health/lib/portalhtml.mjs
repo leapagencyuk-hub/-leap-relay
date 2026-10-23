@@ -148,6 +148,23 @@ font-size:12.5px;line-height:1.5;resize:vertical;min-height:112px;padding:0}
 .sfout.cold b{color:var(--act)}
 .sfout.slowing b{color:var(--watch)}
 .sfout.good b{color:var(--good)}
+/* The work log. Sur3shot's ask: the page could say who to ring and could not
+   say whether anybody already had. */
+.log{margin-top:11px;padding-top:11px;border-top:1px solid var(--line)}
+.touch{font-size:12px;color:var(--dim);margin-bottom:8px}
+.touch b{color:var(--good)}
+.touch.cold b{color:var(--watch)}
+.touch.none{color:var(--watch)}
+.log textarea{width:100%;background:rgba(3,11,30,.6);border:1px solid var(--line);
+border-radius:9px;color:var(--ink);font:inherit;font-size:12.5px;padding:8px 10px;
+resize:vertical;min-height:54px}
+.log textarea:focus{outline:2px solid var(--brand-lift);outline-offset:2px}
+.hist{margin-top:9px;display:flex;flex-direction:column;gap:6px}
+.hist .e{font-size:11.5px;color:var(--dim);line-height:1.45;
+border-left:2px solid var(--line);padding-left:9px}
+.hist .e b{color:var(--ink);font-weight:650}
+.hist .e.tick{border-left-color:var(--good)}
+.logout{font-size:11.5px;color:var(--good);margin-left:8px}
 @media(max-width:430px){.quad{grid-template-columns:repeat(2,1fr)}}
 /* The banked list: dense, because there can be seventy of them and a coach
    wants to see the whole wall at once. */
@@ -317,6 +334,32 @@ ${q('Fan club', mo.fanClub, n)}
 
   // Short form is the biggest lever the LIVE export cannot see, so it is asked
   // for rather than shown: one creator, one browser, when a coach wants to know.
+  // What has already been done, then the controls to add to it.
+  const t = r.touch;
+  const touchLine = t
+    ? `<div class="touch ${t.contactedDaysSince != null && t.contactedDaysSince > 7 ? 'cold' : ''}">${
+      t.contactedDaysSince == null
+        ? `Noted by ${esc(t.by)}, no contact logged yet`
+        : `Last contacted <b>${t.contactedDaysSince === 0 ? 'today' : `${t.contactedDaysSince}d ago`}</b> by ${esc(t.by)}`
+    }${t.entries > 1 ? ` · ${t.entries} entries` : ''}</div>`
+    : '<div class="touch none">Nobody has logged anything on this creator yet.</div>';
+
+  const histId = `h-${esc(String(r.key ?? r.username).replace(/[^a-zA-Z0-9]/g, ''))}`;
+  const entry = (e) => `<div class="e ${e.kind === 'contacted' ? 'tick' : ''}">
+<b>${esc(e.coachName ?? e.coach)}</b> · ${esc(String(e.at).slice(0, 10))}${
+    e.kind === 'contacted' ? ' · contacted' : ''}${e.text ? `<br>${esc(e.text)}` : ''}</div>`;
+
+  const log = r.username ? `<div class="log" data-log="${esc(r.username)}">
+${touchLine}
+<textarea placeholder="What did you say, what did they agree, anything the numbers cannot see" rows="2"></textarea>
+<div class="acts">
+<button class="btn" type="button" data-note="${esc(r.username)}">Save note</button>
+<button class="btn tt" type="button" data-contacted="${esc(r.username)}">Mark as contacted</button>
+<span class="logout"></span>
+</div>
+<div class="hist" id="${histId}">${(r.history ?? []).map(entry).join('')}</div>
+</div>` : '';
+
   const sf = r.username ? `<div class="sf" data-sf="${esc(r.username)}">
 <div class="acts"><button class="btn" type="button" data-shortform="${esc(r.username)}">Check short form</button>
 <span class="sfout"></span></div></div>` : '';
@@ -342,6 +385,7 @@ ${d ? `<details class="why"><summary><span class="acts">
 ${d.actions?.length ? `<ul>${d.actions.map((a) => `<li>${esc(a)}</li>`).join('')}</ul>` : ''}
 ${sf}
 ${message}
+${log}
 </div></details>` : `<div class="acts">${tt}</div>`}
 </div>`;
 }
@@ -349,7 +393,50 @@ ${message}
 // The one piece of script on the page. Copy needs a click handler and there is
 // no other way; everything else is plain HTML and CSS on purpose.
 const COPY_JS = `<script>
+// Saving a note or ticking a creator off. Everything is rebuilt from the
+// server's answer rather than from what we think we just sent, so two coaches
+// working the same team see the same history.
+function renderHistory(box, entries) {
+  box.textContent = '';
+  (entries || []).forEach(function (e) {
+    var d = document.createElement('div');
+    d.className = 'e' + (e.kind === 'contacted' ? ' tick' : '');
+    var who = document.createElement('b');
+    who.textContent = e.coachName || e.coach;
+    d.appendChild(who);
+    d.appendChild(document.createTextNode(' \u00b7 ' + String(e.at).slice(0, 10)
+      + (e.kind === 'contacted' ? ' \u00b7 contacted' : '')));
+    if (e.text) { d.appendChild(document.createElement('br')); d.appendChild(document.createTextNode(e.text)); }
+    box.appendChild(d);
+  });
+}
+
+function sendEntry(wrap, handle, kind, btn) {
+  var ta = wrap.querySelector('textarea');
+  var out = wrap.querySelector('.logout');
+  var box = wrap.querySelector('.hist');
+  if (kind === 'note' && !ta.value.trim()) { ta.focus(); return; }
+  btn.disabled = true;
+  out.textContent = 'Saving...';
+  fetch('/portal/note/' + encodeURIComponent(handle), {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ kind: kind, text: ta.value }),
+  }).then(function (r) { return r.json(); }).then(function (d) {
+    btn.disabled = false;
+    if (!d || !d.ok) { out.textContent = (d && d.error) || 'Could not save.'; return; }
+    out.textContent = kind === 'contacted' ? 'Logged' : 'Saved';
+    if (kind === 'note') ta.value = '';
+    renderHistory(box, d.history);
+    setTimeout(function () { out.textContent = ''; }, 2000);
+  }).catch(function () { btn.disabled = false; out.textContent = 'Could not save.'; });
+}
+
 document.addEventListener('click', function (ev) {
+  var noteBtn = ev.target.closest('[data-note]');
+  if (noteBtn) { sendEntry(noteBtn.closest('[data-log]'), noteBtn.getAttribute('data-note'), 'note', noteBtn); return; }
+  var tickBtn = ev.target.closest('[data-contacted]');
+  if (tickBtn) { sendEntry(tickBtn.closest('[data-log]'), tickBtn.getAttribute('data-contacted'), 'contacted', tickBtn); return; }
   var sfBtn = ev.target.closest('[data-shortform]');
   if (sfBtn) {
     var handle = sfBtn.getAttribute('data-shortform');
@@ -598,13 +685,15 @@ ${portal.coaches.map((c) => {
   }).join('')}
 ${performance ? `
 <h2>Coach performance <span class="count">(${performance.rows.length})</span></h2>
-<p class="lede">Is each coach using the tool, and is their team moving. Both columns on
+<p class="lede">Is each coach using the tool, is their list being worked, and is their team
+moving. All three on
 purpose: a coach who opens it daily with a falling team is a different conversation from
 one who never opens it with a team that is flying.
 ${performance.neverOpened ? `<b>${performance.neverOpened} have never opened it.</b>` : 'Everybody has opened it at least once.'}
 ${performance.usingIt} of ${performance.rows.length} in the last ${performance.seenCutoff} days.</p>
 <div class="card"><table>
-<tr><th>Coach</th><th class="num">Last in</th><th class="num hide-s">Days this month</th>
+<tr><th>Coach</th><th class="num">Last in</th><th class="num">Worked</th>
+<th class="num hide-s">Days this month</th>
 <th class="num">Diamonds</th><th class="num">vs last month</th>
 <th class="num hide-s">Recruits</th><th class="num hide-s">Leaped</th>
 <th class="num hide-s">Rank ups</th><th class="num">Urgent</th></tr>
@@ -612,6 +701,8 @@ ${performance.rows.map((r) => `<tr>
 <td>${esc(r.name)}<div class="meta">${r.roster} creators</div></td>
 <td class="num ${r.daysSince == null ? 'down' : r.daysSince <= performance.seenCutoff ? 'up' : 'flat'}">${
   r.daysSince == null ? 'never' : r.daysSince === 0 ? 'today' : `${r.daysSince}d ago`}</td>
+<td class="num ${r.workedPct == null ? '' : r.workedPct >= 0.5 ? 'up' : r.workedPct > 0 ? 'flat' : 'down'}">${
+  r.needing ? `${r.worked}/${r.needing}` : '—'}</td>
 <td class="num hide-s">${r.daysThisMonth}</td>
 <td class="num">${n(r.diamonds)}</td>
 <td class="num ${toneOf(r.growth)}">${r.growth == null ? '—' : signed(r.growth)}</td>
@@ -624,7 +715,9 @@ ${performance.rows.map((r) => `<tr>
 <p class="note">${esc(EARNINGS_DISCLAIMER)}</p>
 ${signedIn ? '<p class="note"><a href="/portal/logout">Sign out</a></p>' : ''}
 <p class="note">A coach's own link shows them their roster and nobody else's. "Last in"
-counts days a coach opened their own page, not what they looked at.</p>`);
+counts days a coach opened their own page, not what they looked at. "Worked" is how many
+of the creators the portal put in front of them have been marked as contacted in the last
+week, against how many it named.</p>`);
 }
 
 /** Offered when Discord is configured but the visitor has not signed in. */

@@ -10,6 +10,7 @@
 // tool", not "watch this coach work", and a tool that reports the second to
 // their boss is one they will stop opening honestly.
 import fs from 'node:fs';
+import { workedSummary } from './creatornotes.mjs';
 import path from 'node:path';
 
 const FILE = 'coach-activity.json';
@@ -76,8 +77,12 @@ export function activityFor(all, coach, asOf) {
  * different conversation from one who never opens it and whose team is flying,
  * and a board showing only one of the two columns invites the wrong one.
  */
-export function coachPerformance({ portal, activity, asOf, config = {} }) {
+export function coachPerformance({ portal, activity, asOf, config = {}, notes = null }) {
   const rows = portal.coaches.map((c) => {
+    // How much of the list the portal put in front of them they have actually
+    // worked. Against that list, not against their whole roster: a coach with
+    // 234 creators has not failed by not ringing 234 people.
+    const worked = notes ? workedSummary({ view: c, notes, asOf }) : null;
     const use = activityFor(activity, c.coach, asOf);
     const rev = c.earnings;
     const change = c.rows.length
@@ -101,6 +106,9 @@ export function coachPerformance({ portal, activity, asOf, config = {} }) {
       // The open caseload, which is the part a coach is meant to work down.
       openCases: c.cases?.length ?? 0,
       ...use,
+      worked: worked?.worked ?? null,
+      needing: worked?.needing ?? null,
+      workedPct: worked?.pct ?? null,
       earningsHidden: c.earningsHidden,
       pay: c.earnings?.total ?? null,
     };
