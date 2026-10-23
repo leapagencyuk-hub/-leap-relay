@@ -1305,3 +1305,50 @@ test('worked counts the list the portal named, not the whole roster', () => {
   assert.equal(w.needing, 3);
   assert.equal(w.worked, 1, 'three weeks ago does not count as worked this week');
 });
+
+test('a Discord decline card never says nothing is wrong', () => {
+  // "@boosty.blanco is slipping" with "Nothing to fix. Holding." underneath.
+  // The portal was fixed for this and the Discord path was not: the card built
+  // its reading from metrics alone, so a creator flagged on month-on-month had
+  // nothing for the week-on-week checks to find.
+  const m = metrics();   // flat week on week
+  const alert = {
+    creator: { username: 'boosty.blanco' },
+    metrics: m,
+    signals: [{ label: 'Diamonds -87% on last month', detail: '60,170 against 456,053 by the same day.' }],
+  };
+  const d = diagnose(m, { alert });
+  assert.notEqual(d.lever, 'hold');
+  assert.equal(/Nothing to fix/.test(d.headline + d.detail), false);
+});
+
+test('the monitoring card carries the month, the face and no em dash', () => {
+  const m = metrics({
+    monthToDate: { diamonds: 569764, liveHours: 66.9, validLiveDays: 19 },
+    monthOnMonth: {
+      diamonds: { change: -0.39, lastMonthToSamePoint: 938282 },
+      liveHours: { change: -0.03, lastMonthToSamePoint: 68.7 },
+      validLiveDays: { change: 0.18, lastMonthToSamePoint: 16 },
+    },
+    fanClub: { activeFans: 341, activeFansChange14: 0.56 },
+  });
+  const out = declineBriefEmbed(
+    { id: 'x', username: 'gdubz360streams', creatorKey: 'id:1', coach: 'j@l', group: 'Team Alpha',
+      severity: 'urgent', kind: 'decline', openedOn: '2026-10-23', firstSeenOn: '2026-10-23',
+      playbookId: 'DIAMONDS_DOWN' },
+    { creator: { username: 'gdubz360streams' }, metrics: m },
+    { buttons: false, config: {}, portalUrl: 'https://x/portal',
+      diagnosis: { headline: 'Diamonds slipping', detail: 'Down on last month.' } },
+  );
+  const body = JSON.stringify(out);
+
+  // The four numbers the portal leads with, each against the same point.
+  assert.ok(body.includes('569,764'));
+  assert.ok(body.includes('from 938,282'));
+  assert.ok(body.includes('66.9h'));
+  assert.ok(body.includes('Fan club'));
+  // Their face, from our own host.
+  assert.equal(out.embeds[0].thumbnail.url, 'https://x/portal/avatar/gdubz360streams');
+  // And the tell is gone.
+  assert.equal(body.includes('—'), false, 'em dash on the card');
+});

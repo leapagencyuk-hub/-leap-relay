@@ -206,9 +206,15 @@ export async function dispatch({
   // the page never give a coach two different answers. Taken straight from the
   // metrics rather than from the built portal, because the cases are dispatched
   // long before the revenue and rank-up boards those need exist.
+  // The alert goes in too. Without it a card headed "@boosty.blanco is
+  // slipping" printed "Nothing to fix. Holding." underneath, because the
+  // decline rules fire on month-on-month and against-their-own-normal and the
+  // week-on-week checks found nothing. The portal was fixed for this and the
+  // Discord path was not.
+  const alertByCreatorKey = new Map(alerts.map((a) => [a.creator.key, a]));
   const diagnosisFor = (key) => {
     const m = metricsByKey.get(key);
-    return m ? diagnose(m, { config }) : null;
+    return m ? diagnose(m, { config, alert: alertByCreatorKey.get(key) ?? null }) : null;
   };
 
   const activationSummary = activation.length ? {

@@ -2955,11 +2955,34 @@ export function declineBriefEmbed(caseRecord, alert, { mention = null, buttons =
   // Straight to this creator's card, not the top of the page.
   const anchor = String(caseRecord.username ?? '').toLowerCase().replace(/[^a-z0-9._-]/g, '');
   const cardUrl = anchor ? `${portalUrl}#c-${anchor}` : portalUrl;
+  // The portal's own origin, for the avatar route.
+  const avatarBase = anchor ? String(portalUrl).replace(/\/portal\/?$/, '') : null;
   const moved = [
     m.change7?.diamonds != null ? `diamonds ${pct(m.change7.diamonds)}` : null,
     m.change7?.liveHours != null ? `hours ${pct(m.change7.liveHours)}` : null,
     m.darkStreak >= 2 ? `dark ${m.darkStreak} days` : null,
   ].filter(Boolean).join(' · ');
+
+  // The same four numbers the portal card leads with, each against the same
+  // point last month. The card was quoting two week-on-week percentages and
+  // nothing else, which is thinner than what a coach needs to decide whether
+  // to open anything at all.
+  const mo = m.monthOnMonth ?? {};
+  const month = (label, value, cmp, fmt = n) => {
+    if (value == null) return null;
+    const change = cmp?.change;
+    const then = cmp?.lastMonthToSamePoint;
+    return `**${label}** ${fmt(value)}${change == null ? '' : ` (${pct(change)})`}${
+      then == null ? '' : `, from ${fmt(then)}`}`;
+  };
+  const monthLines = [
+    month('Diamonds', m.monthToDate?.diamonds, mo.diamonds),
+    month('Hours', m.monthToDate?.liveHours, mo.liveHours, (x) => `${Number(x).toFixed(1)}h`),
+    month('LIVE days', m.monthToDate?.validLiveDays, mo.validLiveDays),
+    m.fanClub?.activeFans == null ? null
+      : `**Fan club** ${n(m.fanClub.activeFans)}${
+        m.fanClub.activeFansChange14 == null ? '' : ` (${pct(m.fanClub.activeFansChange14)})`}`,
+  ].filter(Boolean);
 
   return {
     content: mention ?? undefined,
@@ -2967,10 +2990,15 @@ export function declineBriefEmbed(caseRecord, alert, { mention = null, buttons =
       author: authorBlock(caseRecord, avatar),
       title: `@${caseRecord.username} is slipping`,
       description: diagnosis?.headline
-        ? `**${diagnosis.headline}** — ${diagnosis.detail}`
+        ? `**${diagnosis.headline}.** ${diagnosis.detail}`
         : 'See the portal for what the data says and what to do about it.',
       color: COLOR[caseRecord.severity] ?? COLOR.warn,
+      // Their face, served from our own host so Discord can always fetch it.
+      ...(avatarBase ? { thumbnail: { url: `${avatarBase}/portal/avatar/${anchor}` } } : {}),
       fields: [
+        ...(monthLines.length
+          ? [{ name: 'This month, against the same point last month', value: monthLines.join('\n') }]
+          : []),
         { name: 'This week', value: moved || 'No week-on-week movement recorded.', inline: false },
         { name: 'HEAD TO THE PORTAL', value: `**[Open their card](${cardUrl})**\nThe numbers against last month, what the data says, and a message you can send them.` },
       ],
