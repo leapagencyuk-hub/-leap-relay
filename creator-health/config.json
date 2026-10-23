@@ -671,7 +671,8 @@
     "directors": [
       "357135591890223106",
       "1289191030318436391",
-      "493176237406027776"
+      "493176237406027776",
+      "431121227294179329"
     ],
     "_discordIds": "Discord user id to coach address. These are the logins: an id that is in neither this map nor the director list sees a page telling them they are not on the list, and never a roster. Coaches whose routes.json mention is a real <@id> resolve without an entry here, but every one is listed explicitly so the mapping is readable in one place.",
     "discordIds": {
@@ -689,7 +690,8 @@
     "_directorNames": {
       "357135591890223106": "aone",
       "1289191030318436391": "slowsticks",
-      "493176237406027776": "Sur3shot"
+      "493176237406027776": "Sur3shot",
+      "431121227294179329": "Java (dev)"
     }
   }
 }
