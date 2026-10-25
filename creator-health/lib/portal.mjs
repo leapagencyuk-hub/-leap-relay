@@ -26,6 +26,7 @@ import { planFor } from './ramp.mjs';
 import { isOpen } from './cases.mjs';
 import { avatarRoute } from './avatars.mjs';
 import { lastTouch, historyFor } from './creatornotes.mjs';
+import { creatorMessage as questMessageFor } from './sidequest.mjs';
 
 const num = (x) => (Number.isFinite(x) ? x : 0);
 const n0 = (x) => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-GB') : '—');
@@ -541,6 +542,10 @@ function rosterRow({ creator, metrics, rank, alert, quest, grad, config, hasAvat
       daysLeft: rank.daysLeft ?? 0,
     } : null,
     quest: quest ?? null,
+    // The quest is this week's conversation, so a quest card offers the quest
+    // message rather than the general coaching one. Built here, with the rest
+    // of the view model, so the page stays presentational.
+    questMessage: quest?.quest && quest?.progress ? questMessageFor(quest.quest, quest.progress) : null,
     graduation: grad ? { remaining: grad.remaining, done: grad.done, requiredPerDay: grad.requiredPerDay } : null,
     alert: alert ? { severity: alert.severity, signals: alert.signals.map((s) => s.label ?? s.id) } : null,
     // What anybody has already done about this creator. The page could say who
@@ -809,6 +814,32 @@ export function buildPortal({
     coaches,
     byCoach: views,
     byTeam: teamViews,
+    // The whole month's quests, network wide, for the owner view. A coach sees
+    // their own on their own page; this is the only place the gifts owed for
+    // the month can be totalled.
+    questSummary: quests?.summary ?? null,
+    questRows: (quests?.quests ?? []).map((r) => ({
+      username: r.quest.username,
+      coach: r.coachLabel ?? r.quest.coach ?? null,
+      group: r.quest.group ?? null,
+      kind: r.quest.kind,
+      tier: r.quest.tier,
+      target: r.quest.target,
+      startedAt: r.quest.startedAt,
+      worthGbp: r.quest.worthGbp,
+      questCoins: r.quest.questCoins,
+      incentiveCoins: r.quest.incentiveCoins,
+      now: r.progress.now,
+      gained: r.progress.gained,
+      left: r.progress.left,
+      pct: r.progress.pct,
+      nightsLeft: r.progress.nightsLeft,
+      perNightNeeded: r.progress.perNightNeeded,
+      perNightDoing: r.progress.perNightDoing,
+      done: r.progress.done,
+      fresh: r.progress.fresh,
+      onCourse: r.progress.onCourse,
+    })),
     network: {
       roster: coaches.reduce((n, c) => n + c.counts.roster, 0),
       diamonds: coaches.reduce((n, c) => n + c.diamonds, 0),

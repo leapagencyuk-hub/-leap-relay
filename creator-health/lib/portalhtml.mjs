@@ -134,6 +134,28 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .q .c{font-size:10.5px;font-variant-numeric:tabular-nums;margin-top:1px}
 .q .then{color:var(--dim);font-size:10px;margin-top:2px;line-height:1.3;
 font-variant-numeric:tabular-nums}
+.qst{margin-top:11px;background:rgba(3,11,30,.6);border:1px solid var(--line);
+border-left:3px solid var(--brand-lift);border-radius:10px;padding:10px 11px}
+.qst.won{border-left-color:var(--good)}
+.qst.behind{border-left-color:var(--act)}
+.qst.oncourse{border-left-color:var(--good)}
+.qst.fresh{border-left-color:var(--watch)}
+.qst .qrow{display:flex;align-items:center;justify-content:space-between;gap:8px;
+font-size:11.5px;letter-spacing:.05em}
+.qst .qtag{font-size:9.5px;font-weight:800;letter-spacing:.08em;padding:2px 7px;
+border-radius:999px;border:1px solid var(--line);white-space:nowrap}
+.qst.won .qtag{color:var(--good);border-color:var(--good)}
+.qst.oncourse .qtag{color:var(--good)}
+.qst.behind .qtag{color:var(--act);border-color:var(--act)}
+.qst.fresh .qtag{color:var(--watch)}
+.qst .qbar{height:6px;border-radius:999px;background:rgba(255,255,255,.08);
+margin:8px 0 7px;overflow:hidden}
+.qst .qbar span{display:block;height:100%;border-radius:999px;background:var(--brand-lift)}
+.qst.won .qbar span,.qst.oncourse .qbar span{background:var(--good)}
+.qst.behind .qbar span{background:var(--act)}
+.qst .qmeta{color:var(--dim);font-size:11px;line-height:1.5;
+font-variant-numeric:tabular-nums}
+.qst .qmeta.pays{color:var(--ink);margin-top:5px;font-weight:600}
 .msg{margin-top:11px;background:rgba(3,11,30,.6);border:1px solid var(--line);
 border-radius:10px;padding:10px}
 .msg .k{color:var(--dim);font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;
@@ -325,10 +347,14 @@ ${q('LIVE days', mo.liveDays, n)}
 ${q('Fan club', mo.fanClub, n)}
 </div>`;
 
+  // A creator on a quest gets the quest message, not the general one. The
+  // quest is the conversation this week and it carries the number and the
+  // prize; handing a coach two messages invites them to send the wrong one.
+  const msgBody = r.questMessage ?? d?.message ?? null;
   const msgId = `m-${esc(String(r.key ?? r.username).replace(/[^a-zA-Z0-9]/g, ''))}`;
-  const message = d?.message ? `<div class="msg">
-<div class="k">Message to send ${r.username ? `@${esc(r.username)}` : 'them'}</div>
-<textarea id="${msgId}" readonly rows="6">${esc(d.message)}</textarea>
+  const message = msgBody ? `<div class="msg">
+<div class="k">${r.questMessage ? 'Side quest message for' : 'Message to send'} ${r.username ? `@${esc(r.username)}` : 'them'}</div>
+<textarea id="${msgId}" readonly rows="${r.questMessage ? 10 : 6}">${esc(msgBody)}</textarea>
 <div class="acts"><button class="btn" type="button" data-copy="${msgId}">Copy message</button></div>
 </div>` : '';
 
@@ -364,6 +390,23 @@ ${touchLine}
 <div class="acts"><button class="btn" type="button" data-shortform="${esc(r.username)}">Check short form</button>
 <span class="sfout"></span></div></div>` : '';
 
+  // The quest, when there is one. Frozen target, where they are against it,
+  // the nightly rate it needs against the rate they are actually doing, and
+  // what it pays. No pounds anywhere in here: this card is read by coaches who
+  // are not shown money, and the coins are the creator's reward, not pay.
+  const qp = r.quest?.progress ?? null;
+  const qq = r.quest?.quest ?? null;
+  const questPanel = qq && qp ? `<div class="qst ${qp.done ? 'won' : qp.fresh ? 'fresh' : qp.onCourse ? 'oncourse' : 'behind'}">
+<div class="qrow"><b>SIDE QUEST &middot; ${qq.kind === 'HOLD' ? `Hold Tier ${n(qq.tier)}` : `Reach Tier ${n(qq.tier)}`}</b>
+<span class="qtag">${qp.done ? 'HIT' : qp.fresh ? 'JUST SET' : qp.onCourse ? 'ON COURSE' : 'BEHIND'}</span></div>
+<div class="qbar"><span style="width:${Math.round((qp.pct ?? 0) * 100)}%"></span></div>
+<div class="qmeta">${n(qp.now)} of ${n(qq.target)} &middot; ${
+    qp.done ? 'target cleared' : `${n(qp.left)} to go`}${
+    qp.done ? '' : ` &middot; ${qp.nightsLeft === 0 ? 'last night' : `${n(qp.nightsLeft)} night${qp.nightsLeft === 1 ? '' : 's'} left`}`}</div>
+${qp.done ? '' : `<div class="qmeta">Needs ${n(qp.perNightNeeded)}/night &middot; doing ${n(qp.perNightDoing)}/night</div>`}
+<div class="qmeta pays">Pays ${n(qq.incentiveCoins)} ${qq.kind === 'HOLD' ? 'Maintain' : 'Rank Up'} coins + ${n(qq.questCoins)} quest coins + 1 Uni Wheel entry</div>
+</div>` : '';
+
   // Anchored by handle so a monitoring ping can link to this exact creator.
   // A card that says "open their card" and drops you at the top of a page of
   // thirty is a card that lied.
@@ -378,6 +421,7 @@ ${touchLine}
   need ? ` · ${esc(need)}` : ''}${r.darkStreak >= 2 ? ` · dark ${r.darkStreak}d` : ''}${
   slip && moneyLine ? ` · ${moneyLine}` : ''}</div>
 </div></div>
+${questPanel}
 ${quad}
 ${d ? `<details class="why"><summary><span class="acts">
 <span class="btn">What the data says</span>${tt}</span></summary>
@@ -386,7 +430,7 @@ ${d.actions?.length ? `<ul>${d.actions.map((a) => `<li>${esc(a)}</li>`).join('')
 ${sf}
 ${message}
 ${log}
-</div></details>` : `<div class="acts">${tt}</div>`}
+</div></details>` : `<div class="acts">${tt}</div>${message}${log}`}
 </div>`;
 }
 
@@ -653,6 +697,54 @@ diamonds over active fan club members — not TikTok's gift rate, which needs vi
 numbers the export does not carry.</p>`);
 }
 
+/**
+ * Every side quest in the network, and whether it landed.
+ *
+ * This is the only place the month's quests can be totalled, so it is also the
+ * only place that answers the question the coins get spent on: who hit, who is
+ * behind with nights still to run, and what LEAP owes when the month closes.
+ * Directors only, which is why the pounds are allowed here.
+ */
+function questOwnerSection(portal, cur) {
+  const rows = portal.questRows ?? [];
+  const sum = portal.questSummary;
+  if (!rows.length || !sum) return '';
+  // Behind first, with the nights to still do something about it. Done last:
+  // those are banked and need nobody's attention.
+  const rank = (r) => (r.done ? 3 : r.fresh ? 2 : r.onCourse ? 1 : 0);
+  const sorted = rows.slice().sort((a, b) => rank(a) - rank(b) || b.worthGbp - a.worthGbp);
+  const tag = (r) => r.done ? '<span class="qtag" style="color:var(--good);border-color:var(--good)">HIT</span>'
+    : r.fresh ? '<span class="qtag" style="color:var(--watch)">JUST SET</span>'
+      : r.onCourse ? '<span class="qtag" style="color:var(--good)">ON COURSE</span>'
+        : '<span class="qtag" style="color:var(--act);border-color:var(--act)">BEHIND</span>';
+  return `
+<h2>Side quests <span class="count">(${n(sum.total)})</span></h2>
+<p class="lede">${sum.nightsLeft === 0 ? 'Last night of the chase.'
+    : `${n(sum.nightsLeft)} night${sum.nightsLeft === 1 ? '' : 's'} left.`}
+${n(sum.done)} hit, ${n(sum.onCourse)} on course, ${n(sum.behind)} behind${
+  sum.fresh ? `, ${n(sum.fresh)} just set` : ''}. Coins are only owed on a quest that lands.</p>
+<div class="grid">
+<div class="stat hero"><div class="k">Coins owed so far</div><div class="v">${n(sum.coinsOwed)}</div></div>
+<div class="stat"><div class="k">Coins if every one hits</div><div class="v">${n(sum.coinsIfAllHit)}</div></div>
+<div class="stat"><div class="k">Diamonds gained since set</div><div class="v">${n(sum.diamondsGained)}</div></div>
+<div class="stat"><div class="k">Won so far</div><div class="v">${money(sum.wonGbp, cur)}</div></div>
+<div class="stat"><div class="k">At stake</div><div class="v">${money(sum.worthGbp, cur)}</div></div>
+</div>
+<div class="card"><table>
+<tr><th>Creator</th><th>Quest</th><th class="num">Progress</th>
+<th class="num hide-s">Per night</th><th class="num hide-s">Coins</th>
+<th class="num">Worth</th><th>Coach</th></tr>
+${sorted.map((r) => `<tr>
+<td>@${esc(r.username)} ${tag(r)}</td>
+<td>${r.kind === 'HOLD' ? 'Hold' : 'Reach'} Tier ${n(r.tier)}</td>
+<td class="num">${n(r.now)} / ${n(r.target)}${r.done ? '' : `<br><span class="meta">${n(r.left)} to go</span>`}</td>
+<td class="num hide-s">${r.done ? '—' : `${n(r.perNightNeeded)} need<br><span class="meta">${n(r.perNightDoing)} doing</span>`}</td>
+<td class="num hide-s">${n(r.questCoins + r.incentiveCoins)}</td>
+<td class="num">${money(r.worthGbp, cur)}</td>
+<td>${esc(r.coach ?? '—')}</td></tr>`).join('')}
+</table></div>`;
+}
+
 /** The directors' page: the whole network, every coach a door. */
 export function directorPage(portal, links, { lastAsOf = null, config = {}, signedIn = false, performance = null } = {}) {
   const cur = config.leaped?.currency ?? 'GBP';
@@ -669,6 +761,7 @@ ${stale(portal.asOf, lastAsOf)}
 <div class="stat"><div class="k">On the table</div><div class="v">${money(net.upsideTotal, cur)}</div></div>
 <div class="stat"><div class="k">Payroll</div><div class="v">${money(net.payroll, cur)}</div></div>
 </div>
+${questOwnerSection(portal, cur)}
 <h2>Coaches</h2>
 <p class="lede">Each one opens exactly what that coach sees.</p>
 ${portal.coaches.map((c) => {

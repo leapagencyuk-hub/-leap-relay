@@ -70,13 +70,14 @@ const metrics = (over = {}) => ({
   ...over,
 });
 
-function portalOf(rows, config = {}) {
+function portalOf(rows, config = {}, quests = null) {
   const creators = rows.map((r) => r.creator);
   const metricsByKey = new Map(rows.map((r) => [r.creator.key, r.metrics]));
   return buildPortal({
     result: { creators, metricsByKey, alerts: rows.filter((r) => r.alert).map((r) => r.alert),
       ramp: rows.filter((r) => r.ramp).map((r) => r.ramp), activation: [], asOf: '2026-10-19' },
     rankUp: { rows: rows.filter((r) => r.rank).map((r) => r.rank) },
+    quests,
     config: { ramp: { targetDiamonds: 200000 }, ...config },
   });
 }
@@ -1351,4 +1352,132 @@ test('the monitoring card carries the month, the face and no em dash', () => {
   assert.equal(out.embeds[0].thumbnail.url, 'https://x/portal/avatar/gdubz360streams');
   // And the tell is gone.
   assert.equal(body.includes('—'), false, 'em dash on the card');
+});
+
+// --- side quests on the page ---------------------------------------------------
+
+const questRow = (username, over = {}) => ({
+  quest: {
+    creatorKey: `id:${username}`, username, coach: 'josh@leap.com', group: 'Team Alpha',
+    kind: 'HOLD', tier: 3, month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31',
+    startedAt: 150000, target: 200000, need: 50000, perNight: 7200, formAtSet: 6000,
+    worthGbp: 88.5, questCoins: 900, incentiveCoins: 1000, ...(over.quest ?? {}),
+  },
+  progress: {
+    now: 165000, gained: 15000, left: 35000, nightsLeft: 5, done: false, fresh: false,
+    nightsRun: 2, pct: 0.3, perNightNeeded: 7000, perNightDoing: 7500, onCourse: true,
+    ...(over.progress ?? {}),
+  },
+  coachLabel: 'Josh',
+});
+
+const board = (rows) => ({
+  month: '2026-10', asOf: '2026-10-19', quests: rows,
+  summary: {
+    total: rows.length,
+    done: rows.filter((r) => r.progress.done).length,
+    fresh: rows.filter((r) => r.progress.fresh).length,
+    onCourse: rows.filter((r) => !r.progress.done && r.progress.onCourse).length,
+    behind: rows.filter((r) => !r.progress.done && !r.progress.onCourse).length,
+    nightsLeft: 5,
+    worthGbp: Math.round(rows.reduce((a, r) => a + r.quest.worthGbp, 0)),
+    wonGbp: Math.round(rows.filter((r) => r.progress.done).reduce((a, r) => a + r.quest.worthGbp, 0)),
+    coinsIfAllHit: rows.reduce((a, r) => a + r.quest.questCoins + r.quest.incentiveCoins, 0),
+    coinsOwed: rows.filter((r) => r.progress.done)
+      .reduce((a, r) => a + r.quest.questCoins + r.quest.incentiveCoins, 0),
+    diamondsGained: rows.reduce((a, r) => a + r.progress.gained, 0),
+  },
+});
+
+test('a quest card carries the target, the pace and what it pays', () => {
+  const row = { creator: creator('onaquest'), metrics: metrics() };
+  const portal = portalOf([row], {}, board([questRow('onaquest')]));
+  const page = coachPage(portal.byCoach.get('josh@leap.com'), { config: {} });
+
+  assert.ok(page.includes('SIDE QUEST'), 'no quest panel');
+  assert.ok(page.includes('Hold Tier 3'));
+  assert.ok(page.includes('ON COURSE'));
+  assert.ok(page.includes('165,000 of 200,000'), 'where they are against the frozen target');
+  assert.ok(page.includes('35,000 to go'));
+  assert.ok(page.includes('5 nights left'));
+  assert.ok(page.includes('7,000/night') && page.includes('7,500/night'), 'needs vs doing');
+  // The prize is the reason a creator chases, so it has to be on the card the
+  // coach is reading from.
+  assert.ok(page.includes('1,000 Maintain coins'));
+  assert.ok(page.includes('900 quest coins'));
+  assert.ok(page.includes('Uni Wheel'));
+});
+
+test('a creator on a quest gets the quest message, not the general one', () => {
+  const row = { creator: creator('onaquest'), metrics: metrics() };
+  const portal = portalOf([row], {}, board([questRow('onaquest')]));
+  const view = portal.byCoach.get('josh@leap.com');
+  const quest = view.rows.find((r) => r.username === 'onaquest');
+
+  assert.ok(quest.questMessage, 'no quest message on the row');
+  assert.ok(quest.questMessage.includes('SIDE QUEST'));
+  assert.ok(quest.questMessage.includes('200,000'), 'the target is the point of the message');
+
+  const page = coachPage(view, { config: {} });
+  assert.ok(page.includes('Side quest message for @onaquest'));
+  // Two messages on one card is an invitation to send the wrong one.
+  assert.equal(page.includes('Message to send @onaquest'), false);
+});
+
+test('a quest that landed reads as won, and says so', () => {
+  const row = { creator: creator('nailedit'), metrics: metrics() };
+  const hit = questRow('nailedit', { progress: { now: 205000, left: 0, done: true, pct: 1 } });
+  const portal = portalOf([row], {}, board([hit]));
+  const page = coachPage(portal.byCoach.get('josh@leap.com'), { config: {} });
+
+  assert.ok(page.includes('HIT'));
+  assert.ok(page.includes('target cleared'));
+  // Nothing about a nightly rate on a quest that is already done.
+  assert.equal(/Needs [\d,]+\/night/.test(page), false, 'still chasing a finished quest');
+});
+
+test('a quest card shows no money, so it is safe on a page that hides it', () => {
+  // Cam sees stats and never money. A quest is worth pounds to LEAP and coins
+  // to the creator, and only the coins belong on a coach card.
+  const row = { creator: creator('onaquest'), metrics: metrics() };
+  const portal = portalOf([row], {}, board([questRow('onaquest')]));
+  const view = portal.byCoach.get('josh@leap.com');
+  view.earningsHidden = true;
+  view.earnings = null;
+  const page = coachPage(view, { config: {} });
+
+  assert.ok(page.includes('SIDE QUEST'), 'the quest still shows');
+  assert.equal(page.includes('88.5'), false, 'what it is worth to LEAP leaked onto a coach card');
+  assert.equal(page.includes('£'), false, 'a pound sign reached a page that hides money');
+});
+
+test('the owner sees every quest in the network and what the month owes', () => {
+  const mine = { creator: creator('mine'), metrics: metrics() };
+  const theirs = { creator: creator('theirs', { manager: 'kelly@leap.com', group: 'Team Bravo' }), metrics: metrics() };
+  const hit = questRow('mine', { progress: { now: 205000, left: 0, done: true, pct: 1 } });
+  const behind = questRow('theirs', {
+    quest: { coach: 'kelly@leap.com', group: 'Team Bravo', username: 'theirs', creatorKey: 'id:theirs',
+      kind: 'CROSS', tier: 4, target: 500000, startedAt: 300000, need: 200000,
+      worthGbp: 210, questCoins: 1600, incentiveCoins: 3000 },
+    progress: { now: 320000, left: 180000, done: false, onCourse: false, pct: 0.1 },
+  });
+  const portal = portalOf([mine, theirs], {}, board([hit, behind]));
+  const page = directorPage(portal, [], {});
+
+  assert.ok(page.includes('Side quests'), 'no owner section');
+  assert.ok(page.includes('@mine') && page.includes('@theirs'), 'not every coach is represented');
+  assert.ok(page.includes('HIT') && page.includes('BEHIND'));
+  // The number the coins actually get paid against.
+  assert.ok(page.includes('Coins owed so far'));
+  assert.ok(page.includes('1,900'), 'coins owed is the hit quest only');
+  assert.ok(page.includes('6,500'), 'coins if every one hits is all of them');
+  // Behind first: it is the only row anybody can still act on.
+  assert.ok(page.indexOf('@theirs') < page.indexOf('@mine'), 'the banked quest is above the one in trouble');
+});
+
+test('no quests set means no side quest section anywhere', () => {
+  const row = { creator: creator('plain'), metrics: metrics() };
+  const portal = portalOf([row]);
+  assert.equal(directorPage(portal, [], {}).includes('Side quests'), false);
+  assert.equal(coachPage(portal.byCoach.get('josh@leap.com'), { config: {} }).includes('SIDE QUEST'), false);
 });
