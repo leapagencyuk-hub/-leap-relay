@@ -130,8 +130,21 @@ export function recentForm(creator, asOf, days = 3) {
  * captured here, because the roster can change underneath us and a quest has
  * to survive its creator changing coach or group mid-chase.
  */
-export function selectQuests({ creators, asOf, config = {} }) {
+export function selectQuests({ creators, asOf, config = {}, audit = null }) {
   const cfg = config.sideQuests ?? {};
+  // Optional tally of why the list is as short as it is. Five quests out of a
+  // roster of hundreds looks identical whether the gates are working or
+  // something upstream is broken, and counting the fall-outs is the only way
+  // to tell those apart. Costs nothing when nobody asks.
+  //
+  // TWO BUCKETS, DELIBERATELY. The first set of gates drops a CREATOR and the
+  // rest drop a candidate QUEST, and a creator can be weighed for both a HOLD
+  // and a CROSS. Pooling them would report more people than exist: one person
+  // out of reach on both targets would read as two. So they are counted
+  // separately and each bucket reconciles against its own total.
+  const drop = (reason) => { if (audit) audit.creators[reason] = (audit.creators[reason] ?? 0) + 1; };
+  const dropQuest = (reason) => { if (audit) audit.quests[reason] = (audit.quests[reason] ?? 0) + 1; };
+  if (audit) { audit.roster = creators.length; audit.creators = {}; audit.quests = {}; audit.candidates = 0; }
   // Generating against stale data is the one failure that looks like success:
   // every creator reads as stalled, the list comes back empty, and nobody can
   // tell that from "nobody qualified". Refuse loudly instead.
@@ -161,20 +174,20 @@ export function selectQuests({ creators, asOf, config = {} }) {
 
   const out = [];
   for (const c of creators) {
-    if (c.quitOn) continue;
-    if (skipGroups.has(String(c.group ?? '').toLowerCase())) continue;
+    if (c.quitOn) { drop('left the network'); continue; }
+    if (skipGroups.has(String(c.group ?? '').toLowerCase())) { drop('partner agency'); continue; }
     // Over a month on the roster, so there is a previous month to hold.
-    if (!c.joinDate || between(c.joinDate, asOf) < 30) continue;
+    if (!c.joinDate || between(c.joinDate, asOf) < 30) { drop('under a month on the roster'); continue; }
     const mtd = monthMtd(c, asOf);
-    if (!mtd) continue;
+    if (!mtd) { drop('no month-to-date reading'); continue; }
     const base = lastMonthDiamonds(c, month);
-    if (base == null) continue;
+    if (base == null) { drop('no previous month to measure against'); continue; }
     const dia = Math.round(mtd.diamonds ?? 0);
     const perDay = dia / elapsed;
-    if (perDay <= 0) continue;
+    if (perDay <= 0) { drop('no diamonds this month'); continue; }
     const form = recentForm(c, asOf, stalledDays);
     // Stalled: nothing at all in the last three days of data.
-    if (!form || (form.liveHours <= 0 && form.diamonds <= 0)) continue;
+    if (!form || (form.liveHours <= 0 && form.diamonds <= 0)) { drop(`stalled, nothing in ${stalledDays} days`); continue; }
 
     const from = tierAt(base, config);
     const consider = [];
@@ -190,14 +203,15 @@ export function selectQuests({ creators, asOf, config = {} }) {
       consider.push({ kind: 'CROSS', tier: next.tier, target: next.min,
         usd: next.min * 0.01 * (from.advanced ?? from.base ?? 0.075) + (next.min - dia) * 0.01 * incr });
     }
+    if (audit) { audit.candidates += consider.length; if (!consider.length) drop('nothing left to hold or cross'); }
     for (const q of consider) {
       const need = q.target - dia;
-      if (need <= 0) continue;
-      if (need > perDay * nights * reach) continue;            // out of reach
+      if (need <= 0) { dropQuest('already past the target'); continue; }
+      if (need > perDay * nights * reach) { dropQuest('out of reach in the nights left'); continue; }
       const needPerNight = need / nights;
-      if (form.perNight >= needPerNight * formCap) continue;    // already cracking it
+      if (form.perNight >= needPerNight * formCap) { dropQuest('already cracking it without a quest'); continue; }
       const gbp = q.usd * fx;
-      if (gbp < minWorth) continue;                             // not worth coins
+      if (gbp < minWorth) { dropQuest(`worth under \u00a3${minWorth} to LEAP`); continue; }
       out.push({
         creatorKey: c.key, username: c.username, group: c.group ?? null,
         coach: c.manager ?? null, kind: q.kind, tier: q.tier,
@@ -216,6 +230,13 @@ export function selectQuests({ creators, asOf, config = {} }) {
   for (const q of out) {
     const prev = best.get(q.username);
     if (!prev || q.worthGbp > prev.worthGbp) best.set(q.username, q);
+  }
+  if (audit) {
+    audit.qualified = out.length;
+    if (out.length - best.size) audit.quests['their other target, one quest per creator'] = out.length - best.size;
+    audit.chosen = best.size;
+    audit.creatorsConsidered = creators.length
+      - Object.values(audit.creators).reduce((a, v) => a + v, 0);
   }
   return [...best.values()].sort((a, b) => b.worthGbp - a.worthGbp);
 }

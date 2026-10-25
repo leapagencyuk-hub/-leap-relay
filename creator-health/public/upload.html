@@ -340,6 +340,21 @@ const questRows = (r) => (r.quests ?? [])
     `${esc(q.kind)} \u00b7 Tier ${n(q.tier)} \u00b7 ${n(q.need)} to go \u00b7 ${n(q.perNight)}/night`
     + ` \u00b7 \u00a3${n(q.worthGbp)} \u00b7 ${esc(q.coach || 'no coach')}`)).join('');
 
+// Creators first, then targets. Keeping them apart matters: one person who is
+// out of reach on both a hold and a cross would otherwise read as two people.
+const cap = (k) => k.charAt(0).toUpperCase() + k.slice(1);
+const tally = (o) => Object.entries(o || {}).filter(([, v]) => v).sort((a, b) => b[1] - a[1])
+  .map(([k, v]) => row(cap(k), n(v))).join('');
+
+const auditRows = (a) => `<h2>Why it is ${n(a.chosen)}</h2>`
+  + row('Creators looked at', n(a.roster))
+  + tally(a.creators)
+  + row('Creators still in', n(a.creatorsConsidered), a.creatorsConsidered ? 'ok' : 'warn')
+  + `<h2>Of their targets</h2>`
+  + row('Targets weighed', n(a.candidates))
+  + tally(a.quests)
+  + row('Quests handed out', n(a.chosen), a.chosen ? 'ok' : 'warn');
+
 $('previewBtn').addEventListener('click', () => post('sidequests?dry=1', 'Preview side quests', (r) =>
   `<h2>${r.set ? 'These are the quests' : 'Nobody qualifies'}</h2>`
   + row('Nothing was saved', 'this is a preview \u2014 no card has been posted', 'ok')
@@ -352,7 +367,8 @@ $('previewBtn').addEventListener('click', () => post('sidequests?dry=1', 'Previe
   + row('Coaches involved', n(r.coaches))
   + (r.alreadySet ? row('Careful', `<span class="warn">${n(r.alreadySet)} quests are already live, set on ${esc(r.setOn)}. Setting again would replace them.</span>`) : '')
   + (r.warning ? row('Note', `<span class="warn">${esc(r.warning)}</span>`) : '')
-  + questRows(r)));
+  + questRows(r)
+  + (r.audit ? auditRows(r.audit) : '')));
 
 $('questBtn').addEventListener('click', () => {
   // Targets are frozen once set, so a second press would hand every creator a

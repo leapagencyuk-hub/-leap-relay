@@ -597,8 +597,11 @@ async function handleSideQuests(req, res, url) {
   // cost the month, and setting a day late with six nights left still works.
   const early = asOf < questDay;
   let quests;
+  // Only a preview asks why. The real run has no use for it and the tally is
+  // the sort of thing that would end up in a card by accident.
+  const audit = dryRun ? {} : null;
   try {
-    quests = selectQuests({ creators, asOf, config });
+    quests = selectQuests({ creators, asOf, config, audit });
   } catch (err) {
     if (err.code === 'STALE_DATA') return json(res, 409, { error: 'stale data', lastAsOf: err.lastAsOf, message: err.message });
     throw err;
@@ -614,6 +617,7 @@ async function handleSideQuests(req, res, url) {
     quests: quests.map((q) => ({ username: q.username, coach: q.coach, kind: q.kind, tier: q.tier,
       need: q.need, perNight: q.perNight, worthGbp: q.worthGbp })),
     ...(dryRun && existing?.quests?.length ? { alreadySet: existing.quests.length, setOn: existing.setOn } : {}),
+    ...(audit ? { audit } : {}),
     message: quests.length
       ? dryRun
         ? `${quests.length} Side Quests would be set for ${month}, worth £${Math.round(quests.reduce((a, q) => a + q.worthGbp, 0))}. Nothing was saved and no card was posted.`

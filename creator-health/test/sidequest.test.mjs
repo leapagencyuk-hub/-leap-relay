@@ -336,3 +336,35 @@ test('coach cards stay inside Discord limits with a full roster', () => {
     for (const f of e.fields) assert.ok(f.value.length <= 1024, `${phase}: field ${f.name} over 1024`);
   }
 });
+
+test('the audit accounts for every creator and every target, and only when asked', () => {
+  // One who qualifies, one in a partner agency, one too new to have a tier.
+  const good = creator('inreach');
+  good.obs = Array.from({ length: 24 }, (_, i) => ({
+    date: day(i + 1), periodStart: '2026-10-01', lastMonthDiamonds: 250000,
+    mtd: { diamonds: 6250 * (i + 1), liveHours: 2 * (i + 1), validLiveDays: i + 1 },
+  }));
+  const partner = creator('partnered', { group: 'Surge Agency' });
+  const fresh = creator('justjoined', { join: '2026-10-20' });
+  const creators = [good, partner, fresh];
+
+  const audit = {};
+  const out = selectQuests({ creators, asOf: '2026-10-24', config, audit });
+
+  assert.equal(audit.roster, 3);
+  assert.equal(audit.chosen, out.length);
+  assert.equal(audit.creators['partner agency'], 1);
+  assert.equal(audit.creators['under a month on the roster'], 1);
+
+  // Each bucket reconciles against its OWN total. Pooling them would be wrong:
+  // a creator weighed for both a hold and a cross is one person, two targets.
+  const sum = (o) => Object.values(o).reduce((a, v) => a + v, 0);
+  assert.equal(sum(audit.creators) + audit.creatorsConsidered, audit.roster);
+  assert.equal(sum(audit.quests) + audit.chosen, audit.candidates);
+
+  // Nobody who survived the creator gates is missing from the target count.
+  assert.ok(audit.candidates >= audit.creatorsConsidered - (audit.creators['nothing left to hold or cross'] ?? 0));
+
+  // And without an audit object nothing is tallied and the result is identical.
+  assert.deepEqual(selectQuests({ creators, asOf: '2026-10-24', config }), out);
+});
