@@ -368,3 +368,44 @@ test('the audit accounts for every creator and every target, and only when asked
   // And without an audit object nothing is tallied and the result is identical.
   assert.deepEqual(selectQuests({ creators, asOf: '2026-10-24', config }), out);
 });
+
+test('nothing a coach or creator can see says what the quest is worth to LEAP', () => {
+  // The margin is a directors' number. It reached a coach's Discord card as
+  // "Worth to LEAP £75" and had to be pulled. The coins are what a creator
+  // chases and what a coach is allowed to quote, so they take its place.
+  const store = { data: {} };
+  saveQuests(store, '2026-10', [
+    { creatorKey: 'id:a', username: 'a', coach: 'a@b.com', group: 'Team Alpha', kind: 'HOLD',
+      tier: 5, month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31', startedAt: 250000,
+      target: 300000, need: 50000, perNight: 7200, formAtSet: 4000,
+      worthGbp: 75, questCoins: 2000, incentiveCoins: 3000 },
+    { creatorKey: 'id:b', username: 'b', coach: 'a@b.com', group: 'Team Alpha', kind: 'CROSS',
+      tier: 6, month: '2026-10', setOn: '2026-10-24', endsOn: '2026-10-31', startedAt: 400000,
+      target: 500000, need: 100000, perNight: 14300, formAtSet: 12000,
+      worthGbp: 210, questCoins: 1600, incentiveCoins: 7000 },
+  ]);
+  const creators = [
+    { key: 'id:a', username: 'a', obs: [{ date: '2026-10-28', periodStart: '2026-10-01', mtd: { diamonds: 305000 } }] },
+    { key: 'id:b', username: 'b', obs: [{ date: '2026-10-28', periodStart: '2026-10-01', mtd: { diamonds: 420000 } }] },
+  ];
+  const board = questBoard({ creators, asOf: '2026-10-28', store, config });
+
+  const surfaces = [
+    ['terminal', sideQuestTerminalEmbed(board, { config })],
+    ['creator card', sideQuestCardEmbed(board.quests[0], { config, mention: '<@1>' })],
+    ['coach room card', sideQuestCoachEmbed(questsByCoach(board)[0], 'midpoint', { config, nightsLeft: 3 })],
+  ];
+  for (const [what, payload] of surfaces) {
+    const json = JSON.stringify(payload);
+    assert.equal(json.includes('£'), false, `${what} shows a pound sign`);
+    assert.equal(/Worth to LEAP/.test(json), false, `${what} names LEAP's margin`);
+    // And not smuggled in without the symbol either.
+    assert.equal(json.includes('"75"') || json.includes(' 75 '), false, `${what} leaks the figure itself`);
+  }
+
+  // The coins did survive the cut — stripping the money must not leave a coach
+  // with no reason for the creator to bother.
+  const coach = JSON.stringify(sideQuestCoachEmbed(questsByCoach(board)[0], 'midpoint', { config, nightsLeft: 3 }));
+  assert.ok(coach.includes('13,600'), 'coins at stake across both quests');
+  assert.ok(JSON.stringify(sideQuestCardEmbed(board.quests[0], { config })).includes('coins'));
+});

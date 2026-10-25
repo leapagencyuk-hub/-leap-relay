@@ -781,17 +781,30 @@ export async function dispatch({
           : replaceLastPages('sidequest-terminal', '(side quests)', sqTerminal,
             sideQuestTerminalEmbed(board, { config }), null));
       }
-      if (sqUpdates) {
-        for (const row of board.quests) {
-          // The coach's mention, so the card lands on the person who has to
-          // send the message rather than on everybody.
-          const mention = discordConfig.coaches?.[String(row.quest.coach ?? '').toLowerCase()]?.mention ?? null;
-          const payload = withPortal(sideQuestCardEmbed(row, { config, mention }), portalFor(), { username: row.quest.username });
+      for (const row of board.quests) {
+        // The coach's mention, so the card lands on the person who has to
+        // send the message rather than on everybody.
+        const mention = discordConfig.coaches?.[String(row.quest.coach ?? '').toLowerCase()]?.mention ?? null;
+        const payload = withPortal(sideQuestCardEmbed(row, { config, mention }), portalFor(), { username: row.quest.username });
+        if (sqUpdates) {
           await (replaces('sidequests')
             ? replaceLast(`sidequest:${row.quest.username}`, row.quest.coach ?? '(none)', sqUpdates,
               payload, `sideQuest:${row.quest.username}`)
             : replaceLast(`sidequest:${row.quest.username}`, row.quest.coach ?? '(none)', sqUpdates,
               payload, null));
+        }
+        // And the same card into the coach's OWN room. The updates channel is
+        // shared, so it is where a coach has to go looking; this is where they
+        // already are. Grouped by the creator's team, so a coach only ever
+        // sees their own, and slotted per creator so it replaces itself daily
+        // rather than stacking seven copies over the chase.
+        const team = row.quest.group
+          ? discordConfig.teamSummaries?.[groupKey(row.quest.group)] ?? discordConfig.groups?.[groupKey(row.quest.group)]
+          : null;
+        if (team?.webhook || (team?.channelId && discordConfig.botToken)) {
+          await replaceLast(`sidequest-team:${row.quest.username}`, row.quest.coach ?? '(none)',
+            { webhook: team.webhook, channelId: team.channelId }, payload,
+            `sideQuestTeam:${row.quest.username}`);
         }
       }
       // --- and three pushes into the coaches' own rooms ---------------------

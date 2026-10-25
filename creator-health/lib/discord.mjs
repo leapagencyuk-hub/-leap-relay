@@ -502,7 +502,7 @@ export function sideQuestTerminalEmbed(board, { config = {} } = {}) {
   const lines = board.quests.map(({ quest: q, progress: p, coachLabel }) => {
     const mark = p.done ? 'HIT' : p.fresh ? 'just set' : p.onCourse ? 'on pace' : 'behind';
     return [
-      `${p.done ? '✅' : p.fresh ? '⚪' : p.onCourse ? '🟢' : '🔴'} **@${q.username}** · ${coachLabel ?? 'unassigned'} · £${q.worthGbp.toFixed(0)}`,
+      `${p.done ? '✅' : p.fresh ? '⚪' : p.onCourse ? '🟢' : '🔴'} **@${q.username}** · ${coachLabel ?? 'unassigned'} · ${n(q.questCoins + q.incentiveCoins)} coins`,
       `\`${QUEST_BAR(p.pct)}\` ${n(p.now)} / ${n(q.target)} — ${p.done ? 'done' : `${n(p.left)} to go, ${n(p.perNightNeeded)}/night`} · ${mark}`,
     ].join('\n');
   });
@@ -511,7 +511,7 @@ export function sideQuestTerminalEmbed(board, { config = {} } = {}) {
       ? `**${s.total}** quests just set — the chase starts tonight`
       : `**${s.done}** hit · **${s.onCourse}** on pace · **${s.behind}** behind${s.fresh ? ` · **${s.fresh}** just set` : ''} · **${s.total}** quests`,
     nights > 0 ? `**${nights}** night${nights === 1 ? '' : 's'} left` : '**Final day**',
-    `Worth **£${n(s.worthGbp)}** if every one lands. **£${n(s.wonGbp)}** banked so far.`,
+    `**${n(s.coinsIfAllHit)}** coins on the table. **${n(s.coinsOwed)}** won so far.`,
     `Diamonds added since the quests were set: **${n(s.diamondsGained)}**`,
   ].join('\n');
   return paginateList(lines, {
@@ -547,11 +547,6 @@ export function sideQuestCardEmbed(row, { config = {}, mention = null } = {}) {
         `+ ${n(q.questCoins)} coins — Side Quest bonus`,
         '+ 1 Uni Wheel entry',
       ].join('\n'),
-      inline: true,
-    },
-    {
-      name: 'Worth to LEAP',
-      value: `£${q.worthGbp.toFixed(0)}`,
       inline: true,
     },
     {
@@ -648,11 +643,14 @@ export function sideQuestCoachEmbed(entry, phase, { config = {}, mention = null,
       });
     }
   }
+  // What the CREATORS stand to win, never what the month is worth to LEAP.
+  // A coach card is read by people who are not shown LEAP's margin, and the
+  // coins are the thing that actually gets chased anyway.
   fields.push({
-    name: 'At stake for your team',
-    value: entry.wonGbp
-      ? `£${n(entry.worthGbp)} across ${rows.length} quest${rows.length === 1 ? '' : 's'} · **£${n(entry.wonGbp)} banked** · ${n(entry.coinsWon)} coins won so far`
-      : `£${n(entry.worthGbp)} across ${rows.length} quest${rows.length === 1 ? '' : 's'}`,
+    name: 'On the table for your team',
+    value: entry.coinsWon
+      ? `${n(entry.coinsAtStake)} coins across ${rows.length} quest${rows.length === 1 ? '' : 's'} · **${n(entry.coinsWon)} already won**`
+      : `${n(entry.coinsAtStake)} coins across ${rows.length} quest${rows.length === 1 ? '' : 's'}`,
   });
   return {
     content: mention ?? undefined,

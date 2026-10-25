@@ -357,6 +357,9 @@ export function questsByCoach(board) {
     entry.wonGbp = Math.round(entry.rows.filter((r) => r.progress.done).reduce((a, r) => a + r.quest.worthGbp, 0));
     entry.coinsWon = entry.rows.filter((r) => r.progress.done)
       .reduce((a, r) => a + r.quest.questCoins + r.quest.incentiveCoins, 0);
+    // The coins are what a coach card may show. worthGbp stays on the entry
+    // for ordering and for the owner view, and never reaches a coach.
+    entry.coinsAtStake = entry.rows.reduce((a, r) => a + r.quest.questCoins + r.quest.incentiveCoins, 0);
   }
   return [...out.values()].sort((a, b) => b.worthGbp - a.worthGbp);
 }
