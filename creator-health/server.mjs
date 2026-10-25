@@ -583,7 +583,9 @@ async function handleSideQuests(req, res, url) {
   const dryRun = url.searchParams.get('dry') === '1';
   const questDay = questDayFor(month);
 
-  if (existing?.quests?.length && !replace) {
+  // A dry run writes nothing, so it is always allowed — including after the
+  // month is set, which is the only way to see what a replace would do.
+  if (existing?.quests?.length && !replace && !dryRun) {
     return json(res, 409, {
       error: 'already set',
       month, setOn: existing.setOn, quests: existing.quests.length,
@@ -611,9 +613,12 @@ async function handleSideQuests(req, res, url) {
     coaches: new Set(quests.map((q) => q.coach)).size,
     quests: quests.map((q) => ({ username: q.username, coach: q.coach, kind: q.kind, tier: q.tier,
       need: q.need, perNight: q.perNight, worthGbp: q.worthGbp })),
+    ...(dryRun && existing?.quests?.length ? { alreadySet: existing.quests.length, setOn: existing.setOn } : {}),
     message: quests.length
-      ? `${quests.length} Side Quests set for ${month}, worth £${Math.round(quests.reduce((a, q) => a + q.worthGbp, 0))}. Cards post on the next run.`
-      : 'Nobody qualified. Nothing was set.',
+      ? dryRun
+        ? `${quests.length} Side Quests would be set for ${month}, worth £${Math.round(quests.reduce((a, q) => a + q.worthGbp, 0))}. Nothing was saved and no card was posted.`
+        : `${quests.length} Side Quests set for ${month}, worth £${Math.round(quests.reduce((a, q) => a + q.worthGbp, 0))}. Cards post on the next run.`
+      : dryRun ? 'Nobody qualifies on this data.' : 'Nobody qualified. Nothing was set.',
   });
 }
 

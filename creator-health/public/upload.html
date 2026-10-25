@@ -85,6 +85,7 @@
       <button id="rankBtn" type="button">Leap rankings</button>
       <button id="hardestBtn" type="button">Hardest worker</button>
       <button id="weekBtn" type="button">Creator of the week</button>
+      <button id="previewBtn" type="button" class="ghost">Preview side quests</button>
       <button id="questBtn" type="button">Set side quests</button>
       <button id="overviewBtn" type="button" class="ghost">Post overview</button>
       <button id="boardsBtn" type="button" class="ghost">Repost boards</button>
@@ -101,6 +102,7 @@
       <strong>Leap rankings</strong> works out who has climbed a LEAP league this month and who has
       dropped out of the one they finished last month in, and posts both to their own channels.
       Pull it whenever you want; it replaces its own last post rather than stacking.
+      <strong>Preview side quests</strong> works out exactly who would get a quest and what each target would be, and shows you the whole list. It saves nothing and posts nothing, so press it as often as you like — including after the month is set, to see what replacing them would do.
       <strong>Set side quests</strong> picks this month’s quests and freezes each target. Press it on the quest day — seven nights before the month ends. Cards then post daily to the Side Quest terminal and updates channels until month end.<br><br>
       <strong>Hardest worker</strong> refreshes the creator-facing Hardest Worker Challenge board:
       it posts the current standings and takes the old one down, so that channel holds one card.
@@ -260,7 +262,7 @@ async function upload(file) {
 
 // Running and testing from the page, so neither needs a terminal.
 async function post(path, label, render) {
-  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('hardestBtn'), $('weekBtn'), $('questBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
+  const btns = [$('runBtn'), $('redoBtn'), $('rankBtn'), $('hardestBtn'), $('weekBtn'), $('previewBtn'), $('questBtn'), $('overviewBtn'), $('boardsBtn'), $('sampleBtn'), $('testBtn')];
   btns.forEach((b) => { b.disabled = true; });
   bar.classList.add('on');
   result.classList.remove('show');
@@ -329,6 +331,29 @@ $('rankBtn').addEventListener('click', () => post('rankings', 'Leap rankings', (
   + (r.posted ?? []).map((p) => row('Posted', esc(p), 'ok')).join('')
   + (r.failed ?? []).map((f) => row('Failed', `<span class="bad">${esc(f.label)} — ${esc(f.error)}</span>`)).join('')));
 
+// Shows the full list without saving a thing. This is the button to press
+// first: targets freeze the moment the real one is used.
+const questRows = (r) => (r.quests ?? [])
+  .slice()
+  .sort((a, b) => (a.coach || '').localeCompare(b.coach || '') || (b.worthGbp - a.worthGbp))
+  .map((q) => row(`@${esc(q.username)}`,
+    `${esc(q.kind)} \u00b7 Tier ${n(q.tier)} \u00b7 ${n(q.need)} to go \u00b7 ${n(q.perNight)}/night`
+    + ` \u00b7 \u00a3${n(q.worthGbp)} \u00b7 ${esc(q.coach || 'no coach')}`)).join('');
+
+$('previewBtn').addEventListener('click', () => post('sidequests?dry=1', 'Preview side quests', (r) =>
+  `<h2>${r.set ? 'These are the quests' : 'Nobody qualifies'}</h2>`
+  + row('Nothing was saved', 'this is a preview \u2014 no card has been posted', 'ok')
+  + row('Month', esc(r.month))
+  + row('Data up to', esc(r.asOf))
+  + row('Quest day', esc(r.questDay), r.asOf === r.questDay ? 'ok' : 'warn')
+  + row('Quests', n(r.set), r.set ? 'ok' : 'warn')
+  + row('Worth to LEAP', '\u00a3' + n(r.worthGbp))
+  + row('Coins if every one hits', n(r.coinsIfAllHit))
+  + row('Coaches involved', n(r.coaches))
+  + (r.alreadySet ? row('Careful', `<span class="warn">${n(r.alreadySet)} quests are already live, set on ${esc(r.setOn)}. Setting again would replace them.</span>`) : '')
+  + (r.warning ? row('Note', `<span class="warn">${esc(r.warning)}</span>`) : '')
+  + questRows(r)));
+
 $('questBtn').addEventListener('click', () => {
   // Targets are frozen once set, so a second press would hand every creator a
   // different number mid-chase. The status feed says whether this month is
@@ -356,8 +381,7 @@ $('questBtn').addEventListener('click', () => {
     + row('Coins if every one hits', n(r.coinsIfAllHit))
     + row('Coaches involved', n(r.coaches))
     + (r.warning ? row('Note', `<span class="warn">${esc(r.warning)}</span>`) : '')
-    + (r.quests ?? []).map((q) => row(`@${esc(q.username)}`,
-        `${esc(q.kind)} Tier ${n(q.tier)} \u00b7 ${n(q.need)} to go \u00b7 ${n(q.perNight)}/night \u00b7 \u00a3${n(q.worthGbp)}`)).join('')
+    + questRows(r)
     + row('Cards', 'post to the two Side Quest channels on the next run'));
 });
 
