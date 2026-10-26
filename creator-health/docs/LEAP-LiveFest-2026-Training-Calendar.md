@@ -18,8 +18,8 @@ worth one person attending for notes, not worth pushing to the whole coach team.
 
 | Date | Time | Session | Priority for LEAP |
 | --- | --- | --- | --- |
-| 23 Oct 2026 | 16:00 | Creator Gameplay Training & Q&A — how the LIVE Fest creator gameplay works | **GAMING PRIORITY** — this is the foundation |
-| 26 Oct 2026 | 16:00 | LIVE FEST TCN Tournament Training & Q&A — full gameplay walkthrough | High |
+| 23 Oct 2026 | 16:00 | Creator Gameplay Training & Q&A — how the LIVE Fest creator gameplay works | **Done.** Written up in `LEAP-LiveFest-2026-Agency-Briefing.md` |
+| 26 Oct 2026 | 16:00 | LIVE FEST TCN Tournament Training & Q&A — full gameplay walkthrough | **Done.** Written up in `LEAP-LiveFest-2026-Agency-Tournament.md` |
 | 5 Nov 2026 | 11:00 | Content Safety, Sign-up, Monetisation and Warm-Up Gameplay Refresher (45 min) | **GAMING PRIORITY** — sign-up and Warm-Up are where we win or lose |
 | 5 Nov 2026 | 14:00 | Top, Mature and Low Tier Creator Training — engagement tips per tier | High — maps onto our urgent / 200k / rank-up tiers |
 | 9 Nov 2026 | 15:00 | **Gaming Creator Engagement Briefing** | **GAMING PRIORITY — the single most important session for us** |
