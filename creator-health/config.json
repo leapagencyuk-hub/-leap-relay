@@ -693,5 +693,17 @@
       "493176237406027776": "Sur3shot",
       "431121227294179329": "Java (dev)"
     }
+  },
+  "initiative": {
+    "_note": "The LEAP Initiative: the membership rule a new creator has to clear. Separate from activation (did they earn anything), leaped (the recruit bonus) and ramp (the 200k growth target) — this is the only one that ends with somebody leaving the network, so it is reported to owners only.",
+    "enabled": true,
+    "_zoneDays": "How far back to look for joiners. The 7-day and 30-day tests need daily history from the day they signed and this system started watching on 31 August, so anybody older is reported as unknown rather than failed. Raise this towards 90 as the history grows: from December a full 90-day window sits inside what we hold.",
+    "zoneDays": 30,
+    "firstLiveWithinDays": 7,
+    "liveDaysWithinDays": 30,
+    "liveDaysNeeded": 10,
+    "diamondsWithinDays": 90,
+    "_diamondsNeeded": "Pass this at any point and the 90 days end there: they become a Creator, the 10-day rule stops applying, and they leave the zone.",
+    "diamondsNeeded": 10000
   }
 }

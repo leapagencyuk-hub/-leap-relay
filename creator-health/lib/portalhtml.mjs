@@ -698,6 +698,77 @@ numbers the export does not carry.</p>`);
 }
 
 /**
+ * The New Creator Zone. Owners only.
+ *
+ * Everyone currently measured against the LEAP Initiative, worst first, so the
+ * top of the list is always the person something can still be done about. A
+ * creator who clears 10,000 diamonds leaves the chase and is ticked off below,
+ * because the policy ends their 90 days there and counting at them afterwards
+ * would be counting at a Creator.
+ */
+function initiativeSection(zone) {
+  if (!zone?.rows?.length) return '';
+  const s = zone.summary;
+  const r = zone.rules;
+  const chasing = zone.rows.filter((x) => x.status !== 'passed');
+  const tone = { failed: 'act', failing: 'act', 'at risk': 'watch', 'on track': 'good', unknown: 'idle', passed: 'good' };
+  const tag = (x) => `<span class="qtag" style="color:var(--${tone[x.status] ?? 'idle'})">${esc(x.status.toUpperCase())}</span>`;
+
+  // One requirement, as the owner needs to read it: done or not, and if not,
+  // what is left and how long they have to do it in.
+  const cell = (q) => {
+    if (q.state === 'passed') return '<span style="color:var(--good)">done</span>';
+    if (q.state === 'unknown') return '<span class="meta">no history</span>';
+    if (q.state === 'failed') return '<span style="color:var(--act)">missed</span>';
+    const left = q.daysLeft === 0 ? 'today' : q.daysLeft === 1 ? '1 day' : `${n(q.daysLeft)} days`;
+    const need = q.key === 'firstLive' ? 'not yet'
+      : q.key === 'liveDays' ? `${n(q.done)}/${n(q.needed)}`
+        : `${n(q.done)}/${n(q.needed)}`;
+    return `${esc(need)}<br><span class="meta">${q.impossible ? 'cannot be met' : left}</span>`;
+  };
+  const at = (x, key) => cell(x.reqs.find((q) => q.key === key));
+
+  const table = (rows) => `<div class="card"><table>
+<tr><th>Creator</th><th class="num">Day</th><th class="num">LIVE in ${n(r.firstLiveWithinDays)}</th>
+<th class="num">${n(r.liveDaysNeeded)} days in ${n(r.liveDaysWithinDays)}</th>
+<th class="num">${n(r.diamondsNeeded)} in ${n(r.diamondsWithinDays)}</th><th>Coach</th></tr>
+${rows.map((x) => `<tr>
+<td><span class="dot ${esc(tone[x.status] ?? 'idle')}"></span>@${esc(x.username)} ${tag(x)}</td>
+<td class="num">${n(x.ageDays)}<br><span class="meta">${esc(x.joinDate)}</span></td>
+<td class="num">${at(x, 'firstLive')}</td>
+<td class="num">${at(x, 'liveDays')}</td>
+<td class="num">${at(x, 'diamonds')}</td>
+<td>${esc(x.name ?? x.coach ?? '—')}</td></tr>`).join('')}
+</table></div>`;
+
+  return `
+<h2>New creator zone <span class="count">(${n(chasing.length)})</span></h2>
+<p class="lede">Everyone who joined in the last ${n(zone.zoneDays)} days, against the Initiative.
+Worst first. ${s.passed ? `${n(s.passed)} have already passed and are listed underneath.` : ''}
+Clear ${n(r.diamondsNeeded)} diamonds at any point and the 90 days end there.</p>
+<div class="grid">
+<div class="stat hero"><div class="k">Still chasing</div><div class="v">${n(chasing.length)}</div></div>
+<div class="stat"><div class="k">Failed</div><div class="v">${n(s.failed)}</div></div>
+<div class="stat"><div class="k">Cannot be met</div><div class="v">${n(s.failing)}</div></div>
+<div class="stat"><div class="k">At risk</div><div class="v">${n(s.atRisk)}</div></div>
+<div class="stat"><div class="k">On track</div><div class="v">${n(s.onTrack)}</div></div>
+<div class="stat"><div class="k">Passed</div><div class="v">${n(s.passed)}</div></div>
+</div>
+${chasing.length ? table(chasing) : '<div class="card"><div class="meta">Nobody is still chasing. Everyone in the window has passed.</div></div>'}
+${s.unknown ? `<p class="note">${n(s.unknown)} joined before this system started watching on
+${esc(zone.watchFrom ?? '31 August')}, so their first 7 and first 30 days cannot be rebuilt. They are
+reported as no history rather than failed: nobody is removed on evidence we do not hold.</p>` : ''}
+${zone.passed.length ? `<details class="fold"><summary>Passed and off the clock (${n(zone.passed.length)})</summary>
+<div class="card"><table><tr><th>Creator</th><th class="num">Passed on</th><th class="num">Diamonds</th><th>Coach</th></tr>
+${zone.passed.map((x) => `<tr><td><span class="dot good"></span>@${esc(x.username)}</td>
+<td class="num">${esc(x.graduatedOn ?? '—')}${x.graduatedOn ? `<br><span class="meta">day ${n(between_(x.joinDate, x.graduatedOn))}</span>` : ''}</td>
+<td class="num">${n(x.diamonds)}</td><td>${esc(x.name ?? x.coach ?? '—')}</td></tr>`).join('')}
+</table></div></details>` : ''}`;
+}
+
+const between_ = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86400000);
+
+/**
  * Every side quest in the network, and whether it landed.
  *
  * This is the only place the month's quests can be totalled, so it is also the
@@ -761,6 +832,7 @@ ${stale(portal.asOf, lastAsOf)}
 <div class="stat"><div class="k">On the table</div><div class="v">${money(net.upsideTotal, cur)}</div></div>
 <div class="stat"><div class="k">Payroll</div><div class="v">${money(net.payroll, cur)}</div></div>
 </div>
+${initiativeSection(portal.initiative)}
 ${questOwnerSection(portal, cur)}
 <h2>Coaches</h2>
 <p class="lede">Each one opens exactly what that coach sees.</p>

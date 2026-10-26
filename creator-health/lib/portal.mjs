@@ -27,6 +27,7 @@ import { isOpen } from './cases.mjs';
 import { avatarRoute } from './avatars.mjs';
 import { lastTouch, historyFor } from './creatornotes.mjs';
 import { creatorMessage as questMessageFor } from './sidequest.mjs';
+import { newCreatorZone } from './initiative.mjs';
 
 const num = (x) => (Number.isFinite(x) ? x : 0);
 const n0 = (x) => (Number.isFinite(x) ? Math.round(x).toLocaleString('en-GB') : '—');
@@ -814,6 +815,9 @@ export function buildPortal({
     coaches,
     byCoach: views,
     byTeam: teamViews,
+    // The LEAP Initiative. Owner view only: this is the rule that ends with a
+    // creator leaving the network, and it is not a coach's call to make.
+    initiative: newCreatorZone({ creators, asOf, config }),
     // The whole month's quests, network wide, for the owner view. A coach sees
     // their own on their own page; this is the only place the gifts owed for
     // the month can be totalled.
