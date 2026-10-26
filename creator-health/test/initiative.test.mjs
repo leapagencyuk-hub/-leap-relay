@@ -171,3 +171,42 @@ test('the zone is on the owner page and on no coach page', () => {
     assert.equal(coachPage(view, { config }).includes('New creator zone'), false, `${who} can see the zone`);
   }
 });
+
+test('starting late and never starting are not called the same thing', () => {
+  // Two different failures with two different conversations behind them, and
+  // a card that labelled both "never went LIVE" would send a coach after the
+  // wrong one.
+  const rows = [
+    creator('never', { join: '2026-10-01', days: 26, liveOn: () => false }),
+    creator('late', { join: '2026-10-01', days: 26, diamondsPerDay: 200, liveOn: (i) => i >= 9 }),
+  ];
+  const portal = buildPortal({
+    result: { creators: rows, metricsByKey: new Map(), alerts: [], ramp: [], activation: [], asOf: '2026-10-26' },
+    config,
+  });
+  const page = directorPage(portal, [], {});
+  assert.ok(page.includes('never went LIVE'));
+  assert.ok(page.includes('day 10, too late'), 'a late starter is reported as late, not as absent');
+
+  // Counted the way a person counts: going LIVE the day you join is day one.
+  const sameDay = assess(creator('sameday', { join: '2026-10-01', days: 26, diamondsPerDay: 100 }),
+    '2026-10-26', { config, watchFrom: '2026-08-31' });
+  assert.equal(sameDay.firstLive, '2026-10-01');
+  assert.ok(directorPage(buildPortal({
+    result: { creators: [creator('sameday', { join: '2026-10-01', days: 26, diamondsPerDay: 100 })],
+      metricsByKey: new Map(), alerts: [], ramp: [], activation: [], asOf: '2026-10-26' },
+    config,
+  }), [], {}).includes('day 1'));
+});
+
+test('a cleared count stops at the bar instead of reading as a broken fraction', () => {
+  // 15 LIVE days against a bar of 10 is cleared, not "15 of 10".
+  const c = creator('keen', { join: '2026-10-12', days: 15, diamondsPerDay: 100 });
+  const portal = buildPortal({
+    result: { creators: [c], metricsByKey: new Map(), alerts: [], ramp: [], activation: [], asOf: '2026-10-26' },
+    config,
+  });
+  const page = directorPage(portal, [], {});
+  assert.ok(page.includes('of 10'));
+  assert.equal(page.includes('15</b> of 10'), false, 'the count ran past the bar it was measured against');
+});

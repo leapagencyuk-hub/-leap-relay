@@ -134,6 +134,22 @@ white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .q .c{font-size:10.5px;font-variant-numeric:tabular-nums;margin-top:1px}
 .q .then{color:var(--dim);font-size:10px;margin-top:2px;line-height:1.3;
 font-variant-numeric:tabular-nums}
+.scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
+table.zone{min-width:720px}
+table.zone td,table.zone th{vertical-align:top}
+.prog{min-width:132px}
+.prog .pl{font-size:12px;font-variant-numeric:tabular-nums;white-space:nowrap}
+.prog .pl b{font-size:13.5px}
+.prog .pb{height:5px;border-radius:999px;background:rgba(255,255,255,.09);
+margin:5px 0 4px;overflow:hidden}
+.prog .pb span{display:block;height:100%;border-radius:999px;background:var(--brand-lift)}
+.prog.done .pb span{background:var(--good)}
+.prog.bad .pb span{background:var(--act)}
+.prog .pn{color:var(--dim);font-size:10.5px;line-height:1.35;
+font-variant-numeric:tabular-nums}
+.prog.done .pl{color:var(--good)}
+.prog.bad .pl,.prog.bad .pn{color:var(--act)}
+.prog.none .pl{color:var(--dim);font-size:11px}
 .qst{margin-top:11px;background:rgba(3,11,30,.6);border:1px solid var(--line);
 border-left:3px solid var(--brand-lift);border-radius:10px;padding:10px 11px}
 .qst.won{border-left-color:var(--good)}
@@ -714,32 +730,63 @@ function initiativeSection(zone) {
   const tone = { failed: 'act', failing: 'act', 'at risk': 'watch', 'on track': 'good', unknown: 'idle', passed: 'good' };
   const tag = (x) => `<span class="qtag" style="color:var(--${tone[x.status] ?? 'idle'})">${esc(x.status.toUpperCase())}</span>`;
 
-  // One requirement, as the owner needs to read it: done or not, and if not,
-  // what is left and how long they have to do it in.
+  // One requirement as a column: how far along, drawn, plus the number behind
+  // the bar and what is still owed. A row has to be readable in one pass
+  // across three of these, so each cell is three short lines and no more.
   const cell = (q) => {
-    if (q.state === 'passed') return '<span style="color:var(--good)">done</span>';
-    if (q.state === 'unknown') return '<span class="meta">no history</span>';
-    if (q.state === 'failed') return '<span style="color:var(--act)">missed</span>';
-    const left = q.daysLeft === 0 ? 'today' : q.daysLeft === 1 ? '1 day' : `${n(q.daysLeft)} days`;
-    const need = q.key === 'firstLive' ? 'not yet'
-      : q.key === 'liveDays' ? `${n(q.done)}/${n(q.needed)}`
-        : `${n(q.done)}/${n(q.needed)}`;
-    return `${esc(need)}<br><span class="meta">${q.impossible ? 'cannot be met' : left}</span>`;
-  };
-  const at = (x, key) => cell(x.reqs.find((q) => q.key === key));
+    if (q.state === 'unknown') return '<div class="prog none"><div class="pl">no history</div></div>';
+    const done = q.state === 'passed';
+    const bad = q.state === 'failed' || q.impossible;
+    const pct = done ? 1
+      : q.key === 'firstLive' ? 0
+        : Math.max(0, Math.min(1, (q.done ?? 0) / (q.needed || 1)));
+    const left = q.daysLeft === 0 ? 'today is the deadline'
+      : q.daysLeft === 1 ? '1 day left' : `${n(q.daysLeft)} days left`;
 
-  const table = (rows) => `<div class="card"><table>
-<tr><th>Creator</th><th class="num">Day</th><th class="num">LIVE in ${n(r.firstLiveWithinDays)}</th>
-<th class="num">${n(r.liveDaysNeeded)} days in ${n(r.liveDaysWithinDays)}</th>
-<th class="num">${n(r.diamondsNeeded)} in ${n(r.diamondsWithinDays)}</th><th>Coach</th></tr>
+    // Days are counted the way a person counts them: going LIVE on the day
+    // you joined is day one of your first seven, not day zero. And a creator
+    // who did fifteen LIVE days against a bar of ten has cleared it, so the
+    // count stops at the bar rather than reading as a broken fraction.
+    // Starting late and never starting are different failures and a coach will
+    // handle them differently, so the card does not call one the other.
+    const startedOn = q.firstLive ? n(between_(q.joinDate ?? q.firstLive, q.firstLive) + 1) : null;
+    const label = q.key === 'firstLive'
+      ? (done ? (startedOn ? `day ${startedOn}` : 'done')
+        : bad ? (startedOn ? `day ${startedOn}, too late` : 'never went LIVE')
+          : 'not yet')
+      : `<b>${n(done ? q.needed : q.done)}</b> of ${n(q.needed)}`;
+
+    const note = done ? 'cleared'
+      : bad ? (q.state === 'failed' ? 'deadline gone' : 'cannot be met')
+        : q.key === 'firstLive' ? left
+          : `${n(q.stillNeeded)} to go · ${left}`;
+
+    return `<div class="prog ${done ? 'done' : bad ? 'bad' : 'go'}">
+<div class="pl">${label}</div>
+<div class="pb"><span style="width:${Math.round(pct * 100)}%"></span></div>
+<div class="pn">${esc(note)}</div></div>`;
+  };
+  // firstLive needs the join date to say which day they started on, and the
+  // requirement does not carry it.
+  const at = (x, key) => {
+    const q = x.reqs.find((r) => r.key === key);
+    return cell(key === 'firstLive' ? { ...q, joinDate: x.joinDate } : q);
+  };
+
+  const table = (rows) => `<div class="card"><div class="scroll"><table class="zone">
+<tr><th>Creator</th><th class="num">Day</th>
+<th>LIVE in first ${n(r.firstLiveWithinDays)}</th>
+<th>${n(r.liveDaysNeeded)} LIVE days in ${n(r.liveDaysWithinDays)}</th>
+<th>${n(r.diamondsNeeded)} diamonds in ${n(r.diamondsWithinDays)}</th>
+<th>Coach</th></tr>
 ${rows.map((x) => `<tr>
-<td><span class="dot ${esc(tone[x.status] ?? 'idle')}"></span>@${esc(x.username)} ${tag(x)}</td>
+<td><span class="dot ${esc(tone[x.status] ?? 'idle')}"></span>@${esc(x.username)}<br>${tag(x)}</td>
 <td class="num">${n(x.ageDays)}<br><span class="meta">${esc(x.joinDate)}</span></td>
-<td class="num">${at(x, 'firstLive')}</td>
-<td class="num">${at(x, 'liveDays')}</td>
-<td class="num">${at(x, 'diamonds')}</td>
+<td>${at(x, 'firstLive')}</td>
+<td>${at(x, 'liveDays')}</td>
+<td>${at(x, 'diamonds')}</td>
 <td>${esc(x.name ?? x.coach ?? '—')}</td></tr>`).join('')}
-</table></div>`;
+</table></div></div>`;
 
   return `
 <h2>New creator zone <span class="count">(${n(chasing.length)})</span></h2>
