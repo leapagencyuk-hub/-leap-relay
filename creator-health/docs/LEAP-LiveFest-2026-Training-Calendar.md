@@ -31,6 +31,24 @@ worth one person attending for notes, not worth pushing to the whole coach team.
 | 17 Nov 2026 | 10:30 | Vault Gameplay Briefing | High — Vault gifts carry points in every league |
 | 20 Nov 2026 | 10:30 | Power League Round 1 Agency Briefing — gameplay, progression, elimination, creator actions, traffic support | **BATTLE — LOW PRIORITY**, but "traffic support" is worth hearing |
 
+## LEAP's own November campaigns
+
+Set in the planning call with Carla on 27 October. Full detail, including TikTok's gaming
+campaign calendar, is in `LEAP-LiveFest-Carla-Call-2026-10-27.md`, which is internal only.
+
+| Dates | What |
+| --- | --- |
+| 5–8 Nov | RISING LEGENDS |
+| 6 Nov | LIVE FEST sign-up opens |
+| **9–14 Nov** | **LEAP FEST** — our own event, glass running-man trophy, one diamond one point |
+| 17–19 Nov | GET POPULAR |
+| 20–24, 27, 29, 30 Nov | LIVE FEST POWER |
+| 25–30 Nov | TikTok campaigns |
+| 27, 29 Nov | UNI WHEEL |
+
+And the two fixed LEAP dates out of that call: **the video films 28 October**, and **the
+creator seminar is Sunday 1 November**.
+
 ## LEAP's position
 
 Our creators are gaming creators. They will not engage with battle mechanics, so the Power
