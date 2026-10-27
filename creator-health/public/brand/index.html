@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>LEAP x LIVE FEST 26 — brand kit</title>
+<link rel="stylesheet" href="livefest-tokens.css">
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:var(--font);
+font-size:var(--t-body);line-height:var(--t-body-lh);letter-spacing:var(--t-body-tr);
+-webkit-font-smoothing:antialiased}
+.wrap{max-width:1180px;margin:0 auto;padding:var(--s7) var(--s5) var(--s8)}
+h1{font-size:var(--t-hero);line-height:var(--t-hero-lh);letter-spacing:var(--t-hero-tr);
+margin:0 0 var(--s2);font-weight:680}
+h2{font-size:var(--t-title);line-height:var(--t-title-lh);letter-spacing:var(--t-title-tr);
+margin:var(--s8) 0 var(--s2);font-weight:650}
+h3{font-size:var(--t-head);line-height:var(--t-head-lh);letter-spacing:var(--t-head-tr);
+margin:var(--s5) 0 var(--s3);font-weight:620}
+p.lede{color:var(--ink-2);margin:0 0 var(--s5);max-width:66ch}
+p.note{color:var(--ink-dim);font-size:var(--t-meta);max-width:72ch}
+.rule{height:1px;background:var(--line);margin:var(--s3) 0 var(--s5)}
+.label{font-size:var(--t-label);letter-spacing:var(--t-label-tr);text-transform:uppercase;
+color:var(--ink-dim);font-weight:700}
+
+.arc{height:5px;border-radius:var(--r-pill);background:var(--fest-arc);margin:0 0 var(--s6)}
+
+.grid{display:grid;gap:var(--s3)}
+.g4{grid-template-columns:repeat(4,1fr)}
+.g3{grid-template-columns:repeat(3,1fr)}
+.g2{grid-template-columns:repeat(2,1fr)}
+@media(max-width:860px){.g4,.g3,.g2{grid-template-columns:repeat(2,1fr)}}
+
+.sw{border-radius:var(--r-md);overflow:hidden;border:1px solid var(--line);background:var(--surface)}
+.sw .chip{height:86px}
+.sw .body{padding:var(--s3)}
+.sw .nm{font-weight:620;font-size:var(--t-meta)}
+.sw .hex{font-family:var(--font-num);font-size:12px;color:var(--ink-dim);
+font-variant-numeric:tabular-nums;margin-top:2px}
+.sw .use{color:var(--ink-faint);font-size:11.5px;margin-top:var(--s2);line-height:1.4}
+
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r-lg);
+padding:var(--s5);box-shadow:var(--elev-1)}
+.card.fest{box-shadow:var(--glow-fest)}
+
+.stat{background:var(--bg-raised);border:1px solid var(--line);border-radius:var(--r-md);
+padding:var(--s4)}
+.stat .k{font-size:var(--t-label);letter-spacing:var(--t-label-tr);text-transform:uppercase;
+color:var(--ink-dim);font-weight:700}
+.stat .v{font-size:32px;font-weight:660;letter-spacing:-.02em;margin-top:6px;
+font-variant-numeric:tabular-nums}
+.stat .d{font-size:var(--t-meta);color:var(--ink-dim);margin-top:2px}
+.stat.hero{background:linear-gradient(160deg,var(--leap-blue-deep),var(--surface));
+border-color:#1b3a68}
+.stat.fest .v{color:var(--fest-cyan)}
+
+.bar{height:6px;border-radius:var(--r-pill);background:rgba(255,255,255,.08);overflow:hidden;margin:var(--s2) 0}
+.bar span{display:block;height:100%;border-radius:var(--r-pill);background:var(--fest-cyan)}
+.bar.win span{background:var(--win)}
+.bar.risk span{background:var(--risk)}
+
+.pill{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:var(--r-pill);
+border:1px solid var(--line);font-size:11px;font-weight:700;letter-spacing:.06em;
+text-transform:uppercase;color:var(--ink-2)}
+.pill.fest{border-color:rgba(37,244,238,.45);color:var(--fest-cyan)}
+.pill.win{border-color:rgba(79,224,138,.45);color:var(--win)}
+.pill.risk{border-color:rgba(255,95,109,.5);color:var(--risk)}
+.pill.warn{border-color:rgba(255,182,72,.45);color:var(--warn)}
+.dot{width:7px;height:7px;border-radius:50%;background:currentColor}
+
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:10px 18px;
+border-radius:var(--r-pill);font-weight:620;font-size:14px;border:1px solid transparent;
+cursor:pointer;transition:transform var(--fast) var(--ease)}
+.btn:active{transform:scale(.97)}
+.btn.primary{background:var(--leap-blue);color:#fff}
+.btn.fest{background:var(--fest-arc);color:#05080F}
+.btn.ghost{background:transparent;border-color:var(--line);color:var(--ink-2)}
+
+.row{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) 0;border-bottom:1px solid var(--line-soft)}
+.row:last-child{border-bottom:0}
+.rank{font-family:var(--font-num);font-size:13px;color:var(--ink-faint);width:26px;
+font-variant-numeric:tabular-nums}
+.who{flex:1;font-weight:600}
+.who small{display:block;font-weight:400;color:var(--ink-dim);font-size:var(--t-meta)}
+.num{font-variant-numeric:tabular-nums;font-weight:640;letter-spacing:-.01em}
+
+.mission{display:flex;gap:var(--s3);align-items:flex-start;padding:var(--s3) 0;
+border-bottom:1px solid var(--line-soft)}
+.tick{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--line);flex:none;
+display:grid;place-items:center;font-size:12px;color:var(--ink-faint)}
+.tick.done{background:var(--win);border-color:var(--win);color:#05080F;font-weight:800}
+.mission .t{flex:1}
+.mission .t b{font-weight:620}
+.mission .t small{display:block;color:var(--ink-dim);font-size:var(--t-meta)}
+.pts{font-family:var(--font-num);font-size:13px;color:var(--fest-cyan);font-variant-numeric:tabular-nums}
+
+.type-row{display:flex;align-items:baseline;gap:var(--s4);padding:var(--s3) 0;
+border-bottom:1px solid var(--line-soft)}
+.type-row .spec{font-family:var(--font-num);font-size:11.5px;color:var(--ink-faint);
+width:150px;flex:none}
+.sp{display:flex;align-items:flex-end;gap:var(--s3)}
+.sp i{display:block;background:var(--leap-blue-lift);border-radius:3px;opacity:.75}
+.sp b{display:block;font-family:var(--font-num);font-size:11px;color:var(--ink-faint);
+text-align:center;margin-top:6px;font-style:normal;font-weight:400}
+.radii{display:flex;gap:var(--s4);align-items:flex-end}
+.radii div{width:84px;height:62px;background:var(--surface-2);border:1px solid var(--line)}
+</style></head><body><div class="wrap">
+
+<div class="arc"></div>
+<p class="label">Design system</p>
+<h1>LEAP <span style="color:var(--ink-faint)">&times;</span> LIVE FEST 26</h1>
+<p class="lede">Tokens for the LIVE Fest tracker. LEAP owns the surface, LIVE Fest owns
+the signal. Anything structural is navy and blue; cyan and pink mean a campaign number
+and nothing else, so a Fest figure reads differently from an ordinary diamond total
+before you have read the label.</p>
+
+<h2>Colour</h2>
+<h3>LEAP, the surface</h3>
+<div class="grid g4">
+  <div class="sw"><div class="chip" style="background:#004AAD"></div><div class="body">
+    <div class="nm">LEAP Blue</div><div class="hex">#004AAD</div>
+    <div class="use">Primary actions, links, the logo. Never body text on dark.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#6AA6FF"></div><div class="body">
+    <div class="nm">Blue Lift</div><div class="hex">#6AA6FF</div>
+    <div class="use">Where LEAP Blue has no contrast on a dark surface.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#05080F"></div><div class="body">
+    <div class="nm">Base</div><div class="hex">#05080F</div>
+    <div class="use">The page. Near black, never pure black, so depth survives.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#101A2E"></div><div class="body">
+    <div class="nm">Surface</div><div class="hex">#101A2E</div>
+    <div class="use">Cards. One step up, with a hairline border.</div></div></div>
+</div>
+
+<h3>LIVE FEST, the signal</h3>
+<div class="grid g4">
+  <div class="sw"><div class="chip" style="background:#25F4EE"></div><div class="body">
+    <div class="nm">Fest Cyan</div><div class="hex">#25F4EE</div>
+    <div class="use">TikTok published. Points, progress, anything earned.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#FE2C55"></div><div class="body">
+    <div class="nm">Fest Red</div><div class="hex">#FE2C55</div>
+    <div class="use">TikTok published. Deadlines and the end of a window.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#EF62AC"></div><div class="body">
+    <div class="nm">Fest Pink</div><div class="hex">#EF62AC</div>
+    <div class="use">Sampled from the campaign key art. Gradient middle.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#C33264"></div><div class="body">
+    <div class="nm">Fest Magenta</div><div class="hex">#C33264</div>
+    <div class="use">Sampled. Depth under the arc, rarely on its own.</div></div></div>
+</div>
+
+<h3>The signature arc</h3>
+<div class="card"><div style="height:66px;border-radius:var(--r-md);background:var(--fest-arc)"></div>
+<p class="note" style="margin-top:var(--s3)">
+<code style="font-family:var(--font-num);font-size:12px">linear-gradient(118deg, #25F4EE 0%, #EF62AC 48%, #FE2C55 100%)</code><br>
+The campaign band at the top of a page, and the one primary Fest action. Never behind
+body text, never as a card fill, never on a progress bar or a figure. Those use flat
+Fest Cyan, which is what keeps the arc meaning something.</p></div>
+
+<h3>State</h3>
+<div class="grid g4">
+  <div class="sw"><div class="chip" style="background:#4FE08A"></div><div class="body">
+    <div class="nm">Hit</div><div class="hex">#4FE08A</div><div class="use">Cleared, banked, done.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#FFB648"></div><div class="body">
+    <div class="nm">At risk</div><div class="hex">#FFB648</div><div class="use">A deadline inside a week.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#FF5F6D"></div><div class="body">
+    <div class="nm">Behind</div><div class="hex">#FF5F6D</div><div class="use">Missed, or can no longer be met.</div></div></div>
+  <div class="sw"><div class="chip" style="background:#5D6F91"></div><div class="body">
+    <div class="nm">Idle</div><div class="hex">#5D6F91</div><div class="use">Not started, or nothing to say yet.</div></div></div>
+</div>
+
+<h2>Type</h2>
+<p class="lede">TikTok Sans where it loads, the system face everywhere else. On a Mac or
+an iPhone that falls to SF, which is most of where the Apple feel comes from. Numbers
+are always tabular so a column does not jitter as it updates.</p>
+<div class="card">
+  <div class="type-row"><div class="spec">44 / 1.04 / &minus;.025em</div>
+    <div style="font-size:44px;line-height:1.04;letter-spacing:-.025em;font-weight:680">2,500 points</div></div>
+  <div class="type-row"><div class="spec">28 / 1.12 / &minus;.02em</div>
+    <div style="font-size:28px;line-height:1.12;letter-spacing:-.02em;font-weight:650">Warm Up closes in 4 days</div></div>
+  <div class="type-row"><div class="spec">19 / 1.2 / &minus;.012em</div>
+    <div style="font-size:19px;font-weight:620;letter-spacing:-.012em">Talent League gate</div></div>
+  <div class="type-row"><div class="spec">15 / 1.5 / &minus;.004em</div>
+    <div>Body copy. Fifteen is the floor on a surface a coach reads every morning.</div></div>
+  <div class="type-row"><div class="spec">13 / 1.45</div>
+    <div style="font-size:13px;color:var(--ink-dim)">Meta, captions and the line under a figure.</div></div>
+  <div class="type-row"><div class="spec">10.5 / .08em caps</div>
+    <div class="label">Section label</div></div>
+</div>
+
+<h2>Space and shape</h2>
+<div class="grid g2">
+<div class="card"><p class="label">4pt grid</p><div class="rule"></div>
+  <div class="sp">
+    <div><i style="width:4px;height:48px"></i><b>4</b></div>
+    <div><i style="width:8px;height:48px"></i><b>8</b></div>
+    <div><i style="width:12px;height:48px"></i><b>12</b></div>
+    <div><i style="width:16px;height:48px"></i><b>16</b></div>
+    <div><i style="width:24px;height:48px"></i><b>24</b></div>
+    <div><i style="width:32px;height:48px"></i><b>32</b></div>
+    <div><i style="width:48px;height:48px"></i><b>48</b></div>
+  </div></div>
+<div class="card"><p class="label">Radius</p><div class="rule"></div>
+  <div class="radii">
+    <div style="border-radius:10px"></div>
+    <div style="border-radius:16px"></div>
+    <div style="border-radius:22px"></div>
+    <div style="border-radius:999px;width:62px"></div>
+  </div>
+  <p class="note" style="margin-top:var(--s3)">10 / 16 / 22 / pill. Depth comes from the
+  surface ramp and a hairline border, not from drop shadows.</p></div>
+</div>
+
+<h2>Components</h2>
+<h3>Figures</h3>
+<div class="grid g4">
+  <div class="stat hero"><div class="k">Warm Up points</div><div class="v">2,500</div>
+    <div class="d">of 2,500 &middot; cleared</div></div>
+  <div class="stat fest"><div class="k">Fest points today</div><div class="v">1,840</div>
+    <div class="d">Earned, so it is cyan</div></div>
+  <div class="stat"><div class="k">Unique gifters</div><div class="v">47</div>
+    <div class="d">+12 this week</div></div>
+  <div class="stat"><div class="k">Days left</div><div class="v">4</div>
+    <div class="d">Warm Up closes 19 Nov</div></div>
+</div>
+
+<h3>Progress</h3>
+<div class="card">
+  <div class="mission"><div class="tick done">&check;</div><div class="t">
+    <b>Sign up for the campaign</b><small>Tap the campaign page</small></div>
+    <div class="pts">+100</div></div>
+  <div class="mission"><div class="tick done">&check;</div><div class="t">
+    <b>Subscribe to campaign reminders</b><small>Campaign Center</small></div>
+    <div class="pts">+50</div></div>
+  <div class="mission"><div class="tick"></div><div class="t">
+    <b>Go LIVE 25 minutes with the FEST effect</b>
+    <small>Today, not done yet</small>
+    <div class="bar"><span style="width:62%"></span></div></div>
+    <div class="pts">+50</div></div>
+  <div class="mission"><div class="tick"></div><div class="t">
+    <b>Invite other creators</b><small>3 of 10 invited</small>
+    <div class="bar"><span style="width:30%"></span></div></div>
+    <div class="pts">+25</div></div>
+</div>
+
+<h3>Status and actions</h3>
+<div class="card">
+  <p style="margin:0 0 var(--s4);display:flex;gap:var(--s2);flex-wrap:wrap">
+    <span class="pill fest"><span class="dot"></span>Warm Up live</span>
+    <span class="pill win"><span class="dot"></span>Cleared</span>
+    <span class="pill warn"><span class="dot"></span>At risk</span>
+    <span class="pill risk"><span class="dot"></span>Behind</span>
+    <span class="pill"><span class="dot"></span>Not started</span>
+  </p>
+  <div class="rule"></div>
+  <p style="margin:0;display:flex;gap:var(--s3);flex-wrap:wrap">
+    <button class="btn primary">Open portal</button>
+    <button class="btn fest">Claim Fest points</button>
+    <button class="btn ghost">Mark as contacted</button>
+  </p>
+</div>
+
+<h3>Leaderboard</h3>
+<div class="card">
+  <div class="row"><div class="rank">1</div><div class="who">@syn1880<small>Team Bravo</small></div>
+    <div class="num" style="color:var(--fest-cyan)">3,420</div></div>
+  <div class="row"><div class="rank">2</div><div class="who">@angrydadplays<small>Team Bravo</small></div>
+    <div class="num">3,105</div></div>
+  <div class="row"><div class="rank">3</div><div class="who">@loulout912<small>Team Bravo</small></div>
+    <div class="num">2,880</div></div>
+  <div class="row"><div class="rank">4</div><div class="who">@bullet_kyle88<small>Team Alpha</small></div>
+    <div class="num">2,500</div></div>
+</div>
+
+<h2>Rules</h2>
+<div class="card">
+<p class="note" style="color:var(--ink-2)">
+<b>The arc appears twice, at most.</b> The campaign band at the top of a page, and the
+one primary Fest action on it. Everywhere else that wants to feel like the campaign uses
+flat Fest Cyan. The gradient is the campaign's voice; spread it across progress bars and
+figures and it becomes wallpaper.<br><br>
+<b>Cyan means earned.</b> If a number did not come from LIVE Fest it is not cyan. That
+single rule is what lets a coach skim a page.<br><br>
+<b>Red is a deadline, not an error.</b> Behind uses #FF5F6D. Fest Red is reserved for
+when a window closes.<br><br>
+<b>No money on a coach surface.</b> Carried over from the portal. Coins yes, pounds no.<br><br>
+<b>Numbers are tabular, always.</b> A tracker updates every morning and a column that
+shifts by a pixel reads as broken.<br><br>
+<b>Depth is a border, not a shadow.</b> One hairline and one step on the surface ramp.
+</p></div>
+
+<p class="note" style="margin-top:var(--s7)">
+Fest colours sampled from the campaign key art in the 23 and 26 October agency
+recordings, reconciled against TikTok's published pair. Replace with the official
+asset pack the moment the agency toolkit lands.</p>
+
+</div></body></html>

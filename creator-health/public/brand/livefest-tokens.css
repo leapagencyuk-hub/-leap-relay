@@ -1,0 +1,90 @@
+/*
+ * LEAP x TikTok LIVE FEST 26 — design tokens for the LIVE Fest tracker.
+ *
+ * Two palettes held apart on purpose.
+ *
+ *   LEAP owns the surface. Navy, blue, the chrome, anything structural. If a
+ *   creator screenshots a page it should read as ours, not as TikTok's.
+ *
+ *   LIVE FEST owns the signal. Cyan, pink and the gradient mark the campaign
+ *   and nothing else, so the moment a Fest number appears on a page you can
+ *   tell it apart from an ordinary diamond total without reading the label.
+ *
+ * Fest colours are sampled from the campaign key art in the 23 and 26 October
+ * agency recordings and reconciled against TikTok's published brand pair,
+ * cyan #25F4EE and red #FE2C55. Where the two differed by a shade the
+ * published value wins, because that is the one their own assets will use.
+ */
+
+:root {
+  /* ---- LEAP, the surface -------------------------------------------- */
+  --leap-blue: #004AAD;        /* the logo blue. Primary actions, links */
+  --leap-blue-lift: #6AA6FF;   /* on dark, where #004AAD has no contrast */
+  --leap-blue-deep: #00254F;
+
+  --bg: #05080F;               /* near black, never #000. Keeps depth */
+  --bg-raised: #0B1220;
+  --surface: #101A2E;
+  --surface-2: #16233C;
+  --line: #1F2F4D;
+  --line-soft: #16233C;
+
+  --ink: #FFFFFF;
+  --ink-2: #C7D4E8;
+  --ink-dim: #8699B8;
+  --ink-faint: #5A6B88;
+
+  /* ---- LIVE FEST, the signal ---------------------------------------- */
+  --fest-cyan: #25F4EE;        /* TikTok published */
+  --fest-red: #FE2C55;         /* TikTok published */
+  --fest-pink: #EF62AC;        /* sampled, campaign key art */
+  --fest-magenta: #C33264;     /* sampled, campaign key art */
+  --fest-cyan-deep: #0FB8B3;
+
+  /* The campaign signature. The page's top band and the one primary Fest action,
+     and nothing else. Progress bars and figures use flat --fest-cyan: that is
+     what keeps the arc meaning something. */
+  --fest-arc: linear-gradient(118deg, var(--fest-cyan) 0%, var(--fest-pink) 48%, var(--fest-red) 100%);
+  --fest-arc-soft: linear-gradient(118deg, rgba(37,244,238,.16) 0%, rgba(239,98,172,.16) 48%, rgba(254,44,85,.16) 100%);
+
+  /* ---- State, shared with the rest of the portal --------------------- */
+  --win: #4FE08A;
+  --warn: #FFB648;
+  --risk: #FF5F6D;
+  --idle: #5D6F91;
+
+  /* ---- Type ---------------------------------------------------------- */
+  /* TikTok Sans is their own face, open licensed, so it is legitimate to
+     load for campaign surfaces. Everything falls back to the system stack,
+     which is what gives this its Apple feel on a Mac or an iPhone. */
+  --font: "TikTok Sans", -apple-system, BlinkMacSystemFont, "SF Pro Text",
+          "Segoe UI", Inter, system-ui, sans-serif;
+  --font-num: "SF Mono", ui-monospace, "TikTok Sans", var(--font);
+
+  --t-hero: 44px;   --t-hero-lh: 1.04;  --t-hero-tr: -0.025em;
+  --t-title: 28px;  --t-title-lh: 1.12; --t-title-tr: -0.02em;
+  --t-head: 19px;   --t-head-lh: 1.2;   --t-head-tr: -0.012em;
+  --t-body: 15px;   --t-body-lh: 1.5;   --t-body-tr: -0.004em;
+  --t-meta: 13px;   --t-meta-lh: 1.45;
+  --t-label: 10.5px; --t-label-tr: 0.08em;
+
+  /* ---- Space, on a 4pt grid ------------------------------------------ */
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px;
+  --s5: 24px; --s6: 32px; --s7: 48px; --s8: 64px;
+
+  /* ---- Shape and depth ----------------------------------------------- */
+  /* Big radii and almost no shadow. Depth comes from the surface ramp and a
+     hairline border, the way iOS does it, not from drop shadows. */
+  --r-sm: 10px; --r-md: 16px; --r-lg: 22px; --r-pill: 999px;
+  --elev-1: 0 1px 0 rgba(255,255,255,.04) inset;
+  --elev-2: 0 8px 28px rgba(0,0,0,.45), 0 1px 0 rgba(255,255,255,.05) inset;
+  --glow-fest: 0 0 0 1px rgba(37,244,238,.28), 0 6px 26px rgba(37,244,238,.14);
+
+  /* ---- Motion -------------------------------------------------------- */
+  --ease: cubic-bezier(.22,.61,.36,1);
+  --fast: 140ms; --slow: 320ms;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --fast: 0ms; --slow: 0ms; }
+}
