@@ -1,0 +1,148 @@
+/* LIVE FEST 26 x LEAP — deck styling, built to match TikTok's own 2025 agency deck.
+   Black slides, pink highlight on the phrase that matters, cyan on every number
+   a creator can earn, dashed pills for a journey, gradient dividers between acts. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wght@400;600;700&family=Archivo+Black&display=swap');
+
+:root{
+  --ink:#fff; --dim:#9AA0A6; --faint:#6B7177;
+  --pink:#F8285A; --cyan:#25F4EE; --gold:#FFCC00; --violet:#7B7BFF;
+  --leap:#004AAD; --leap-lift:#5B9BFF;
+  --card:#141414; --card-2:#1B1B1B; --line:#2A2A2A;
+  --grad:linear-gradient(118deg,#5B1538 0%,#3A1A4E 28%,#1D2B50 58%,#13494B 100%);
+  --font:"Archivo",-apple-system,BlinkMacSystemFont,"Segoe UI",system-ui,sans-serif;
+  --display:"Archivo Black","Archivo",-apple-system,system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#000;font-family:var(--font);-webkit-font-smoothing:antialiased}
+
+.s{width:1600px;height:900px;background:#000;color:var(--ink);position:relative;
+overflow:hidden;page-break-after:always;break-after:page;display:block}
+.s + .s{margin-top:28px}
+@media print{ .s + .s{margin-top:0} }
+
+/* chrome */
+.wm{position:absolute;top:44px;left:60px;font-family:var(--display);font-size:17px;
+letter-spacing:.02em;color:#6E6E6E}
+.wm i{font-style:normal;transform:skewX(-12deg);display:inline-block}
+.crumb{position:absolute;top:44px;right:60px;font-size:15px;color:var(--dim)}
+.crumb b{color:#CFCFCF;font-weight:700}
+h1{position:absolute;top:70px;left:60px;font-size:50px;font-weight:700;letter-spacing:-.022em;
+line-height:1.08;max-width:1420px}
+.sub{position:absolute;top:142px;left:60px;font-size:23px;color:#D2D2D2;font-weight:400;
+max-width:1400px;line-height:1.35}
+.body{position:absolute;top:235px;left:60px;right:60px;bottom:56px}
+.body.hi{top:200px}
+
+/* divider slides */
+.div{background:var(--grad)}
+.div .tag{position:absolute;top:120px;left:60px;background:var(--violet);color:#1A1A2E;
+font-weight:700;font-size:21px;padding:11px 26px;border-radius:12px}
+.div .big{position:absolute;top:300px;left:60px;font-family:var(--display);font-size:116px;
+line-height:.94;letter-spacing:-.012em;text-transform:uppercase;max-width:1380px}
+.div .when{position:absolute;top:470px;left:60px;font-family:var(--display);font-size:38px;
+display:flex;align-items:center;gap:16px}
+.div.t2 .big{top:270px}.div.t2 .when{top:500px}
+.div .when .clock{width:34px;height:34px;border:3px solid #fff;border-radius:50%;
+position:relative;flex:none}
+.div .when .clock::before,.div .when .clock::after{content:"";position:absolute;
+background:#fff;border-radius:2px;left:50%;top:50%}
+.div .when .clock::before{width:3px;height:11px;transform:translate(-50%,-100%)}
+.div .when .clock::after{width:9px;height:3px;transform:translate(-10%,-50%)}
+.div .quote{position:absolute;bottom:86px;left:60px;right:120px;font-size:25px;
+font-style:italic;line-height:1.46;color:#F0F0F0}
+.div .when.pink{color:var(--pink)}.div .when.cyan{color:var(--cyan)}
+.div .when.gold{color:var(--gold)}.div .when.violet{color:var(--violet)}
+
+/* title + end */
+.hero{display:grid;place-content:center;text-align:center;gap:14px}
+.hero .lf{font-family:var(--display);font-size:92px;letter-spacing:.01em}
+.hero .lf i{font-style:normal;display:inline-block;transform:skewX(-13deg)}
+.hero .x{font-size:30px;color:var(--dim);font-weight:600;letter-spacing:.32em}
+.hero .leapname{font-family:var(--display);font-size:62px;color:var(--leap-lift)}
+.hero .dates{font-family:var(--display);font-size:34px;color:var(--cyan);margin-top:6px}
+.hero .kick{font-size:23px;color:#C8C8C8;margin-top:22px;max-width:980px}
+
+/* numbered mission list */
+ol.miss{list-style:none;counter-reset:m}
+ol.miss li{counter-increment:m;margin-bottom:30px;font-size:29px;line-height:1.3;
+padding-left:58px;position:relative}
+ol.miss li::before{content:counter(m) ".";position:absolute;left:0;top:0;
+color:var(--pink);font-weight:700}
+ol.miss .hl{background:var(--pink);color:#fff;font-weight:700;padding:1px 7px;border-radius:3px}
+ol.miss .pts{display:block;color:var(--cyan);font-weight:700;font-size:26px;margin-top:9px}
+ol.miss .note{display:block;color:var(--dim);font-size:20px;font-style:italic;margin-top:5px}
+
+/* flow diagram */
+.flow{display:flex;align-items:flex-start;gap:0;margin-top:14px}
+.col{flex:1;min-width:0}
+.col h4{text-align:center;font-size:25px;font-weight:700;margin-bottom:4px}
+.col .cd{text-align:center;font-size:17px;color:var(--dim);margin-bottom:26px}
+.pill{border:1.5px dashed #7A7A7A;border-radius:999px;padding:13px 10px;text-align:center;
+font-size:20px;margin-bottom:16px;color:#EDEDED}
+.pill.solid{border-style:solid}
+.pill.sm{font-size:17px;padding:10px 8px;line-height:1.25}
+.box{border-radius:16px;padding:26px 14px;text-align:center;font-size:23px;font-weight:700;
+color:#111}
+.box.power{background:var(--pink);color:#fff}
+.box.fandom{background:var(--gold)}
+.box.talent{background:var(--violet);color:#15152C}
+.box.ghost{border:1.5px solid var(--pink);background:transparent;color:#fff}
+.arrow{align-self:center;color:var(--dim);font-size:15px;padding:0 10px;white-space:nowrap;
+text-align:center;min-width:64px}
+.arrow b{display:block;color:var(--pink);font-size:15px}
+
+/* cards */
+.cards{display:grid;gap:22px}
+.c3{grid-template-columns:repeat(3,1fr)}.c2{grid-template-columns:repeat(2,1fr)}
+.c4{grid-template-columns:repeat(4,1fr)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:26px}
+.card h5{font-size:25px;font-weight:700;text-align:center;margin-bottom:16px}
+.card p{font-size:19px;line-height:1.5;color:#DADADA;text-align:center;margin-bottom:10px}
+.card p b{color:#fff}
+.card .em{color:var(--pink);font-weight:700}
+.card .rounds{display:flex;gap:9px;justify-content:center;margin-top:16px}
+.card .rounds span{border:1px solid var(--pink);color:#fff;border-radius:999px;
+padding:5px 15px;font-size:15px}
+
+/* stat strips */
+.strip{display:flex;gap:0;align-items:stretch;border-top:1px solid var(--line);
+padding-top:26px;margin-top:26px}
+.strip:first-child{border-top:0;padding-top:0;margin-top:0}
+.unit{flex:1;padding-right:30px}
+.unit + .unit{border-left:1px solid var(--line);padding-left:30px}
+.unit h6{font-size:26px;font-weight:700;margin-bottom:10px}
+.unit .v{font-size:23px;color:#E6E6E6}
+.unit .v b{color:var(--pink)}
+.unit .v .cy{color:var(--cyan);font-weight:700}
+.unit small{display:block;color:var(--faint);font-size:16px;margin-top:7px;font-style:italic}
+
+.eq{border:1.5px solid #5A5A5A;border-radius:999px;padding:16px 26px;text-align:center;
+font-size:25px;margin-bottom:34px}
+.note{position:absolute;left:60px;right:60px;bottom:40px;color:var(--faint);font-size:17px;
+font-style:italic;line-height:1.45}
+
+/* reward grid */
+.rw{display:grid;grid-template-columns:repeat(4,1fr);grid-auto-rows:118px;gap:16px}
+.rw div{background:var(--card);border-radius:14px;display:grid;place-content:center;
+text-align:center;font-size:20px;padding:14px;line-height:1.3;color:#E8E8E8}
+.rw .hero2{grid-column:span 2;grid-row:span 2;background:linear-gradient(140deg,#3A1140,#132B4F);
+font-size:27px;font-weight:700;color:#fff}
+.rw .tall{grid-row:span 2}
+
+/* LEAP blocks */
+.leapbar{display:inline-block;background:var(--leap);color:#fff;font-weight:700;
+padding:9px 20px;border-radius:10px;font-size:20px;margin-bottom:18px}
+.lg{display:grid;grid-template-columns:repeat(4,1fr);gap:18px;margin-top:8px}
+.lg div{border-radius:999px;padding:18px 10px;text-align:center;font-weight:700;font-size:23px;color:#111}
+.lg .pro{background:#F6A93B}.lg .elite{background:#C9CDD2}
+.lg .rising{background:#9BE24B}.lg .aspire{background:#2BB3FF}
+.calbox{display:flex;align-items:center;justify-content:center}
+.calimg{max-width:100%;max-height:100%;width:auto;height:auto;border-radius:14px;display:block}
+.ladder{display:flex;gap:12px;align-items:flex-end;margin-top:10px}
+.ladder div{flex:1;border-radius:12px 12px 0 0;background:var(--card-2);
+border:1px solid var(--line);border-bottom:0;padding:16px 8px;text-align:center;font-size:17px;
+line-height:1.3}
+.ladder div b{display:block;font-size:24px;color:var(--cyan);margin-bottom:6px}
+.big2{font-size:40px;line-height:1.22;font-weight:700;max-width:1340px}
+.big2 .hl{background:var(--pink);padding:2px 10px;border-radius:4px}
+.big2 .cy{color:var(--cyan)}
