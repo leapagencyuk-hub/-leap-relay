@@ -346,6 +346,76 @@
     },
     "_goals": "Backstage's monthly goals, per coach, read off the Group goals page on the 1st. diamonds is the whole group's target; recruits is the recruiter target. Each one hit adds goalBonus to that coach's unlock. A coach with no entry sits on the base 10% and their card shows no goal line, which is the honest default: it reads as 'no target set', not as two goals missed.",
     "goals": {
+      "2026-11": {
+        "joshbates93@hotmail.com": {
+          "diamonds": 8405780,
+          "recruits": 50
+        },
+        "tiktokphil@icloud.com": {
+          "diamonds": 4744440,
+          "recruits": 25
+        },
+        "mujustreamer@gmail.com": {
+          "diamonds": 4325403,
+          "recruits": 30
+        },
+        "leapagencyuk@gmail.com": {
+          "diamonds": 3343978,
+          "recruits": 15
+        },
+        "itsmalkintiktok@gmail.com": {
+          "diamonds": 3341221,
+          "recruits": 25
+        },
+        "alex_593@hotmail.co.uk": {
+          "diamonds": 2586293,
+          "recruits": 35
+        },
+        "colesygaming007@gmail.com": {
+          "diamonds": 2380277,
+          "recruits": 20
+        },
+        "bigbamc.tt@gmail.com": {
+          "diamonds": 2314185,
+          "recruits": 40
+        },
+        "iamscone.business@gmail.com": {
+          "diamonds": 1339849,
+          "recruits": 15
+        },
+        "sherif.begain@gmail.com": {
+          "diamonds": 1211863,
+          "recruits": 15
+        },
+        "amykinsincolour@gmail.com": {
+          "diamonds": 1013813,
+          "recruits": 2
+        },
+        "surgeagency.tt@gmail.com": {
+          "diamonds": 587190,
+          "recruits": 7
+        },
+        "staysocialuk1@gmail.com": {
+          "diamonds": 270190,
+          "recruits": 2
+        },
+        "senninha.1985@gmail.com": {
+          "diamonds": 130986,
+          "recruits": 2
+        },
+        "jaywrightjobs@gmail.com": {
+          "diamonds": 92539,
+          "recruits": 1
+        },
+        "vickyrstaysocial@gmail.com": {
+          "diamonds": 5233,
+          "recruits": 0
+        },
+        "rowlandratty@gmail.com": {
+          "diamonds": 687,
+          "recruits": 0
+        }
+      },
       "2026-10": {
         "joshbates93@hotmail.com": {
           "diamonds": 8387068,
